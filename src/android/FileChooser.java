@@ -55,50 +55,54 @@ public class FileChooser extends CordovaPlugin {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        try {
+            if (requestCode == PICK_FILE_REQUEST && callback != null) {
 
-        if (requestCode == PICK_FILE_REQUEST && callback != null) {
+                if (resultCode == Activity.RESULT_OK) {
 
-            if (resultCode == Activity.RESULT_OK) {
+                    Uri uri = data.getData();
 
-                Uri uri = data.getData();
+                    if (uri != null) {
 
-                if (uri != null) {
+                        Log.w(TAG, uri.toString());
 
-                    Log.w(TAG, uri.toString());
+                        ContentResolver contentResolver =
+                            this.cordova.getActivity().getContentResolver()
+                        ;
 
-                    ContentResolver contentResolver =
-                        this.cordova.getActivity().getContentResolver()
-                    ;
+                        String mediaType = contentResolver.getType(uri);
+                        if (mediaType == null || mediaType == "") {
+                            mediaType = "application/octet-stream";
+                        }
 
-                    String mediaType = contentResolver.getType(uri);
-                    if (mediaType == null || mediaType == "") {
-                        mediaType = "application/octet-stream";
+                        byte[] bytes = FileChooser.getBytesFromInputStream(
+                            contentResolver.openInputStream(uri)
+                        );
+
+                        String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+
+                        callback.success("data:" + mediaType + ";base64," + base64);
+
+                    } else {
+
+                        callback.error("File uri was null");
+
                     }
 
-                    byte[] bytes = FileChooser.getBytesFromInputStream(
-                        contentResolver.openInputStream(uri)
-                    );
+                } else if (resultCode == Activity.RESULT_CANCELED) {
 
-                    String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
-
-                    callback.success("data:" + mediaType + ";base64," + base64);
+                    // TODO NO_RESULT or error callback?
+                    PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
+                    callback.sendPluginResult(pluginResult);
 
                 } else {
 
-                    callback.error("File uri was null");
-
+                    callback.error(resultCode);
                 }
-
-            } else if (resultCode == Activity.RESULT_CANCELED) {
-
-                // TODO NO_RESULT or error callback?
-                PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
-                callback.sendPluginResult(pluginResult);
-
-            } else {
-
-                callback.error(resultCode);
             }
+        }
+        catch (IOException err) {
+            callback.error("Failed to read file");
         }
     }
 
