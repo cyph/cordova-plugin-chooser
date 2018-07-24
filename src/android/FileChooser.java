@@ -1,4 +1,4 @@
-package com.megster.cordova;
+package com.buu700.cordova;
 
 import android.app.Activity;
 import android.content.ContentResolver;
