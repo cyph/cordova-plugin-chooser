@@ -4,8 +4,8 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.net.Uri;
+import android.provider.MediaStore;
 import android.util.Base64;
-import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -16,6 +16,7 @@ import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 public class FileChooser extends CordovaPlugin {
 
@@ -64,11 +65,11 @@ public class FileChooser extends CordovaPlugin {
 
                     if (uri != null) {
 
-                        Log.w(TAG, uri.toString());
-
                         ContentResolver contentResolver =
                             this.cordova.getActivity().getContentResolver()
                         ;
+
+                        String name = FileChooser.getDisplayName(contentResolver, uri);
 
                         String mediaType = contentResolver.getType(uri);
                         if (mediaType == null || mediaType == "") {
@@ -81,7 +82,14 @@ public class FileChooser extends CordovaPlugin {
 
                         String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
 
-                        callback.success("data:" + mediaType + ";base64," + base64);
+                        JSONObject result = new JSONObject();
+
+                        result.put("data", base64);
+                        result.put("mediaType", mediaType);
+                        result.put("name", name);
+                        result.put("uri", uri.toString());
+
+                        callback.success(result.toString());
 
                     } else {
 
@@ -114,5 +122,20 @@ public class FileChooser extends CordovaPlugin {
             os.write(buffer, 0, len);
         }
         return os.toByteArray();
+    }
+
+    /** @see https://stackoverflow.com/a/23270545/459881 */
+    public static String getDisplayName(ContentResolver contentResolver, Uri uri) {
+        String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
+        Cursor metaCursor = contentResolver.query(uri, projection, null, null, null);
+        if (metaCursor != null) {
+            try {
+                if (metaCursor.moveToFirst()) {
+                    return metaCursor.getString(0);
+                }
+            } finally {
+                metaCursor.close();
+            }
+        }
     }
 }

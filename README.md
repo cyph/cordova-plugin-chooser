@@ -15,10 +15,15 @@ API
 
 	fileChooser.open(successCallback, failureCallback);
 
-The success callback get the data URI of the selected file
+The success callback get the base64-encoded data, MIME type, name, and URI of the selected file
 
-	fileChooser.open(function(dataURI) {
-		alert(dataURI);
+	fileChooser.open((file: {
+		data: string;
+		mediaType: string;
+		name: string;
+		uri: string;
+	}) => {
+		...
 	});
 	
 Screenshot
