@@ -110,7 +110,7 @@ public class FileChooser extends CordovaPlugin {
                 }
             }
         }
-        catch (IOException err) {
+        catch (IOException|JSONException err) {
             callback.error("Failed to read file");
         }
     }
@@ -138,5 +138,6 @@ public class FileChooser extends CordovaPlugin {
                 metaCursor.close();
             }
         }
+        return "File";
     }
 }
