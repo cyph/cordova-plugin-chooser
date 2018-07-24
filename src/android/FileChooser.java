@@ -3,6 +3,7 @@ package com.buu700.cordova;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.util.Base64;
