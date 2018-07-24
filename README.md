@@ -15,10 +15,10 @@ API
 
 	fileChooser.open(successCallback, failureCallback);
 
-The success callback get the base64-encoded data, MIME type, name, and URI of the selected file
+The success callback gets the binary data, MIME type, name, and URI of the selected file
 
 	fileChooser.open((file: {
-		data: string;
+		data: Uint8Array;
 		mediaType: string;
 		name: string;
 		uri: string;
