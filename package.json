@@ -1,6 +1,6 @@
 {
-  "name": "cordova-plugin-filechooser",
-  "version": "1.0.1",
+  "name": "cordova-plugin-filechooser-datauri",
+  "version": "1.0.2",
   "description": "Cordova FileChooser Plugin",
   "main": "index.js",
   "scripts": {
@@ -8,19 +8,18 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ihadeed/cordova-filechooser.git"
+    "url": "git+https://github.com/buu700/cordova-filechooser-datauri.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/ihadeed/cordova-filechooser/issues"
+    "url": "https://github.com/buu700/cordova-filechooser-datauri/issues"
   },
-  "homepage": "https://github.com/ihadeed/cordova-filechooser#readme",
+  "homepage": "https://github.com/buu700/cordova-filechooser-datauri#readme",
   "cordova": {
-    "id": "cordova-plugin-filechooser",
+    "id": "cordova-plugin-filechooser-datauri",
     "platforms": [
-      "android",
-      "windows"
+      "android"
     ]
   }
 }

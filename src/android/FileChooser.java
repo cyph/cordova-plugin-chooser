@@ -1,8 +1,10 @@
 package com.megster.cordova;
 
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.net.Uri;
+import android.util.Base64;
 import android.util.Log;
 
 import org.apache.cordova.CordovaArgs;
@@ -59,7 +61,23 @@ public class FileChooser extends CordovaPlugin {
                 if (uri != null) {
 
                     Log.w(TAG, uri.toString());
-                    callback.success(uri.toString());
+
+                    ContentResolver contentResolver =
+                        this.cordova.getActivity().getContentResolver()
+                    ;
+
+                    String mediaType = contentResolver.getType(uri);
+                    if (mediaType == null || mediaType == "") {
+                        mediaType = "application/octet-stream";
+                    }
+
+                    byte[] bytes = FileChooser.getBytesFromInputStream(
+                        contentResolver.openInputStream(uri)
+                    );
+
+                    String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+
+                    callback.success("data:" + mediaType + ";base64," + base64);
 
                 } else {
 
@@ -78,5 +96,15 @@ public class FileChooser extends CordovaPlugin {
                 callback.error(resultCode);
             }
         }
+    }
+
+    /** @see https://stackoverflow.com/a/17861016/459881 */
+    public static byte[] getBytesFromInputStream(InputStream is) throws IOException {
+        ByteArrayOutputStream os = new ByteArrayOutputStream(); 
+        byte[] buffer = new byte[0xFFFF];
+        for (int len = is.read(buffer); len != -1; len = is.read(buffer)) { 
+            os.write(buffer, 0, len);
+        }
+        return os.toByteArray();
     }
 }

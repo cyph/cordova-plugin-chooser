@@ -15,10 +15,10 @@ API
 
 	fileChooser.open(successCallback, failureCallback);
 
-The success callback get the uri of the selected file
+The success callback get the data URI of the selected file
 
-	fileChooser.open(function(uri) {
-		alert(uri);
+	fileChooser.open(function(dataURI) {
+		alert(dataURI);
 	});
 	
 Screenshot
@@ -27,6 +27,5 @@ Screenshot
 
 Supported Platforms:
 - Android
-- Windows (UWP)
 
 TODO rename `open` to pick, select, or choose.
