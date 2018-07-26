@@ -1,11 +1,11 @@
 {
 	"name": "cordova-plugin-chooser",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Cordova file chooser plugin",
 	"main": "index.js",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/cyph/cordova-chooser.git"
+		"url": "git+https://github.com/cyph/cordova-plugin-chooser.git"
 	},
 	"keywords": [
 		"file",
@@ -18,7 +18,7 @@
 	"author": "Cyph, Inc. <cordova-plugin-chooser@cyph.com> (https://github.com/cyph)",
 	"license": "Apache-2.0",
 	"bugs": {
-		"url": "https://github.com/cyph/cordova-chooser/issues"
+		"url": "https://github.com/cyph/cordova-plugin-chooser/issues"
 	},
 	"cordova": {
 		"id": "cordova-plugin-chooser",

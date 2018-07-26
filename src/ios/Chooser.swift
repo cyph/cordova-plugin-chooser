@@ -7,13 +7,13 @@ import Foundation
 class Chooser : CDVPlugin {
 	var commandCallback: String?
 
-	func callPicker(uti: String) {
+	func callPicker (uti: String) {
 		let picker = UIDocumentPickerViewController(documentTypes: [uti], in: .import)
 		picker.delegate = self
 		self.viewController.present(picker, animated: true, completion: nil)
 	}
 
-	func documentWasSelected(url: URL) {
+	func documentWasSelected (url: URL) {
 		if let commandId = self.commandCallback  {
 			self.commandCallback = nil
 
@@ -89,7 +89,7 @@ class Chooser : CDVPlugin {
 	}
 
 	@objc(getFile:)
-	func getFile(command: CDVInvokedUrlCommand) {
+	func getFile (command: CDVInvokedUrlCommand) {
 		let mimeType = command.arguments.first ?? "*/*"
 
 		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
@@ -104,7 +104,7 @@ class Chooser : CDVPlugin {
 		self.callPicker(uti: uti)
 	}
 
-	func sendError(_ message: String) {
+	func sendError (_ message: String) {
 		let pluginResult = CDVPluginResult(
 			status: CDVCommandStatus_ERROR,
 			messageAs: message

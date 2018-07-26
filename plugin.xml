@@ -3,7 +3,7 @@
 	xmlns="http://www.phonegap.com/ns/plugins/1.0" 
 	xmlns:android="http://schemas.android.com/apk/res/android" 
 	id="cordova-plugin-chooser" 
-	version="1.0.0"
+	version="1.0.1"
 >	
 	<name>Chooser</name>
 	<author>Cyph, Inc.</author>
@@ -14,13 +14,13 @@
 
 	<config-file target="config.xml" parent="/*">
 		<feature name="Chooser">
-			<param name="android-package" value="com.buu700.cordova.Chooser"/>
+			<param name="android-package" value="com.cyph.cordova.Chooser"/>
 			<param name="ios-package" value="Chooser" />
 		</feature>
 	</config-file>
 
 	<platform name="android">
-		<source-file src="src/android/Chooser.java" target-dir="src/com/buu700/cordova"/>
+		<source-file src="src/android/Chooser.java" target-dir="src/com/cyph/cordova"/>
 	</platform>
 
 	<platform name="ios">
