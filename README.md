@@ -13,18 +13,18 @@ Install with Plugman
 
 API
 
-	fileChooser.open(successCallback, failureCallback);
-
-The success callback gets the binary data, MIME type, name, and URI of the selected file
-
-	fileChooser.open((file: {
+	fileChooser.select(accept?: string) : Promise<{
 		data: Uint8Array;
 		mediaType: string;
 		name: string;
 		uri: string;
-	}) => {
-		...
-	});
+	}>
+
+Optionally takes a MIME type filter.
+
+Returns a promise with the binary data, MIME type, name, and URI of the selected file.
+
+	const file = await fileChooser.select();
 	
 Screenshot
 
@@ -32,5 +32,4 @@ Screenshot
 
 Supported Platforms:
 - Android
-
-TODO rename `open` to pick, select, or choose.
+- iOS

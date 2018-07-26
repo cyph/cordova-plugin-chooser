@@ -29,17 +29,24 @@ function from_base64(sBase64, nBlocksSize) {
 }
 
 module.exports = {
-    open: function (success, failure) {
-        cordova.exec(
-            function (json) {
-                var o = JSON.parse(json);
-                o.data = from_base64(o.data);
-                success(o);
-            },
-            failure,
-            "FileChooser",
-            "open",
-            []
-        );
+    select: function (accept) {
+        return new Promise(function (resolve, reject) {
+            cordova.exec(
+                function (json) {
+                    try {
+                        var o = JSON.parse(json);
+                        o.data = from_base64(o.data);
+                        resolve(o);
+                    }
+                    catch (err) {
+                        reject(err);
+                    }
+                },
+                reject,
+                "FileChooser",
+                "select",
+                [accept]
+            );
+        });
     }
 };

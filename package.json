@@ -1,25 +1,26 @@
 {
-  "name": "cordova-plugin-filechooser-data",
-  "version": "1.1.1",
-  "description": "Cordova FileChooser Plugin",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/buu700/cordova-filechooser-data.git"
-  },
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/buu700/cordova-filechooser-data/issues"
-  },
-  "homepage": "https://github.com/buu700/cordova-filechooser-data#readme",
-  "cordova": {
-    "id": "cordova-plugin-filechooser-data",
-    "platforms": [
-      "android"
-    ]
-  }
+	"name": "cordova-plugin-filechooser-data",
+	"version": "2.0.0",
+	"description": "Cordova FileChooser Plugin",
+	"main": "index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/buu700/cordova-filechooser-data.git"
+	},
+	"author": "",
+	"license": "ISC",
+	"bugs": {
+		"url": "https://github.com/buu700/cordova-filechooser-data/issues"
+	},
+	"homepage": "https://github.com/buu700/cordova-filechooser-data#readme",
+	"cordova": {
+		"id": "cordova-plugin-filechooser-data",
+		"platforms": [
+			"android",
+			"ios"
+		]
+	}
 }

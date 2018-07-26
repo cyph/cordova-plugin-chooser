@@ -22,7 +22,7 @@ import org.json.JSONObject;
 public class FileChooser extends CordovaPlugin {
 
     private static final String TAG = "FileChooser";
-    private static final String ACTION_OPEN = "open";
+    private static final String ACTION_OPEN = "select";
     private static final int PICK_FILE_REQUEST = 1;
     CallbackContext callback;
 
@@ -30,19 +30,24 @@ public class FileChooser extends CordovaPlugin {
     public boolean execute(String action, CordovaArgs args, CallbackContext callbackContext) throws JSONException {
 
         if (action.equals(ACTION_OPEN)) {
-            chooseFile(callbackContext);
+            String accept = args.optString(0);
+            if (accept == "" || accept == null) {
+                accept = "*/*";
+            }
+
+            chooseFile(callbackContext, accept);
             return true;
         }
 
         return false;
     }
 
-    public void chooseFile(CallbackContext callbackContext) {
+    public void chooseFile(CallbackContext callbackContext, String accept) {
 
         // type and title should be configurable
 
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");
+        intent.setType(accept);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
 
