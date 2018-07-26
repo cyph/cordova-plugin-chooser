@@ -19,130 +19,128 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+
 public class FileChooser extends CordovaPlugin {
+	private static final String ACTION_OPEN = "select";
+	private static final int PICK_FILE_REQUEST = 1;
+	private static final String TAG = "FileChooser";
 
-    private static final String TAG = "FileChooser";
-    private static final String ACTION_OPEN = "select";
-    private static final int PICK_FILE_REQUEST = 1;
-    CallbackContext callback;
+	/** @see https://stackoverflow.com/a/17861016/459881 */
+	public static byte[] getBytesFromInputStream(InputStream is) throws IOException {
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		byte[] buffer = new byte[0xFFFF];
 
-    @Override
-    public boolean execute(String action, CordovaArgs args, CallbackContext callbackContext) throws JSONException {
+		for (int len = is.read(buffer); len != -1; len = is.read(buffer)) {
+			os.write(buffer, 0, len);
+		}
 
-        if (action.equals(ACTION_OPEN)) {
-            String accept = args.optString(0);
-            if (accept == "" || accept == null) {
-                accept = "*/*";
-            }
+		return os.toByteArray();
+	}
 
-            chooseFile(callbackContext, accept);
-            return true;
-        }
+	/** @see https://stackoverflow.com/a/23270545/459881 */
+	public static String getDisplayName(ContentResolver contentResolver, Uri uri) {
+		String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
+		Cursor metaCursor = contentResolver.query(uri, projection, null, null, null);
 
-        return false;
-    }
+		if (metaCursor != null) {
+			try {
+				if (metaCursor.moveToFirst()) {
+					return metaCursor.getString(0);
+				}
+			} finally {
+				metaCursor.close();
+			}
+		}
 
-    public void chooseFile(CallbackContext callbackContext, String accept) {
+		return "File";
+	}
 
-        // type and title should be configurable
 
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType(accept);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+	private CallbackContext callback;
 
-        Intent chooser = Intent.createChooser(intent, "Select File");
-        cordova.startActivityForResult(this, chooser, PICK_FILE_REQUEST);
+	public void chooseFile(CallbackContext callbackContext, String accept) {
+		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+		intent.setType(accept);
+		intent.addCategory(Intent.CATEGORY_OPENABLE);
+		intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
 
-        PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
-        pluginResult.setKeepCallback(true);
-        callback = callbackContext;
-        callbackContext.sendPluginResult(pluginResult);
-    }
+		Intent chooser = Intent.createChooser(intent, "Select File");
+		cordova.startActivityForResult(this, chooser, PICK_FILE_REQUEST);
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        try {
-            if (requestCode == PICK_FILE_REQUEST && callback != null) {
+		PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
+		pluginResult.setKeepCallback(true);
+		callback = callbackContext;
+		callbackContext.sendPluginResult(pluginResult);
+	}
 
-                if (resultCode == Activity.RESULT_OK) {
+	@Override
+	public boolean execute(
+		String action,
+		CordovaArgs args,
+		CallbackContext callbackContext
+	) throws JSONException {
+		if (action.equals(ACTION_OPEN)) {
+			String accept = args.optString(0);
+			if (accept == "" || accept == null) {
+				accept = "*/*";
+			}
 
-                    Uri uri = data.getData();
+			chooseFile(callbackContext, accept);
+			return true;
+		}
 
-                    if (uri != null) {
+		return false;
+	}
 
-                        ContentResolver contentResolver =
-                            this.cordova.getActivity().getContentResolver()
-                        ;
+	@Override
+	public void onActivityResult(int requestCode, int resultCode, Intent data) {
+		try {
+			if (requestCode == PICK_FILE_REQUEST && callback != null) {
+				if (resultCode == Activity.RESULT_OK) {
+					Uri uri = data.getData();
 
-                        String name = FileChooser.getDisplayName(contentResolver, uri);
+					if (uri != null) {
+						ContentResolver contentResolver =
+							this.cordova.getActivity().getContentResolver()
+						;
 
-                        String mediaType = contentResolver.getType(uri);
-                        if (mediaType == null || mediaType == "") {
-                            mediaType = "application/octet-stream";
-                        }
+						String name = FileChooser.getDisplayName(contentResolver, uri);
 
-                        byte[] bytes = FileChooser.getBytesFromInputStream(
-                            contentResolver.openInputStream(uri)
-                        );
+						String mediaType = contentResolver.getType(uri);
+						if (mediaType == null || mediaType == "") {
+							mediaType = "application/octet-stream";
+						}
 
-                        String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+						byte[] bytes = FileChooser.getBytesFromInputStream(
+							contentResolver.openInputStream(uri)
+						);
 
-                        JSONObject result = new JSONObject();
+						String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
 
-                        result.put("data", base64);
-                        result.put("mediaType", mediaType);
-                        result.put("name", name);
-                        result.put("uri", uri.toString());
+						JSONObject result = new JSONObject();
 
-                        callback.success(result.toString());
+						result.put("data", base64);
+						result.put("mediaType", mediaType);
+						result.put("name", name);
+						result.put("uri", uri.toString());
 
-                    } else {
-
-                        callback.error("File uri was null");
-
-                    }
-
-                } else if (resultCode == Activity.RESULT_CANCELED) {
-
-                    // TODO NO_RESULT or error callback?
-                    PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
-                    callback.sendPluginResult(pluginResult);
-
-                } else {
-
-                    callback.error(resultCode);
-                }
-            }
-        }
-        catch (IOException|JSONException err) {
-            callback.error("Failed to read file");
-        }
-    }
-
-    /** @see https://stackoverflow.com/a/17861016/459881 */
-    public static byte[] getBytesFromInputStream(InputStream is) throws IOException {
-        ByteArrayOutputStream os = new ByteArrayOutputStream(); 
-        byte[] buffer = new byte[0xFFFF];
-        for (int len = is.read(buffer); len != -1; len = is.read(buffer)) { 
-            os.write(buffer, 0, len);
-        }
-        return os.toByteArray();
-    }
-
-    /** @see https://stackoverflow.com/a/23270545/459881 */
-    public static String getDisplayName(ContentResolver contentResolver, Uri uri) {
-        String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
-        Cursor metaCursor = contentResolver.query(uri, projection, null, null, null);
-        if (metaCursor != null) {
-            try {
-                if (metaCursor.moveToFirst()) {
-                    return metaCursor.getString(0);
-                }
-            } finally {
-                metaCursor.close();
-            }
-        }
-        return "File";
-    }
+						callback.success(result.toString());
+					}
+					else {
+						callback.error("File uri was null");
+					}
+				}
+				else if (resultCode == Activity.RESULT_CANCELED) {
+					PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
+					callback.sendPluginResult(pluginResult);
+				}
+				else {
+					callback.error(resultCode);
+				}
+			}
+		}
+		catch (IOException|JSONException err) {
+			callback.error("Failed to read file");
+		}
+	}
 }

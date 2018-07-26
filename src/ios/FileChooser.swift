@@ -5,136 +5,138 @@ import Foundation
 
 @objc(FileChooser)
 class FileChooser : CDVPlugin {
-    var commandCallback: String?
+	var commandCallback: String?
 
+	func callPicker(uti: String) {
+		let picker = UIDocumentPickerViewController(documentTypes: [uti], in: .import)
+		picker.delegate = self
+		self.viewController.present(picker, animated: true, completion: nil)
+	}
 
-    @objc(select:)
-    func select(command: CDVInvokedUrlCommand) {
-        let mimeType = command.arguments.first ?? "*/*"
+	func documentWasSelected(url: URL) {
+		if let commandId = self.commandCallback  {
+			self.commandCallback = nil
 
-        let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
-            kUTTagClassMIMEType,
-            mimeType as! CFString,
-            nil
-        )
+			var error: NSError?
 
-        let uti = (utiUnmanaged?.takeRetainedValue() as String) ?? "public.data"
+			NSFileCoordinator().coordinate(
+				url,
+				options: [],
+				error: &error
+			) { newURL in
+				let request = URLRequest(
+					url: newURL,
+					cachePolicy: URLRequest.CachePolicy.useProtocolCachePolicy,
+					timeoutInterval: 0.1
+				)
 
-        self.commandCallback = command.callbackId
-        self.callPicker(uti)
-    }
+				URLSession.shared.dataTask(
+					with: request as URLRequest,
+					completionHandler: { data, response, error in
+						if let error = error {
+							self.sendError(error.localizedDescription)
+						}
 
-    func callPicker(uti: String) {
-        let picker = UIDocumentPickerViewController(documentTypes: [uti], in: .import)
-        picker.delegate = self
-        self.viewController.present(picker, animated: true, completion: nil)
-    }
+						guard let data = data else {
+							self.sendError("Failed to fetch data.")
+						}
 
-    func documentWasSelected(url: URL) {
-        if let commandId = self.commandCallback  {
-            self.commandCallback = nil
+						guard let response = response else {
+							self.sendError("No response.")
+						}
 
-            var error: NSError?
+						do {
+							let result = [
+								"data": data.base64EncodedString(),
+								"mediaType": response.mimeType ?? "application/octet-stream",
+								"name": url.lastPathComponent,
+								"uri": url.absoluteString
+							]
 
-            NSFileCoordinator().coordinate(
-                url,
-                options: [],
-                error: &error
-            ) { newURL in
-                let request = URLRequest(
-                    url: newURL,
-                    cachePolicy: URLRequest.CachePolicy.useProtocolCachePolicy,
-                    timeoutInterval: 0.1
-                )
+							let pluginResult = CDVPluginResult(
+								status: CDVCommandStatus_OK,
+								messageAs: String(
+									data: JSONSerialization.data(
+										withJSONObject: result,
+										options: []
+									),
+									encoding: String.Encoding.utf8
+								)
+							)
 
-                URLSession.shared.dataTask(
-                    with: request as URLRequest,
-                    completionHandler: { data, response, error in
-                        if let error = error {
-                            self.sendError(error.localizedDescription)
-                        }
+							self.commandDelegate!.send(
+								pluginResult,
+								callbackId: commandId
+							)
 
-                        guard let data = data else {
-                            self.sendError("Failed to fetch data.")
-                        }
+							newURL.stopAccessingSecurityScopedResource()
+						}
+						catch let error {
+							self.sendError(error.localizedDescription)
+						}
+					}
+				)
+			}
 
-                        guard let response = response else {
-                            self.sendError("No response.")
-                        }
+			if let error = error {
+				self.sendError(error.localizedDescription)
+			}
+		}
+		else {
+			self.sendError("Unexpected error. Try again?")
+		}
 
-                        do {
-                            let result = [
-                                "data": data.base64EncodedString(),
-                                "mediaType": response.mimeType ?? "application/octet-stream",
-                                "name": url.lastPathComponent,
-                                "uri": url.absoluteString
-                            ]
+		url.stopAccessingSecurityScopedResource()
+	}
 
-                            let pluginResult = CDVPluginResult(
-                                status: CDVCommandStatus_OK,
-                                messageAs: String(
-                                    data: JSONSerialization.data(
-                                        withJSONObject: result,
-                                        options: []
-                                    ),
-                                    encoding: String.Encoding.utf8
-                                )
-                            )
+	@objc(select:)
+	func select(command: CDVInvokedUrlCommand) {
+		let mimeType = command.arguments.first ?? "*/*"
 
-                            self.commandDelegate!.send(
-                                pluginResult,
-                                callbackId: commandId
-                            )
+		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
+			kUTTagClassMIMEType,
+			mimeType as! CFString,
+			nil
+		)
 
-                            newURL.stopAccessingSecurityScopedResource()
-                        } catch let error {
-                            self.sendError(error.localizedDescription)
-                        }
-                    }
-                )
-            }
+		let uti = (utiUnmanaged?.takeRetainedValue() as String) ?? "public.data"
 
-            if let error = error {
-                self.sendError(error.localizedDescription)
-            }
-        }else{
-            self.sendError("Unexpected error. Try again?")
-        }
+		self.commandCallback = command.callbackId
+		self.callPicker(uti)
+	}
 
-        url.stopAccessingSecurityScopedResource()
-    }
+	func sendError(_ message: String) {
+		let pluginResult = CDVPluginResult(
+			status: CDVCommandStatus_ERROR,
+			messageAs: message
+		)
 
-    func sendError(_ message: String) {
-
-        let pluginResult = CDVPluginResult(
-            status: CDVCommandStatus_ERROR,
-            messageAs: message
-        )
-
-        self.commandDelegate!.send(
-            pluginResult,
-            callbackId: self.commandCallback
-        )
-    }
-
+		self.commandDelegate!.send(
+			pluginResult,
+			callbackId: self.commandCallback
+		)
+	}
 }
 
-extension FileChooser: UIDocumentPickerDelegate {
+extension FileChooser : UIDocumentPickerDelegate {
+	@available(iOS 11.0, *)
+	func documentPicker (
+		_ controller: UIDocumentPickerViewController,
+		didPickDocumentsAt urls: [URL]
+	) {
+		if let url = urls.first {
+			self.documentWasSelected(url: url)
+		}
+	}
 
-    @available(iOS 11.0, *)
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        if let url = urls.first {
-            self.documentWasSelected(url: url)
-        }
-    }
+	func documentPicker (
+		_ controller: UIDocumentPickerViewController,
+		didPickDocumentAt url: URL
+	) {
+		self.documentWasSelected(url: url)
+	}
 
-
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL){
-        self.documentWasSelected(url: url)
-    }
-
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        self.sendError("User canceled.")
-    }
-
+	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
+		self.sendError("User canceled.")
+	}
 }
