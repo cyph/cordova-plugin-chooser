@@ -20,10 +20,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 
-public class FileChooser extends CordovaPlugin {
-	private static final String ACTION_OPEN = "select";
+public class Chooser extends CordovaPlugin {
+	private static final String ACTION_OPEN = "getFile";
 	private static final int PICK_FILE_REQUEST = 1;
-	private static final String TAG = "FileChooser";
+	private static final String TAG = "Chooser";
 
 	/** @see https://stackoverflow.com/a/17861016/459881 */
 	public static byte[] getBytesFromInputStream(InputStream is) throws IOException {
@@ -104,14 +104,14 @@ public class FileChooser extends CordovaPlugin {
 							this.cordova.getActivity().getContentResolver()
 						;
 
-						String name = FileChooser.getDisplayName(contentResolver, uri);
+						String name = Chooser.getDisplayName(contentResolver, uri);
 
 						String mediaType = contentResolver.getType(uri);
 						if (mediaType == null || mediaType == "") {
 							mediaType = "application/octet-stream";
 						}
 
-						byte[] bytes = FileChooser.getBytesFromInputStream(
+						byte[] bytes = Chooser.getBytesFromInputStream(
 							contentResolver.openInputStream(uri)
 						);
 

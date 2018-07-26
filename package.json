@@ -1,26 +1,33 @@
 {
-	"name": "cordova-plugin-filechooser-data",
-	"version": "2.0.6",
-	"description": "Cordova FileChooser Plugin",
+	"name": "cordova-plugin-chooser",
+	"version": "1.0.0",
+	"description": "Cordova file chooser plugin",
 	"main": "index.js",
-	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
-	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/buu700/cordova-filechooser-data.git"
+		"url": "git+https://github.com/cyph/cordova-chooser.git"
 	},
-	"author": "",
-	"license": "ISC",
+	"keywords": [
+		"file",
+		"chooser",
+		"picker",
+		"file-chooser",
+		"android",
+		"ios"
+	],
+	"author": "Cyph, Inc. <cordova-plugin-chooser@cyph.com> (https://github.com/cyph)",
+	"license": "Apache-2.0",
 	"bugs": {
-		"url": "https://github.com/buu700/cordova-filechooser-data/issues"
+		"url": "https://github.com/cyph/cordova-chooser/issues"
 	},
-	"homepage": "https://github.com/buu700/cordova-filechooser-data#readme",
 	"cordova": {
-		"id": "cordova-plugin-filechooser-data",
+		"id": "cordova-plugin-chooser",
 		"platforms": [
 			"android",
 			"ios"
 		]
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
 	}
 }

@@ -2,18 +2,27 @@
 function from_base64(sBase64, nBlocksSize) {
     function _b64ToUint6(nChr) {
         return nChr > 64 && nChr < 91 ?
-            nChr - 65 : nChr > 96 && nChr < 123 ?
-            nChr - 71 : nChr > 47 && nChr < 58 ?
-            nChr + 4 : nChr === 43 ?
-            62 : nChr === 47 ?
+            nChr - 65 :
+        nChr > 96 && nChr < 123 ?
+            nChr - 71 :
+        nChr > 47 && nChr < 58 ?
+            nChr + 4 :
+        nChr === 43 ?
+            62 :
+        nChr === 47 ?
             63 :
-            0;
+            0
+        ;
     }
 
     var sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, ""),
         nInLen = sB64Enc.length,
-        nOutLen = nBlocksSize ? Math.ceil((nInLen * 3 + 1 >> 2) / nBlocksSize) * nBlocksSize : nInLen * 3 + 1 >> 2,
-        taBytes = new Uint8Array(nOutLen);
+        nOutLen = nBlocksSize ?
+            Math.ceil((nInLen * 3 + 1 >> 2) / nBlocksSize) * nBlocksSize :
+            nInLen * 3 + 1 >> 2
+        ,
+        taBytes = new Uint8Array(nOutLen)
+    ;
 
     for (var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0; nInIdx < nInLen; nInIdx++) {
         nMod4 = nInIdx & 3;
@@ -25,11 +34,12 @@ function from_base64(sBase64, nBlocksSize) {
             nUint24 = 0;
         }
     }
+
     return taBytes;
 }
 
 module.exports = {
-    select: function (accept) {
+    getFile: function (accept) {
         return new Promise(function (resolve, reject) {
             cordova.exec(
                 function (json) {
@@ -43,8 +53,8 @@ module.exports = {
                     }
                 },
                 reject,
-                "FileChooser",
-                "select",
+                "Chooser",
+                "getFile",
                 [accept]
             );
         });

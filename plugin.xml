@@ -2,32 +2,29 @@
 <plugin 
 	xmlns="http://www.phonegap.com/ns/plugins/1.0" 
 	xmlns:android="http://schemas.android.com/apk/res/android" 
-	id="cordova-plugin-filechooser-data" 
-	version="2.0.6"
+	id="cordova-plugin-chooser" 
+	version="1.0.0"
 >	
-	<engines>
-		<engine name="cordova" version=">=2.8.0" />
-	</engines>
+	<name>Chooser</name>
+	<author>Cyph, Inc.</author>
 
-	<name>File Chooser</name>
-
-	<js-module src="www/fileChooser.js" name="FileChooser">
-		<clobbers target="fileChooser" />
+	<js-module src="www/chooser.js" name="Chooser">
+		<clobbers target="chooser" />
 	</js-module>
 
 	<config-file target="config.xml" parent="/*">
-		<feature name="FileChooser">
-			<param name="android-package" value="com.buu700.cordova.FileChooser"/>
-			<param name="ios-package" value="FileChooser" />
+		<feature name="Chooser">
+			<param name="android-package" value="com.buu700.cordova.Chooser"/>
+			<param name="ios-package" value="Chooser" />
 		</feature>
 	</config-file>
 
 	<platform name="android">
-		<source-file src="src/android/FileChooser.java" target-dir="src/com/buu700/cordova"/>
+		<source-file src="src/android/Chooser.java" target-dir="src/com/buu700/cordova"/>
 	</platform>
 
 	<platform name="ios">
-		<source-file src="src/ios/FileChooser.swift" />
+		<source-file src="src/ios/Chooser.swift" />
 		<dependency id="cordova-plugin-add-swift-support" version="*" />
 	</platform>
 </plugin>

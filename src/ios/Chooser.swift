@@ -3,8 +3,8 @@ import MobileCoreServices
 import Foundation
 
 
-@objc(FileChooser)
-class FileChooser : CDVPlugin {
+@objc(Chooser)
+class Chooser : CDVPlugin {
 	var commandCallback: String?
 
 	func callPicker(uti: String) {
@@ -88,8 +88,8 @@ class FileChooser : CDVPlugin {
 		url.stopAccessingSecurityScopedResource()
 	}
 
-	@objc(select:)
-	func select(command: CDVInvokedUrlCommand) {
+	@objc(getFile:)
+	func getFile(command: CDVInvokedUrlCommand) {
 		let mimeType = command.arguments.first ?? "*/*"
 
 		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
@@ -117,7 +117,7 @@ class FileChooser : CDVPlugin {
 	}
 }
 
-extension FileChooser : UIDocumentPickerDelegate {
+extension Chooser : UIDocumentPickerDelegate {
 	@available(iOS 11.0, *)
 	func documentPicker (
 		_ controller: UIDocumentPickerViewController,

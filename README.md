@@ -1,35 +1,35 @@
-Cordova FileChooser Plugin
+# Chooser
 
-Requires Cordova >= 2.8.0
+## Overview
 
-Install with Cordova CLI
-	
-	$ cordova plugin add http://github.com/don/cordova-filechooser.git
+File chooser plugin for Cordova.
 
-Install with Plugman 
+Install with Cordova CLI:
 
-	$ plugman --platform android --project /path/to/project \ 
-		--plugin http://github.com/don/cordova-filechooser.git
+	$ cordova plugin add cordova-plugin-chooser
 
-API
+Supported Platforms:
+- Android
+- iOS
 
-	fileChooser.select(accept?: string) : Promise<{
+## API
+
+	/**
+	 * Displays native prompt for user to select a file.
+	 * @param accept Optional MIME type filter.
+	 * @returns Promise containing selected file's binary data, MIME type, name, and full URI.
+	 */
+	chooser.getFile(accept?: string) : Promise<{
 		data: Uint8Array;
 		mediaType: string;
 		name: string;
 		uri: string;
 	}>
 
-Optionally takes a MIME type filter.
+## Example Usage
 
-Returns a promise with the binary data, MIME type, name, and URI of the selected file.
+	(async () => {
+		const file = await chooser.getFile();
 
-	const file = await fileChooser.select();
-	
-Screenshot
-
-![Screenshot](filechooser.png "Screenshot")
-
-Supported Platforms:
-- Android
-- iOS
+		console.log(file.name);
+	})();
