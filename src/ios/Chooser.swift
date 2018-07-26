@@ -90,11 +90,11 @@ class Chooser : CDVPlugin {
 
 	@objc(getFile:)
 	func getFile (command: CDVInvokedUrlCommand) {
-		let mimeType = command.arguments.first ?? "*/*"
+		let accept = command.arguments.first
 
 		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
 			kUTTagClassMIMEType,
-			mimeType as! CFString,
+			(accept as! NSString) as! CFString,
 			nil
 		)
 

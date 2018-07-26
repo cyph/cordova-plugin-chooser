@@ -80,12 +80,7 @@ public class Chooser extends CordovaPlugin {
 		CallbackContext callbackContext
 	) throws JSONException {
 		if (action.equals(Chooser.ACTION_OPEN)) {
-			String accept = args.optString(0);
-			if (accept == "" || accept == null) {
-				accept = "*/*";
-			}
-
-			this.chooseFile(callbackContext, accept);
+			this.chooseFile(callbackContext, args.getString(0));
 			return true;
 		}
 
@@ -107,7 +102,7 @@ public class Chooser extends CordovaPlugin {
 						String name = Chooser.getDisplayName(contentResolver, uri);
 
 						String mediaType = contentResolver.getType(uri);
-						if (mediaType == null || mediaType == "") {
+						if (mediaType == null || mediaType.isEmpty()) {
 							mediaType = "application/octet-stream";
 						}
 
