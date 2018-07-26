@@ -51,10 +51,15 @@ module.exports = {
                         reject(err);
                     }
                 },
-                reject,
+                function (err) {
+                    reject(err === 'RESULT_CANCELED' ?
+                        {canceled: true} :
+                        {error: new Error(err)}
+                    );
+                },
                 'Chooser',
                 'getFile',
-                [accept || '*/*']
+                [typeof accept === 'string' && accept ? accept : '*/*']
             );
         });
     }

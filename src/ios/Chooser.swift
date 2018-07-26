@@ -15,8 +15,6 @@ class Chooser : CDVPlugin {
 
 	func documentWasSelected (url: URL) {
 		if let commandId = self.commandCallback  {
-			self.commandCallback = nil
-
 			var error: NSError?
 
 			NSFileCoordinator().coordinate(
@@ -68,6 +66,8 @@ class Chooser : CDVPlugin {
 								callbackId: commandId
 							)
 
+							self.commandCallback = nil
+
 							newURL.stopAccessingSecurityScopedResource()
 						}
 						catch let error {
@@ -114,6 +114,8 @@ class Chooser : CDVPlugin {
 			pluginResult,
 			callbackId: self.commandCallback
 		)
+
+		self.commandCallback = nil
 	}
 }
 
@@ -136,6 +138,6 @@ extension Chooser : UIDocumentPickerDelegate {
 	}
 
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
-		self.sendError("User canceled.")
+		self.sendError("RESULT_CANCELED")
 	}
 }

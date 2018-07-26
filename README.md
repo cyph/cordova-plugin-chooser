@@ -23,6 +23,8 @@ Supported Platforms:
 	 *
 	 * @returns Promise containing selected file's binary data,
 	 * MIME type, display name, and full URI.
+	 * If user cancels, promise will be rejected with {canceled: true}.
+	 * If error occurs, promise will be rejected with {error: <error object>}.
 	 */
 	chooser.getFile(accept?: string) : Promise<{
 		data: Uint8Array;

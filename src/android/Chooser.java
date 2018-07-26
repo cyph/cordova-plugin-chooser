@@ -13,9 +13,9 @@ import java.io.InputStream;
 import java.io.IOException;
 
 import org.apache.cordova.CallbackContext;
-import org.apache.cordova.CordovaArgs;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -76,12 +76,17 @@ public class Chooser extends CordovaPlugin {
 	@Override
 	public boolean execute (
 		String action,
-		CordovaArgs args,
+		JSONArray args,
 		CallbackContext callbackContext
-	) throws JSONException {
-		if (action.equals(Chooser.ACTION_OPEN)) {
-			this.chooseFile(callbackContext, args.getString(0));
-			return true;
+	) {
+		try {
+			if (action.equals(Chooser.ACTION_OPEN)) {
+				this.chooseFile(callbackContext, args.getString(0));
+				return true;
+			}
+		}
+		catch (JSONException err) {
+			this.callback.error("Execute failed: " + err.toString());
 		}
 
 		return false;
@@ -126,8 +131,7 @@ public class Chooser extends CordovaPlugin {
 					}
 				}
 				else if (resultCode == Activity.RESULT_CANCELED) {
-					PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
-					this.callback.sendPluginResult(pluginResult);
+					this.callback.error("RESULT_CANCELED");
 				}
 				else {
 					this.callback.error(resultCode);
@@ -135,7 +139,7 @@ public class Chooser extends CordovaPlugin {
 			}
 		}
 		catch (IOException|JSONException err) {
-			this.callback.error("Failed to read file.");
+			this.callback.error("Failed to read file: " + err.toString());
 		}
 	}
 }
