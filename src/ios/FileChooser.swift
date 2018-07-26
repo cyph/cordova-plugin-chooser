@@ -1,18 +1,3 @@
-
-enum DocumentTypes: String {
-    case pdf = "application/pdf"
-    case image = "image/*"
-    case all = ""
-
-    var uti: String {
-        switch self {
-            case .pdf: return "com.adobe.pdf"
-            case .image: return "public.image"
-            case .all: return "public.data"
-        }
-    }
-}
-
 @objc(FileChooser)
 class FileChooser : CDVPlugin {
     var commandCallback: String?
@@ -20,38 +5,24 @@ class FileChooser : CDVPlugin {
 
     @objc(select:)
     func select(command: CDVInvokedUrlCommand) {
+        let mimeType = command.arguments.first ?? "*/*"
 
-        var arguments: [DocumentTypes] = []
+        let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
+            kUTTagClassMIMEType,
+            mimeType,
+            nil
+        )
 
-        command.arguments.forEach({
-            if let key =  $0 as? String, let type = DocumentTypes(rawValue: key) {
-                arguments.append(type)
-            }else if let array = $0 as? [String] {
-                array.forEach({
-                    if let type = DocumentTypes(rawValue: $0) {
-                        arguments.append(type)
-                    }
-                })
-            }
-
-        })
-
-        if arguments.count < 1 {
-            arguments.append(DocumentTypes.all)
-        }
+        let uti = (utiUnmanaged?.takeRetainedValue() as String) ?? "public.data"
 
         commandCallback = command.callbackId
-        callPicker(withTypes: arguments)
+        callPicker(uti)
     }
 
-    func callPicker(withTypes documentTypes: [DocumentTypes]) {
-
-        let utis = documentTypes.flatMap({return $0.uti })
-
-        let picker = UIDocumentPickerViewController(documentTypes: utis, in: .import)
+    func callPicker(uti: String) {
+        let picker = UIDocumentPickerViewController(documentTypes: [uti], in: .import)
         picker.delegate = self
         self.viewController.present(picker, animated: true, completion: nil)
-
     }
 
     func documentWasSelected(url: URL) {
