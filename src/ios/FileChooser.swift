@@ -20,7 +20,7 @@ class FileChooser : CDVPlugin {
 			var error: NSError?
 
 			NSFileCoordinator().coordinate(
-				url,
+				readingItemAt: url,
 				options: [],
 				error: &error
 			) { newURL in
@@ -95,7 +95,7 @@ class FileChooser : CDVPlugin {
 			nil
 		)
 
-		let uti = (utiUnmanaged?.takeRetainedValue() as String) ?? "public.data"
+		let uti = (utiUnmanaged?.takeRetainedValue() as? String) ?? "public.data"
 
 		self.commandCallback = command.callbackId
 		self.callPicker(uti)
