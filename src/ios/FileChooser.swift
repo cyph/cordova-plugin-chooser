@@ -61,8 +61,6 @@ class FileChooser : CDVPlugin {
             var error: NSError?
 
             NSFileCoordinator().coordinateReadingItemAtURL(url, options, error: &error) { newURL in
-                // let data = NSData.dataWithContentsOfURL(newURL)
-
                 let request = URLRequest(
                     url: newURL,
                     cachePolicy: URLRequest.CachePolicy.useProtocolCachePolicy,
@@ -146,13 +144,13 @@ extension FileChooser: UIDocumentPickerDelegate {
     @available(iOS 11.0, *)
     func fileChooser(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         if let url = urls.first {
-            documentWasSelected(document: url)
+            documentWasSelected(url)
         }
     }
 
 
     func fileChooser(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL){
-        documentWasSelected(document: url)
+        documentWasSelected(url)
     }
 
     func fileChooserWasCancelled(_ controller: UIDocumentPickerViewController) {
