@@ -1,3 +1,8 @@
+import UIKit
+import MobileCoreServices
+import Foundation
+
+
 @objc(FileChooser)
 class FileChooser : CDVPlugin {
     var commandCallback: String?
@@ -31,7 +36,11 @@ class FileChooser : CDVPlugin {
 
             var error: NSError?
 
-            NSFileCoordinator().coordinateReadingItemAtURL(url, options, error: &error) { newURL in
+            NSFileCoordinator().coordinateReadingItemAtURL(
+                url,
+                options: [],
+                error: &error
+            ) { newURL in
                 let request = URLRequest(
                     url: newURL,
                     cachePolicy: URLRequest.CachePolicy.useProtocolCachePolicy,
@@ -85,7 +94,7 @@ class FileChooser : CDVPlugin {
                 )
             }
 
-            guard error == nil else {
+            if let error = error {
                 sendError(error.localizedDescription)
             }
         }else{
@@ -115,13 +124,13 @@ extension FileChooser: UIDocumentPickerDelegate {
     @available(iOS 11.0, *)
     func fileChooser(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         if let url = urls.first {
-            documentWasSelected(url)
+            documentWasSelected(url: url)
         }
     }
 
 
     func fileChooser(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL){
-        documentWasSelected(url)
+        documentWasSelected(url: url)
     }
 
     func fileChooserWasCancelled(_ controller: UIDocumentPickerViewController) {
