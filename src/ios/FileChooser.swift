@@ -14,14 +14,14 @@ class FileChooser : CDVPlugin {
 
         let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
             kUTTagClassMIMEType,
-            mimeType,
+            mimeType as! CFString,
             nil
         )
 
         let uti = (utiUnmanaged?.takeRetainedValue() as String) ?? "public.data"
 
-        commandCallback = command.callbackId
-        callPicker(uti)
+        self.commandCallback = command.callbackId
+        self.callPicker(uti)
     }
 
     func callPicker(uti: String) {
@@ -31,12 +31,12 @@ class FileChooser : CDVPlugin {
     }
 
     func documentWasSelected(url: URL) {
-        if let commandId = commandCallback  {
-            commandCallback = nil
+        if let commandId = self.commandCallback  {
+            self.commandCallback = nil
 
             var error: NSError?
 
-            NSFileCoordinator().coordinateReadingItemAtURL(
+            NSFileCoordinator().coordinate(
                 url,
                 options: [],
                 error: &error
@@ -50,16 +50,16 @@ class FileChooser : CDVPlugin {
                 URLSession.shared.dataTask(
                     with: request as URLRequest,
                     completionHandler: { data, response, error in
-                        guard error == nil else {
-                            sendError(error.localizedDescription)
+                        if let error = error {
+                            self.sendError(error.localizedDescription)
                         }
 
                         guard let data = data else {
-                            sendError("Failed to fetch data.")
+                            self.sendError("Failed to fetch data.")
                         }
 
                         guard let response = response else {
-                            sendError("No response.")
+                            self.sendError("No response.")
                         }
 
                         do {
@@ -72,7 +72,7 @@ class FileChooser : CDVPlugin {
 
                             let pluginResult = CDVPluginResult(
                                 status: CDVCommandStatus_OK,
-                                messageAs: try? String(
+                                messageAs: String(
                                     data: JSONSerialization.data(
                                         withJSONObject: result,
                                         options: []
@@ -88,17 +88,17 @@ class FileChooser : CDVPlugin {
 
                             newURL.stopAccessingSecurityScopedResource()
                         } catch let error {
-                            sendError(error.localizedDescription)
+                            self.sendError(error.localizedDescription)
                         }
                     }
                 )
             }
 
             if let error = error {
-                sendError(error.localizedDescription)
+                self.sendError(error.localizedDescription)
             }
         }else{
-            sendError("Unexpected error. Try again?")
+            self.sendError("Unexpected error. Try again?")
         }
 
         url.stopAccessingSecurityScopedResource()
@@ -113,7 +113,7 @@ class FileChooser : CDVPlugin {
 
         self.commandDelegate!.send(
             pluginResult,
-            callbackId: commandCallback
+            callbackId: self.commandCallback
         )
     }
 
@@ -122,19 +122,19 @@ class FileChooser : CDVPlugin {
 extension FileChooser: UIDocumentPickerDelegate {
 
     @available(iOS 11.0, *)
-    func fileChooser(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         if let url = urls.first {
-            documentWasSelected(url: url)
+            self.documentWasSelected(url: url)
         }
     }
 
 
-    func fileChooser(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL){
-        documentWasSelected(url: url)
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL){
+        self.documentWasSelected(url: url)
     }
 
-    func fileChooserWasCancelled(_ controller: UIDocumentPickerViewController) {
-        sendError("User canceled.")
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        self.sendError("User canceled.")
     }
 
 }
