@@ -24,11 +24,7 @@ class FileChooser : CDVPlugin {
 				options: [],
 				error: &error
 			) { newURL in
-				let request = URLRequest(
-					url: newURL,
-					cachePolicy: URLRequest.CachePolicy.useProtocolCachePolicy,
-					timeoutInterval: 0.1
-				)
+				let request = URLRequest(url: newURL)
 
 				URLSession.shared.dataTask(
 					with: request as URLRequest,
