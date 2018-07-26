@@ -51,7 +51,7 @@ class FileChooser : CDVPlugin {
 
 							let pluginResult = CDVPluginResult(
 								status: CDVCommandStatus_OK,
-								messageAs: String(
+								messageAs: try String(
 									data: JSONSerialization.data(
 										withJSONObject: result,
 										options: []
@@ -98,7 +98,7 @@ class FileChooser : CDVPlugin {
 		let uti = (utiUnmanaged?.takeRetainedValue() as? String) ?? "public.data"
 
 		self.commandCallback = command.callbackId
-		self.callPicker(uti)
+		self.callPicker(uti: uti)
 	}
 
 	func sendError(_ message: String) {
