@@ -31,14 +31,17 @@ class FileChooser : CDVPlugin {
 					completionHandler: { data, response, error in
 						if let error = error {
 							self.sendError(error.localizedDescription)
+							return
 						}
 
 						guard let data = data else {
 							self.sendError("Failed to fetch data.")
+							return
 						}
 
 						guard let response = response else {
 							self.sendError("No response.")
+							return
 						}
 
 						do {
