@@ -90,15 +90,22 @@ class Chooser : CDVPlugin {
 
 	@objc(getFile:)
 	func getFile (command: CDVInvokedUrlCommand) {
-		let accept = command.arguments.first
+		var uti = "public.data"
 
-		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
-			kUTTagClassMIMEType,
-			(accept as! NSString) as! CFString,
-			nil
-		)
+		do {
+			let accept = command.arguments.first
 
-		let uti = (utiUnmanaged?.takeRetainedValue() as? String) ?? "public.data"
+			let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
+				kUTTagClassMIMEType,
+				(accept as! NSString) as! CFString,
+				nil
+			)
+
+			if let utiValue = (utiUnmanaged?.takeRetainedValue() as? String) {
+				uti = utiValue
+			}
+		}
+		catch {}
 
 		self.commandCallback = command.callbackId
 		self.callPicker(uti: uti)
