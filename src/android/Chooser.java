@@ -131,7 +131,7 @@ public class Chooser extends CordovaPlugin {
 					}
 				}
 				else if (resultCode == Activity.RESULT_CANCELED) {
-					this.callback.error("RESULT_CANCELED");
+					this.callback.success("RESULT_CANCELED");
 				}
 				else {
 					this.callback.error(resultCode);

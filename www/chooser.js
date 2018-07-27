@@ -42,21 +42,21 @@ module.exports = {
         return new Promise(function (resolve, reject) {
             cordova.exec(
                 function (json) {
+                    if (json === 'RESULT_CANCELED') {
+                        resolve();
+                        return;
+                    }
+
                     try {
                         var o = JSON.parse(json);
                         o.data = from_base64(o.data);
                         resolve(o);
                     }
                     catch (err) {
-                        reject({error: err});
+                        reject(err);
                     }
                 },
-                function (err) {
-                    reject(err === 'RESULT_CANCELED' ?
-                        {canceled: true} :
-                        {error: new Error(err)}
-                    );
-                },
+                reject,
                 'Chooser',
                 'getFile',
                 [typeof accept === 'string' && accept ? accept : '*/*']

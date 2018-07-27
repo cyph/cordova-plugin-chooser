@@ -140,6 +140,6 @@ extension Chooser : UIDocumentPickerDelegate {
 	}
 
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
-		self.sendError("RESULT_CANCELED")
+		self.send("RESULT_CANCELED")
 	}
 }
