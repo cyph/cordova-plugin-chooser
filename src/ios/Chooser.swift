@@ -13,76 +13,68 @@ class Chooser : CDVPlugin {
 		self.viewController.present(picker, animated: true, completion: nil)
 	}
 
+	func detectMimeType (_ url: URL) -> String {
+		if let uti = UTTypeCreatePreferredIdentifierForTag(
+			kUTTagClassFilenameExtension,
+			(url.pathExtension as NSString) as CFString,
+			nil
+		)?.takeRetainedValue() {
+			if let mimetype = UTTypeCopyPreferredTagWithClass(
+				uti,
+				kUTTagClassMIMEType
+			)?.takeRetainedValue() as? String {
+				return mimetype
+			}
+		}
+
+		return "application/octet-stream"
+	}
+
 	func documentWasSelected (url: URL) {
-		if let commandId = self.commandCallback  {
-			var error: NSError?
+		var error: NSError?
 
-			NSFileCoordinator().coordinate(
-				readingItemAt: url,
-				options: [],
-				error: &error
-			) { newURL in
-				let request = URLRequest(url: newURL)
+		NSFileCoordinator().coordinate(
+			readingItemAt: url,
+			options: [],
+			error: &error
+		) { newURL in
+			let maybeData = try? Data(contentsOf: newURL, options: [])
 
-				URLSession.shared.dataTask(
-					with: request as URLRequest,
-					completionHandler: { data, response, error in
-						if let error = error {
-							self.sendError(error.localizedDescription)
-							return
-						}
-
-						guard let data = data else {
-							self.sendError("Failed to fetch data.")
-							return
-						}
-
-						guard let response = response else {
-							self.sendError("No response.")
-							return
-						}
-
-						do {
-							let result = [
-								"data": data.base64EncodedString(),
-								"mediaType": response.mimeType ?? "application/octet-stream",
-								"name": url.lastPathComponent,
-								"uri": url.absoluteString
-							]
-
-							let pluginResult = CDVPluginResult(
-								status: CDVCommandStatus_OK,
-								messageAs: try String(
-									data: JSONSerialization.data(
-										withJSONObject: result,
-										options: []
-									),
-									encoding: String.Encoding.utf8
-								)
-							)
-
-							self.commandDelegate!.send(
-								pluginResult,
-								callbackId: commandId
-							)
-
-							self.commandCallback = nil
-
-							newURL.stopAccessingSecurityScopedResource()
-						}
-						catch let error {
-							self.sendError(error.localizedDescription)
-						}
-					}
-				)
+			guard let data = maybeData else {
+				self.sendError("Failed to fetch data.")
+				return
 			}
 
-			if let error = error {
+			do {
+				let result = [
+					"data": data.base64EncodedString(),
+					"mediaType": self.detectMimeType(newURL),
+					"name": newURL.lastPathComponent,
+					"uri": newURL.absoluteString
+				]
+
+				if let message = try String(
+					data: JSONSerialization.data(
+						withJSONObject: result,
+						options: []
+					),
+					encoding: String.Encoding.utf8
+				) {
+					self.send(message)
+				}
+				else {
+					self.sendError("Serializing result failed.")
+				}
+
+				newURL.stopAccessingSecurityScopedResource()
+			}
+			catch let error {
 				self.sendError(error.localizedDescription)
 			}
 		}
-		else {
-			self.sendError("Unexpected error. Try again?")
+
+		if let error = error {
+			self.sendError(error.localizedDescription)
 		}
 
 		url.stopAccessingSecurityScopedResource()
@@ -90,39 +82,42 @@ class Chooser : CDVPlugin {
 
 	@objc(getFile:)
 	func getFile (command: CDVInvokedUrlCommand) {
+		self.commandCallback = command.callbackId
+
+		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
+			kUTTagClassMIMEType,
+			(command.arguments.first as! NSString) as CFString,
+			nil
+		)
+
 		var uti = "public.data"
-
-		do {
-			let accept = command.arguments.first
-
-			let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
-				kUTTagClassMIMEType,
-				(accept as! NSString) as! CFString,
-				nil
-			)
-
-			if let utiValue = (utiUnmanaged?.takeRetainedValue() as? String) {
+		if let utiValue = (utiUnmanaged?.takeRetainedValue() as? String) {
+			if !utiValue.hasPrefix("dyn.") {
 				uti = utiValue
 			}
 		}
-		catch {}
 
-		self.commandCallback = command.callbackId
 		self.callPicker(uti: uti)
 	}
 
+	func send (_ message: String, _ status: CDVCommandStatus = CDVCommandStatus_OK) {
+		if let callbackId = self.commandCallback {
+			self.commandCallback = nil
+
+			let pluginResult = CDVPluginResult(
+				status: status,
+				messageAs: message
+			)
+
+			self.commandDelegate!.send(
+				pluginResult,
+				callbackId: callbackId
+			)
+		}
+	}
+
 	func sendError (_ message: String) {
-		let pluginResult = CDVPluginResult(
-			status: CDVCommandStatus_ERROR,
-			messageAs: message
-		)
-
-		self.commandDelegate!.send(
-			pluginResult,
-			callbackId: self.commandCallback
-		)
-
-		self.commandCallback = nil
+		self.send(message, CDVCommandStatus_ERROR)
 	}
 }
 
