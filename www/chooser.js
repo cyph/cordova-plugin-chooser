@@ -48,7 +48,7 @@ module.exports = {
                         resolve(o);
                     }
                     catch (err) {
-                        reject(err);
+                        reject({error: err});
                     }
                 },
                 function (err) {
