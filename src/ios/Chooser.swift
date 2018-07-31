@@ -7,8 +7,8 @@ import Foundation
 class Chooser : CDVPlugin {
 	var commandCallback: String?
 
-	func callPicker (uti: String) {
-		let picker = UIDocumentPickerViewController(documentTypes: [uti], in: .import)
+	func callPicker (utis: [String]) {
+		let picker = UIDocumentPickerViewController(documentTypes: utis, in: .import)
 		picker.delegate = self
 		self.viewController.present(picker, animated: true, completion: nil)
 	}
@@ -16,7 +16,7 @@ class Chooser : CDVPlugin {
 	func detectMimeType (_ url: URL) -> String {
 		if let uti = UTTypeCreatePreferredIdentifierForTag(
 			kUTTagClassFilenameExtension,
-			(url.pathExtension as NSString) as CFString,
+			url.pathExtension as CFString,
 			nil
 		)?.takeRetainedValue() {
 			if let mimetype = UTTypeCopyPreferredTagWithClass(
@@ -84,20 +84,43 @@ class Chooser : CDVPlugin {
 	func getFile (command: CDVInvokedUrlCommand) {
 		self.commandCallback = command.callbackId
 
-		let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
-			kUTTagClassMIMEType,
-			(command.arguments.first as! NSString) as CFString,
-			nil
-		)
+		let accept = command.arguments.first as! String
+		let mimeTypes = accept.components(separatedBy: ",")
 
-		var uti = "public.data"
-		if let utiValue = (utiUnmanaged?.takeRetainedValue() as? String) {
-			if !utiValue.hasPrefix("dyn.") {
-				uti = utiValue
+		let utis = mimeTypes.map { (mimeType: String) -> String in
+			switch mimeType {
+				case "audio/*":
+					return kUTTypeAudio as String
+				case "font/*":
+					return "public.font"
+				case "image/*":
+					return kUTTypeImage as String
+				case "text/*":
+					return kUTTypeText as String
+				case "video/*":
+					return kUTTypeVideo as String
+				default:
+					break
 			}
+
+			if mimeType.range(of: "*") == nil {
+				let utiUnmanaged = UTTypeCreatePreferredIdentifierForTag(
+					kUTTagClassMIMEType,
+					mimeType as CFString,
+					nil
+				)
+
+				if let uti = (utiUnmanaged?.takeRetainedValue() as? String) {
+					if !uti.hasPrefix("dyn.") {
+						return uti
+					}
+				}
+			}
+
+			return kUTTypeData as String
 		}
 
-		self.callPicker(uti: uti)
+		self.callPicker(utis: utis)
 	}
 
 	func send (_ message: String, _ status: CDVCommandStatus = CDVCommandStatus_OK) {

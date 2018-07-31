@@ -59,7 +59,7 @@ module.exports = {
                 reject,
                 'Chooser',
                 'getFile',
-                [typeof accept === 'string' && accept ? accept : '*/*']
+                [(typeof accept === 'string' ? accept.replace(/\s/g, '') : undefined) || '*/*']
             );
         });
     }

@@ -60,7 +60,7 @@ public class Chooser extends CordovaPlugin {
 
 	public void chooseFile (CallbackContext callbackContext, String accept) {
 		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-		intent.setType(accept);
+		intent.setType(accept.replace(',', '|'));
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
 		intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
 

@@ -19,7 +19,7 @@ Supported Platforms:
 	/**
 	 * Displays native prompt for user to select a file.
 	 *
-	 * @param accept Optional MIME type filter (e.g. 'image/*').
+	 * @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
 	 *
 	 * @returns Promise containing selected file's binary data,
 	 * MIME type, display name, and full URI.
