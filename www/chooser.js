@@ -15,8 +15,7 @@ function from_base64 (sBase64, nBlocksSize) {
         ;
     }
 
-    var sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, '');
-    var nInLen = sB64Enc.length;
+    var nInLen = sBase64.length;
     var nOutLen = nBlocksSize ?
         Math.ceil((nInLen * 3 + 1 >> 2) / nBlocksSize) * nBlocksSize :
         nInLen * 3 + 1 >> 2
@@ -25,7 +24,7 @@ function from_base64 (sBase64, nBlocksSize) {
 
     for (var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0; nInIdx < nInLen; nInIdx++) {
         nMod4 = nInIdx & 3;
-        nUint24 |= _b64ToUint6(sB64Enc.charCodeAt(nInIdx)) << 18 - 6 * nMod4;
+        nUint24 |= _b64ToUint6(sBase64.charCodeAt(nInIdx)) << 18 - 6 * nMod4;
         if (nMod4 === 3 || nInLen - nInIdx === 1) {
             for (nMod3 = 0; nMod3 < 3 && nOutIdx < nOutLen; nMod3++, nOutIdx++) {
                 taBytes[nOutIdx] = nUint24 >>> (16 >>> nMod3 & 24) & 255;
@@ -49,7 +48,11 @@ module.exports = {
 
                     try {
                         var o = JSON.parse(json);
-                        o.data = from_base64(o.data);
+                        var base64Data = o.data.replace(/[^A-Za-z0-9\+\/]/g, '');
+
+                        o.data = from_base64(base64Data);
+                        o.dataURI = 'data:' + o.mediaType + ';base64,' + base64Data;
+
                         resolve(o);
                     }
                     catch (err) {
