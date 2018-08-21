@@ -41,3 +41,21 @@ Supported Platforms:
 		const file = await chooser.getFile();
 		console.log(file ? file.name : 'canceled');
 	})();
+
+
+## Platform-Specific Notes
+
+The following must be added to config.xml to prevent crashing when selecting large files
+on Android:
+
+```
+<platform name="android">
+	<edit-config
+		file="app/src/main/AndroidManifest.xml"
+		mode="merge"
+		target="/manifest/application"
+	>
+		<application android:largeHeap="true" />
+	</edit-config>
+</platform>
+```
