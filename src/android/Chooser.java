@@ -11,6 +11,7 @@ import android.util.Base64;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
+import java.lang.Exception;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -139,7 +140,7 @@ public class Chooser extends CordovaPlugin {
 				}
 			}
 		}
-		catch (IOException|JSONException err) {
+		catch (Exception err) {
 			this.callback.error("Failed to read file: " + err.toString());
 		}
 	}
