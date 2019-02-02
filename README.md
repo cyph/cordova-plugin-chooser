@@ -7,7 +7,7 @@ This plugin is an forked version of cordova plugin chooser that provides multipl
 ### Installing
 
 ```sh
-cordova plugin add https://github.com/harshzalavadiya/cordova-plugin-simple-file-chooser
+cordova plugin add cordova-plugin-simple-file-chooser
 ```
 
 ### Supported Platforms:
@@ -44,3 +44,7 @@ chooser.getFile(accept?: string) : Promise<undefined|{
   console.log(file);
 })();
 ```
+
+### Note
+
+If calling in typescript don't use types instead use direct javascript by `declare var chooser` on your ts file.
