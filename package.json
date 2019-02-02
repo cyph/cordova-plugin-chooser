@@ -1,33 +1,33 @@
 {
-	"name": "cordova-plugin-chooser",
-	"version": "1.2.5",
-	"description": "Cordova file chooser plugin",
-	"main": "index.js",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/cyph/cordova-plugin-chooser.git"
-	},
-	"keywords": [
-		"file",
-		"chooser",
-		"picker",
-		"file-chooser",
-		"android",
-		"ios"
-	],
-	"author": "Cyph, Inc. <cordova-plugin-chooser@cyph.com> (https://github.com/cyph)",
-	"license": "Apache-2.0",
-	"bugs": {
-		"url": "https://github.com/cyph/cordova-plugin-chooser/issues"
-	},
-	"cordova": {
-		"id": "cordova-plugin-chooser",
-		"platforms": [
-			"android",
-			"ios"
-		]
-	},
-	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
-	}
+  "name": "cordova-plugin-simple-file-chooser",
+  "version": "2.2.0",
+  "description": "Cordova file chooser plugin",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshzalavadiya/cordova-plugin-simple-file-chooser.git"
+  },
+  "keywords": [
+    "file",
+    "chooser",
+    "picker",
+    "file-chooser",
+    "android",
+    "ios"
+  ],
+  "author": "Cyph, Inc. <cordova-plugin-chooser@cyph.com> (https://github.com/cyph)",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/harshzalavadiya/cordova-plugin-simple-file-chooser/issues"
+  },
+  "cordova": {
+    "id": "cordova-plugin-simple-file-chooser",
+    "platforms": [
+      "android",
+      "ios"
+    ]
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
 }

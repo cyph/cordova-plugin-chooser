@@ -2,8 +2,8 @@
 <plugin 
 	xmlns="http://www.phonegap.com/ns/plugins/1.0" 
 	xmlns:android="http://schemas.android.com/apk/res/android" 
-	id="cordova-plugin-chooser" 
-	version="1.2.5"
+	id="cordova-plugin-simple-file-chooser" 
+	version="2.2.0"
 >	
 	<name>Chooser</name>
 	<author>Cyph, Inc.</author>
@@ -13,11 +13,11 @@
 	</js-module>
 
 	<platform name="android">
-		<source-file src="src/android/Chooser.java" target-dir="src/com/cyph/cordova" />
+		<source-file src="src/android/Chooser.java" target-dir="src/in/foobars/cordova" />
 
 		<config-file target="config.xml" parent="/*">
 			<feature name="Chooser">
-				<param name="android-package" value="com.cyph.cordova.Chooser" />
+				<param name="android-package" value="in.foobars.cordova.Chooser" />
 			</feature>
 		</config-file>
 	</platform>

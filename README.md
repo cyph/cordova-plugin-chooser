@@ -1,61 +1,46 @@
 # Chooser
 
-## Overview
+### Overview
 
-File chooser plugin for Cordova.
+This plugin is an forked version of cordova plugin chooser that provides multiple file selection functionality and removes base64 functionality as we can use ionic native file plugin to get file directly
 
-Install with Cordova CLI:
+### Installing
 
-	$ cordova plugin add cordova-plugin-chooser
-
-Supported Platforms:
-
-* Android
-
-* iOS
-
-## API
-
-	/**
-	 * Displays native prompt for user to select a file.
-	 *
-	 * @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
-	 *
-	 * @returns Promise containing selected file's raw binary data,
-	 * base64-encoded data: URI, MIME type, display name, and original URI.
-	 *
-	 * If user cancels, promise will be resolved as undefined.
-	 * If error occurs, promise will be rejected.
-	 */
-	chooser.getFile(accept?: string) : Promise<undefined|{
-		data: Uint8Array;
-		dataURI: string;
-		mediaType: string;
-		name: string;
-		uri: string;
-	}>
-
-## Example Usage
-
-	(async () => {
-		const file = await chooser.getFile();
-		console.log(file ? file.name : 'canceled');
-	})();
-
-
-## Platform-Specific Notes
-
-The following must be added to config.xml to prevent crashing when selecting large files
-on Android:
-
+```sh
+cordova plugin add https://github.com/harshzalavadiya/cordova-plugin-simple-file-chooser
 ```
-<platform name="android">
-	<edit-config
-		file="app/src/main/AndroidManifest.xml"
-		mode="merge"
-		target="/manifest/application"
-	>
-		<application android:largeHeap="true" />
-	</edit-config>
-</platform>
+
+### Supported Platforms:
+
+- Android
+- iOS
+
+### API
+
+```js
+/**
+	* Displays native prompt for user to select a file.
+	*
+	* @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
+	*
+	* @returns Promise containing selected file's information,
+	* MIME type, display name, and original URI.
+	*
+	* If user cancels, promise will be resolved as undefined.
+	* If error occurs, promise will be rejected.
+	*/
+chooser.getFile(accept?: string) : Promise<undefined|{
+	mediaType: string;
+	name: string;
+	uri: string;
+}>
+```
+
+### Example Usage
+
+```js
+(async () => {
+  const file = await chooser.getFile();
+  console.log(file);
+})();
 ```
