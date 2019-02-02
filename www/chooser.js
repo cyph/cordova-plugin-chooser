@@ -1,16 +1,29 @@
 module.exports = {
-  getFile: function(successCallback, errorCallback, accept) {
-    accept =
-      (typeof accept === "string" ? accept.replace(/\s/g, "") : undefined) ||
-      "*/*";
-    var parseResult = function(json) {
-      try {
-        successCallback(JSON.parse(json));
-      } catch (err) {
-        errorCallback(err);
-      }
-    };
+    getFile: function (accept, successCallback, failureCallback) {
+        var result = new Promise(function (resolve, reject) {
+            cordova.exec(
+                function (json) {
+                    try {
+                        resolve(JSON.parse(json));
+                    }
+                    catch (err) {
+                        reject(err);
+                    }
+                },
+                reject,
+                'Chooser',
+                'getFile',
+                [(typeof accept === 'string' ? accept.replace(/\s/g, '') : undefined) || '*/*']
+            );
+        });
 
-    cordova.exec(parseResult, errorCallback, "Chooser", "getFile", [accept]);
-  }
+        if (typeof successCallback === 'function') {
+            result.then(successCallback);
+        }
+        if (typeof failureCallback === 'function') {
+            result.catch(failureCallback);
+        }
+
+        return result;
+    }
 };
