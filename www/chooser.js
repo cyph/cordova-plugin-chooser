@@ -80,7 +80,7 @@ module.exports = {
 				'getFile',
 				[
 					(typeof accept === 'string' ?
-						accept.replace(/\s/g, '') :
+						accept.toLowerCase().replace(/\s/g, '') :
 						undefined) || '*/*'
 				]
 			);
