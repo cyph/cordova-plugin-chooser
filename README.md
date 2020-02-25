@@ -59,3 +59,5 @@ on Android:
 	</edit-config>
 </platform>
 ```
+
+If it isn't present already, you'll also need the attribute `xmlns:android="http://schemas.android.com/apk/res/android"` added to your `<widget>` tag in order for that to build successfully.
