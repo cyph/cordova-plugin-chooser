@@ -117,7 +117,7 @@ class Chooser : CDVPlugin {
 				}
 			}
 
-			return kUTTypeData as String
+			return kUTTypeItem as String
 		}
 
 		self.callPicker(utis: utis)
