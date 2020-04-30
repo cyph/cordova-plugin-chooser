@@ -3,13 +3,18 @@ import MobileCoreServices
 import Foundation
 
 
+class ChooserUIDocumentPickerViewController : UIDocumentPickerViewController {
+	var includeData: Bool = false
+}
+
 @objc(Chooser)
 class Chooser : CDVPlugin {
 	var commandCallback: String?
 
-	func callPicker (utis: [String]) {
-		let picker = UIDocumentPickerViewController(documentTypes: utis, in: .import)
+	func callPicker (includeData: Bool, utis: [String]) {
+		let picker = ChooserUIDocumentPickerViewController(documentTypes: utis, in: .import)
 		picker.delegate = self
+		picker.includeData = includeData
 		self.viewController.present(picker, animated: true, completion: nil)
 	}
 
@@ -30,7 +35,7 @@ class Chooser : CDVPlugin {
 		return "application/octet-stream"
 	}
 
-	func documentWasSelected (url: URL) {
+	func documentWasSelected (includeData: Bool, url: URL) {
 		var error: NSError?
 
 		NSFileCoordinator().coordinate(
@@ -47,7 +52,7 @@ class Chooser : CDVPlugin {
 
 			do {
 				let result = [
-					"data": data.base64EncodedString(),
+					"data": includeData ? data.base64EncodedString() : "",
 					"mediaType": self.detectMimeType(newURL),
 					"name": newURL.lastPathComponent,
 					"uri": newURL.absoluteString
@@ -85,6 +90,7 @@ class Chooser : CDVPlugin {
 		self.commandCallback = command.callbackId
 
 		let accept = command.arguments.first as! String
+		let includeData = command.arguments.second as! Bool
 		let mimeTypes = accept.components(separatedBy: ",")
 
 		let utis = mimeTypes.map { (mimeType: String) -> String in
@@ -120,7 +126,7 @@ class Chooser : CDVPlugin {
 			return kUTTypeItem as String
 		}
 
-		self.callPicker(utis: utis)
+		self.callPicker(includeData: includeData, utis: utis)
 	}
 
 	func send (_ message: String, _ status: CDVCommandStatus = CDVCommandStatus_OK) {
@@ -147,22 +153,22 @@ class Chooser : CDVPlugin {
 extension Chooser : UIDocumentPickerDelegate {
 	@available(iOS 11.0, *)
 	func documentPicker (
-		_ controller: UIDocumentPickerViewController,
+		_ controller: ChooserUIDocumentPickerViewController,
 		didPickDocumentsAt urls: [URL]
 	) {
 		if let url = urls.first {
-			self.documentWasSelected(url: url)
+			self.documentWasSelected(includeData: controller.includeData, url: url)
 		}
 	}
 
 	func documentPicker (
-		_ controller: UIDocumentPickerViewController,
+		_ controller: ChooserUIDocumentPickerViewController,
 		didPickDocumentAt url: URL
 	) {
-		self.documentWasSelected(url: url)
+		self.documentWasSelected(includeData: controller.includeData, url: url)
 	}
 
-	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
+	func documentPickerWasCancelled (_ controller: ChooserUIDocumentPickerViewController) {
 		self.send("RESULT_CANCELED")
 	}
 }

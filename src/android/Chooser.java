@@ -23,6 +23,7 @@ import org.json.JSONObject;
 
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
+	private static final String INCLUDE_DATA = "com.cyph.cordova.INCLUDE_DATA";
 	private static final int PICK_FILE_REQUEST = 1;
 	private static final String TAG = "Chooser";
 
@@ -59,7 +60,7 @@ public class Chooser extends CordovaPlugin {
 
 	private CallbackContext callback;
 
-	public void chooseFile (CallbackContext callbackContext, String accept) {
+	public void chooseFile (CallbackContext callbackContext, String accept, Boolean includeData) {
 		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
 		intent.setType("*/*");
 		if (!accept.equals("*/*")) {
@@ -68,6 +69,7 @@ public class Chooser extends CordovaPlugin {
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
 		intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
 		intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+		intent.putExtra(Chooser.INCLUDE_DATA, includeData);
 
 		Intent chooser = Intent.createChooser(intent, "Select File");
 		cordova.startActivityForResult(this, chooser, Chooser.PICK_FILE_REQUEST);
@@ -86,7 +88,7 @@ public class Chooser extends CordovaPlugin {
 	) {
 		try {
 			if (action.equals(Chooser.ACTION_OPEN)) {
-				this.chooseFile(callbackContext, args.getString(0));
+				this.chooseFile(callbackContext, args.getString(0), args.getBoolean(1));
 				return true;
 			}
 		}
@@ -116,11 +118,15 @@ public class Chooser extends CordovaPlugin {
 							mediaType = "application/octet-stream";
 						}
 
-						byte[] bytes = Chooser.getBytesFromInputStream(
-							contentResolver.openInputStream(uri)
-						);
+						String base64 = "";
 
-						String base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+						if (data.getBooleanExtra(Chooser.INCLUDE_DATA, false)) {
+							byte[] bytes = Chooser.getBytesFromInputStream(
+								contentResolver.openInputStream(uri)
+							);
+
+							base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+						}
 
 						JSONObject result = new JSONObject();
 

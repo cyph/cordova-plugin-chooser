@@ -34,6 +34,23 @@ Supported Platforms:
 		name: string;
 		uri: string;
 	}>
+	
+	/**
+	 * Displays native prompt for user to select a file.
+	 *
+	 * @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
+	 *
+	 * @returns Promise containing selected file's MIME type, display name,
+	 * and original URI.
+	 *
+	 * If user cancels, promise will be resolved as undefined.
+	 * If error occurs, promise will be rejected.
+	 */
+	chooser.getFileMetadata(accept?: string) : Promise<undefined|{
+		mediaType: string;
+		name: string;
+		uri: string;
+	}>
 
 ## Example Usage
 
