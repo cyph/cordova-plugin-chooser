@@ -27,7 +27,7 @@ class Chooser : CDVPlugin {
 			if let mimetype = UTTypeCopyPreferredTagWithClass(
 				uti,
 				kUTTagClassMIMEType
-			)?.takeRetainedValue() as? String {
+			)?.takeRetainedValue() as String? {
 				return mimetype
 			}
 		}
@@ -90,7 +90,7 @@ class Chooser : CDVPlugin {
 		self.commandCallback = command.callbackId
 
 		let accept = command.arguments.first as! String
-		let includeData = command.arguments.second as! Bool
+		let includeData = command.arguments.last as! Bool
 		let mimeTypes = accept.components(separatedBy: ",")
 
 		let utis = mimeTypes.map { (mimeType: String) -> String in
@@ -116,7 +116,7 @@ class Chooser : CDVPlugin {
 					nil
 				)
 
-				if let uti = (utiUnmanaged?.takeRetainedValue() as? String) {
+				if let uti = utiUnmanaged?.takeRetainedValue() as String? {
 					if !uti.hasPrefix("dyn.") {
 						return uti
 					}
@@ -153,22 +153,24 @@ class Chooser : CDVPlugin {
 extension Chooser : UIDocumentPickerDelegate {
 	@available(iOS 11.0, *)
 	func documentPicker (
-		_ controller: ChooserUIDocumentPickerViewController,
+		_ controller: UIDocumentPickerViewController,
 		didPickDocumentsAt urls: [URL]
 	) {
+		let picker = controller as! ChooserUIDocumentPickerViewController
 		if let url = urls.first {
-			self.documentWasSelected(includeData: controller.includeData, url: url)
+			self.documentWasSelected(includeData: picker.includeData, url: url)
 		}
 	}
 
 	func documentPicker (
-		_ controller: ChooserUIDocumentPickerViewController,
+		_ controller: UIDocumentPickerViewController,
 		didPickDocumentAt url: URL
 	) {
-		self.documentWasSelected(includeData: controller.includeData, url: url)
+		let picker = controller as! ChooserUIDocumentPickerViewController
+		self.documentWasSelected(includeData: picker.includeData, url: url)
 	}
 
-	func documentPickerWasCancelled (_ controller: ChooserUIDocumentPickerViewController) {
+	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
 		self.send("RESULT_CANCELED")
 	}
 }
