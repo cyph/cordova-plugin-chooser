@@ -23,7 +23,6 @@ import org.json.JSONObject;
 
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
-	private static final String INCLUDE_DATA = "com.cyph.cordova.INCLUDE_DATA";
 	private static final int PICK_FILE_REQUEST = 1;
 	private static final String TAG = "Chooser";
 
@@ -59,6 +58,7 @@ public class Chooser extends CordovaPlugin {
 
 
 	private CallbackContext callback;
+	private Boolean includeData;
 
 	public void chooseFile (CallbackContext callbackContext, String accept, Boolean includeData) {
 		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -69,7 +69,7 @@ public class Chooser extends CordovaPlugin {
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
 		intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
 		intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
-		intent.putExtra(Chooser.INCLUDE_DATA, includeData);
+		this.includeData = includeData;
 
 		Intent chooser = Intent.createChooser(intent, "Select File");
 		cordova.startActivityForResult(this, chooser, Chooser.PICK_FILE_REQUEST);
@@ -120,7 +120,7 @@ public class Chooser extends CordovaPlugin {
 
 						String base64 = "";
 
-						if (data.getBooleanExtra(Chooser.INCLUDE_DATA, false)) {
+						if (this.includeData) {
 							byte[] bytes = Chooser.getBytesFromInputStream(
 								contentResolver.openInputStream(uri)
 							);
