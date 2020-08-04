@@ -51,7 +51,7 @@ class Chooser : CDVPlugin {
 			}
 
 			do {
-				let result = [
+				let result: [String: Any] = [
 					"data": includeData ? data.base64EncodedString() : "",
 					"mediaType": self.detectMimeType(newURL),
 					"name": newURL.lastPathComponent,
