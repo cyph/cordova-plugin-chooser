@@ -23,7 +23,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public class Chooser extends CordovaPlugin {
-    private static final String ACTION_OPEN = "getFile";
+    private static final String ACTION_OPEN = "getFiles";
     private static final int PICK_FILE_REQUEST = 1;
     private static final String TAG = "Chooser";
 
@@ -95,7 +95,7 @@ public class Chooser extends CordovaPlugin {
                         this.callback.error("File URI was null.");
                     }
                 } else if (resultCode == Activity.RESULT_CANCELED) {
-                    this.callback.error("No File selected.");
+                    this.callback.error("RESULT_CANCELED");
                 } else {
                     this.callback.error(resultCode);
                 }

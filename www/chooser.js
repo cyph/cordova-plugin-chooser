@@ -1,5 +1,5 @@
 module.exports = {
-    getFile: function (accept, successCallback, failureCallback) {
+    getFiles: function (accept, successCallback, failureCallback) {
         var result = new Promise(function (resolve, reject) {
             cordova.exec(
                 function (json) {
@@ -12,7 +12,7 @@ module.exports = {
                 },
                 reject,
                 'Chooser',
-                'getFile',
+                'getFiles',
                 [(typeof accept === 'string' ? accept.replace(/\s/g, '') : undefined) || '*/*']
             );
         });

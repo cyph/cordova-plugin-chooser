@@ -1,7 +1,7 @@
 import UIKit
 import MobileCoreServices
 import Foundation
-
+import Cordova
 
 @objc(Chooser)
 class Chooser : CDVPlugin {
@@ -46,12 +46,12 @@ class Chooser : CDVPlugin {
 			}
 
 			do {
-				let result = [
+				let result = [[
 					"data": data.base64EncodedString(),
 					"mediaType": self.detectMimeType(newURL),
 					"name": newURL.lastPathComponent,
 					"uri": newURL.absoluteString
-				]
+				]]
 
 				if let message = try String(
 					data: JSONSerialization.data(
@@ -80,8 +80,8 @@ class Chooser : CDVPlugin {
 		url.stopAccessingSecurityScopedResource()
 	}
 
-	@objc(getFile:)
-	func getFile (command: CDVInvokedUrlCommand) {
+	@objc(getFiles:)
+	func getFiles(command: CDVInvokedUrlCommand) {
 		self.commandCallback = command.callbackId
 
 		let accept = command.arguments.first as! String
@@ -163,6 +163,6 @@ extension Chooser : UIDocumentPickerDelegate {
 	}
 
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
-		self.send("RESULT_CANCELED")
+		self.sendError("RESULT_CANCELED")
 	}
 }
