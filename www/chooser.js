@@ -5,15 +5,18 @@ module.exports = {
                 function (json) {
                     try {
                         resolve(JSON.parse(json));
-                    }
-                    catch (err) {
+                    } catch (err) {
                         reject(err);
                     }
                 },
                 reject,
                 'Chooser',
                 'getFiles',
-                [(typeof accept === 'string' ? accept.replace(/\s/g, '') : undefined) || '*/*']
+                [
+                    (typeof accept === 'string'
+                        ? accept.replace(/\s/g, '')
+                        : undefined) || '*/*',
+                ]
             );
         });
 
@@ -25,5 +28,5 @@ module.exports = {
         }
 
         return result;
-    }
+    },
 };

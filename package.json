@@ -5,7 +5,7 @@
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/harshzalavadiya/cordova-plugin-simple-file-chooser.git"
+    "url": "git+https://github.com/hc-oss/cordova-plugin-simple-file-chooser.git"
   },
   "keywords": [
     "file",
@@ -18,7 +18,7 @@
   "author": "Cyph, Inc. <cordova-plugin-chooser@cyph.com> (https://github.com/cyph)",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/harshzalavadiya/cordova-plugin-simple-file-chooser/issues"
+    "url": "https://github.com/hc-oss/cordova-plugin-simple-file-chooser/issues"
   },
   "cordova": {
     "id": "cordova-plugin-simple-file-chooser",

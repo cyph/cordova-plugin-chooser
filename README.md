@@ -19,16 +19,16 @@ cordova plugin add cordova-plugin-simple-file-chooser
 
 ```js
 /**
-	* Displays native prompt for user to select one or more files.
-	*
-	* @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
-	*
-	* @returns Promise containing selected files' information,
-	* MIME type, display name, and original URI.
-	*
-	* If user cancels, promise will be resolved as undefined.
-	* If error occurs, promise will be rejected.
-	*/
+  * Displays native prompt for user to select one or more files.
+  *
+  * @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
+  *
+  * @returns Promise containing selected files' information,
+  * MIME type, display name, and original URI.
+  *
+  * If user cancels, promise will be resolved as undefined.
+  * If error occurs, promise will be rejected.
+  */
 chooser.getFiles(accept?: string) : Promise<undefined|{
 	mediaType: string;
 	name: string;
