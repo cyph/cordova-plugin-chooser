@@ -6,10 +6,20 @@ import Cordova
 @objc(Chooser)
 class Chooser : CDVPlugin {
 	var commandCallback: String?
+    
+    struct FileInfo: Codable {
+        let mediaType: String
+        let name: String
+        let uri: String
+     }
 
 	func callPicker (utis: [String]) {
 		let picker = UIDocumentPickerViewController(documentTypes: utis, in: .import)
 		picker.delegate = self
+        if #available(iOS 11.0, *) {
+            picker.allowsMultipleSelection = true
+        }
+
 		self.viewController.present(picker, animated: true, completion: nil)
 	}
 
@@ -30,54 +40,40 @@ class Chooser : CDVPlugin {
 		return "application/octet-stream"
 	}
 
-	func documentWasSelected (url: URL) {
+	func documentWasSelected (urls: [URL]) {
 		var error: NSError?
+        let coordinator = NSFileCoordinator();
+        var results: [FileInfo] = [];
+        for url in urls {
+            coordinator.coordinate(
+                readingItemAt: url,
+                options: [],
+                error: &error
+            ) { newURL in
+                let result = FileInfo(
+                    mediaType: self.detectMimeType(newURL),
+                    name: newURL.lastPathComponent,
+                    uri: newURL.absoluteString
+                )
 
-		NSFileCoordinator().coordinate(
-			readingItemAt: url,
-			options: [],
-			error: &error
-		) { newURL in
-			let maybeData = try? Data(contentsOf: newURL, options: [])
-
-			guard let data = maybeData else {
-				self.sendError("Failed to fetch data.")
-				return
-			}
-
-			do {
-				let result = [[
-					"mediaType": self.detectMimeType(newURL),
-					"name": newURL.lastPathComponent,
-					"uri": newURL.absoluteString
-				]]
-
-				if let message = try String(
-					data: JSONSerialization.data(
-						withJSONObject: result,
-						options: []
-					),
-					encoding: String.Encoding.utf8
-				) {
-					self.send(message)
-				}
-				else {
-					self.sendError("Serializing result failed.")
-				}
-
-				newURL.stopAccessingSecurityScopedResource()
-			}
-			catch let error {
-				self.sendError(error.localizedDescription)
-			}
-		}
-
+                results.append(result);
+                
+                newURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        do {
+            let jsonData = try JSONEncoder().encode(results)
+            let jsonString = String(data: jsonData, encoding: .utf8)!
+            self.send(jsonString)
+        }
+        catch {
+            self.sendError("Serializing result failed.")
+        }
+        
 		if let error = error {
 			self.sendError(error.localizedDescription)
 		}
-
-		url.stopAccessingSecurityScopedResource()
-	}
+    }
 
 	@objc(getFiles:)
 	func getFiles(command: CDVInvokedUrlCommand) {
@@ -149,16 +145,14 @@ extension Chooser : UIDocumentPickerDelegate {
 		_ controller: UIDocumentPickerViewController,
 		didPickDocumentsAt urls: [URL]
 	) {
-		if let url = urls.first {
-			self.documentWasSelected(url: url)
-		}
+        self.documentWasSelected(urls: urls)
 	}
 
 	func documentPicker (
 		_ controller: UIDocumentPickerViewController,
 		didPickDocumentAt url: URL
 	) {
-		self.documentWasSelected(url: url)
+		self.documentWasSelected(urls: [url])
 	}
 
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
