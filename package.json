@@ -1,11 +1,11 @@
 {
-	"name": "cordova-plugin-chooser",
-	"version": "1.3.2",
+	"name": "@uberfusion007/cordova-plugin-chooser",
+	"version": "1.3.3",
 	"description": "Cordova file chooser plugin",
 	"main": "index.js",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/cyph/cordova-plugin-chooser.git"
+		"url": "git+https://https://github.com/uberfusion007/cordova-plugin-chooser"
 	},
 	"keywords": [
 		"file",
@@ -29,5 +29,8 @@
 	},
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"publishConfig": {
+		"registry": "https://npm.pkg.github.com"
 	}
 }
