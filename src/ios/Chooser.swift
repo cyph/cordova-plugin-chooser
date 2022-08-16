@@ -14,6 +14,7 @@ class Chooser : CDVPlugin {
 	func callPicker (includeData: Bool, utis: [String]) {
 		let picker = ChooserUIDocumentPickerViewController(documentTypes: utis, in: .import)
 		picker.delegate = self
+        picker.presentationController?.delegate = self
 		picker.includeData = includeData
 		self.viewController.present(picker, animated: true, completion: nil)
 	}
@@ -173,4 +174,10 @@ extension Chooser : UIDocumentPickerDelegate {
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
 		self.send("RESULT_CANCELED")
 	}
+}
+
+extension Chooser : UIAdaptivePresentationControllerDelegate {
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        self.send("RESULT_CANCELED")
+    }
 }
