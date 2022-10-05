@@ -1,5 +1,8 @@
 # Chooser
 
+## Demo 
+[cordova-plugin-chooser-lab](https://github.com/MaximBelov/cordova-plugin-chooser-lab)
+
 ## Overview
 
 File chooser plugin for Cordova.
