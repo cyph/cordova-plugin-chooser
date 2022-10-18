@@ -131,10 +131,12 @@ public class Chooser extends CordovaPlugin {
                         try {
                             JSONObject result = new JSONObject();
                             result.put("path", new File(filePath).exists() ? "file://" + filePath : "");
-                            result.put("name", displayName);
+                            result.put("name",  this.getFileName(displayName)); // without extension
+                            result.put("displayName",  displayName); // with extension
                             result.put("mimeType", mimeType);
                             result.put("extension", extension);
                             result.put("size", size);
+
                             this.callback.success(result);
                         } catch (JSONException e) {
                             this.callback.error("JSON Object not supported");
@@ -180,6 +182,13 @@ public class Chooser extends CordovaPlugin {
                 e.printStackTrace();
             }
         }
+    }
+
+    public String getFileName(String fileName) {
+        if(!fileName.contains(".")){
+            return fileName;
+        }
+        return fileName.substring(0,fileName.lastIndexOf("."));
     }
 
 }

@@ -60,7 +60,8 @@ class Chooser : CDVPlugin {
 
 				let result = [
 					"path": newURL.absoluteString,
-					"name": newURL.lastPathComponent,
+                    "name": newURL.deletingPathExtension().lastPathComponent,  // without extension
+                    "displayName": newURL.lastPathComponent,  // with extension
 					"mimeType": self.detectMimeType(newURL),
                     "extension": newURL.pathExtension,
                     "size": fileSize,
