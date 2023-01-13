@@ -1,5 +1,8 @@
 # Chooser
 
+## Demo 
+[cordova-plugin-chooser-lab](https://github.com/MaximBelov/cordova-plugin-chooser-lab)
+
 ## Overview
 
 File chooser plugin for Cordova.
@@ -19,37 +22,22 @@ Supported Platforms:
 	/**
 	 * Displays native prompt for user to select a file.
 	 *
-	 * @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
+	 * @param {Object} options
+	 * @param {string} options.mimeTypes Optional MIME type filter (e.g. 'image/gif,video/*')
+	 * @param {number} options.maxFileSize 
 	 *
-	 * @returns Promise containing selected file's raw binary data,
-	 * base64-encoded data: URI, MIME type, display name, and original URI.
-	 *
-	 * If user cancels, promise will be resolved as undefined.
-	 * If error occurs, promise will be rejected.
-	 */
-	chooser.getFile(accept?: string) : Promise<undefined|{
-		data: Uint8Array;
-		dataURI: string;
-		mediaType: string;
-		name: string;
-		uri: string;
-	}>
-	
-	/**
-	 * Displays native prompt for user to select a file.
-	 *
-	 * @param accept Optional MIME type filter (e.g. 'image/gif,video/*').
-	 *
-	 * @returns Promise containing selected file's MIME type, display name,
-	 * and original URI.
+	 * @returns Promise containing selected file's 
+	 * path, display name, MIME type, , and original URI.
 	 *
 	 * If user cancels, promise will be resolved as undefined.
 	 * If error occurs, promise will be rejected.
 	 */
-	chooser.getFileMetadata(accept?: string) : Promise<undefined|{
-		mediaType: string;
+	chooser.getFile(options?: {}) : Promise<undefined|{
+		path: string;
 		name: string;
-		uri: string;
+		mimeType: string;
+		extension: string;
+		size: number;
 	}>
 
 ## Example Usage
