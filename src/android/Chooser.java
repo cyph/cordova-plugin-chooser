@@ -130,12 +130,18 @@ public class Chooser extends CordovaPlugin {
 
 						JSONObject result = new JSONObject();
 
+
 						result.put("data", base64);
 						result.put("mediaType", mediaType);
 						result.put("name", name);
 						result.put("uri", uri.toString());
 
+
+						try{
 						this.callback.success(result.toString());
+						}catch (Exception err) {
+						this.callback.error("File size is more: " + err.toString());
+						}
 					}
 					else {
 						this.callback.error("File URI was null.");
