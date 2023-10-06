@@ -19,7 +19,7 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import android.util.Log;
+
 
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
@@ -42,6 +42,7 @@ public class Chooser extends CordovaPlugin {
 	public static String getDisplayName (ContentResolver contentResolver, Uri uri) {
 		String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
 		Cursor metaCursor = contentResolver.query(uri, projection, null, null, null);
+
 		if (metaCursor != null) {
 			try {
 				if (metaCursor.moveToFirst()) {
@@ -51,10 +52,14 @@ public class Chooser extends CordovaPlugin {
 				metaCursor.close();
 			}
 		}
+
 		return "File";
 	}
+
+
 	private CallbackContext callback;
 	private Boolean includeData;
+
 	public void chooseFile (CallbackContext callbackContext, String accept, Boolean includeData) {
 		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
 		intent.setType("*/*");
@@ -65,12 +70,13 @@ public class Chooser extends CordovaPlugin {
 		intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
 		intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
 		this.includeData = includeData;
+
 		Intent chooser = Intent.createChooser(intent, "Select File");
 		cordova.startActivityForResult(this, chooser, Chooser.PICK_FILE_REQUEST);
+
 		PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
 		pluginResult.setKeepCallback(true);
 		this.callback = callbackContext;
-		Log.d(pluginResult,"pluginResult")
 		callbackContext.sendPluginResult(pluginResult);
 	}
 
@@ -92,54 +98,60 @@ public class Chooser extends CordovaPlugin {
 
 		return false;
 	}
+
 	@Override
 	public void onActivityResult (int requestCode, int resultCode, Intent data) {
-		try {if (requestCode == Chooser.PICK_FILE_REQUEST && this.callback != null) {
+		try {
+			Log.d(resultCode,"resultCode")
+			if (requestCode == Chooser.PICK_FILE_REQUEST && this.callback != null) {
 				if (resultCode == Activity.RESULT_OK) {
 					Uri uri = data.getData();
+
 					if (uri != null) {
 						ContentResolver contentResolver =
-							this.cordova.getActivity().getContentResolver();
+							this.cordova.getActivity().getContentResolver()
+						;
+
 						String name = Chooser.getDisplayName(contentResolver, uri);
-						var size =	contentResolver.size();
-						Log.d(size,"size")
+							Log.d(contentResolver,"contentResolver",uri);
 						String mediaType = contentResolver.getType(uri);
 						if (mediaType == null || mediaType.isEmpty()) {
 							mediaType = "application/octet-stream";
 						}
+
 						String base64 = "";
+
 						if (this.includeData) {
 							byte[] bytes = Chooser.getBytesFromInputStream(
 								contentResolver.openInputStream(uri)
 							);
+
 							// base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
 						}
 					try{
 						JSONObject result = new JSONObject();
+
+
+						// result.put("data", base64);
+						result.put("mediaType", mediaType);
+						result.put("name", name);
 						result.put("uri", uri.toString());
-						Log.d(result,"result");
-						this.callback.success(result.toString());
-						// result.put("data", bytes);
-						// result.put("mediaType", mediaType);
-						// result.put("name", name);
+
+						this.callback.success(result);
 						}
 						catch (JSONException err) {
 						this.callback.error("File size is more: " + err.toString());
 						}catch (Exception err) {
-								this.callback.error("Failed to read file: 144 " + err.toString());
-							}
-							catch (OutOfMemoryError err) {
-									this.callback.error("Failed to read file 161: " + err.toString());
-							}
-							finally {
-								this.callback.error("Failed to read file 133: ");
+							this.callback.error("Failed to read file: " + err.toString());
+						}
+						catch (OutOfMemoryError err) {
+								this.callback.error("Failed to read file 161: " + err.toString());
 						}
 					}
 					else {
 						this.callback.error("File URI was null.");
 					}
 				}
-				Log.d(resultCode,"resultCode")
 				else if (resultCode == Activity.RESULT_CANCELED) {
 					this.callback.success("RESULT_CANCELED");
 				}
@@ -148,16 +160,13 @@ public class Chooser extends CordovaPlugin {
 				}
 			}
 		}
-		catch (JSONException err) {
-			this.callback.error("File size is more: " + err.toString());
-		}catch (Exception err) {
-			this.callback.error("Failed to read file: 144 " + err.toString());
-		}
-		catch (OutOfMemoryError err) {
-			this.callback.error("Failed to read file 161: " + err.toString());
-	 	}
-		 finally {
-			this.callback.error("Failed to read file 157: ");
-			}
+			catch (JSONException err) {
+						this.callback.error("File size is more: " + err.toString());
+						}catch (Exception err) {
+							this.callback.error("Failed to read file: " + err.toString());
+						}
+						catch (OutOfMemoryError err) {
+								this.callback.error("Failed to read file 161: " + err.toString());
+						}
 	}
 }
