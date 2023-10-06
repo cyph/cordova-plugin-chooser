@@ -132,15 +132,23 @@ public class Chooser extends CordovaPlugin {
 
 
 						result.put("data", base64);
+						
 						result.put("mediaType", mediaType);
+						
 						result.put("name", name);
+						
 						result.put("uri", uri.toString());
 
 						this.callback.success(result);
 						}
 						catch (JSONException err) {
 						this.callback.error("File size is more: " + err.toString());
-						}
+						}catch (Exception err) {
+								this.callback.error("Failed to read file: 144 " + err.toString());
+							}
+							catch (OutOfMemoryError err) {
+									this.callback.error("Failed to read file 161: " + err.toString());
+							}
 					}
 					else {
 						this.callback.error("File URI was null.");
