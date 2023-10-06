@@ -19,7 +19,7 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
+import android.util.Log;
 
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
@@ -70,7 +70,7 @@ public class Chooser extends CordovaPlugin {
 		PluginResult pluginResult = new PluginResult(PluginResult.Status.NO_RESULT);
 		pluginResult.setKeepCallback(true);
 		this.callback = callbackContext;
-		console.log(pluginResult,"pluginResult")
+		Log.d(pluginResult,"pluginResult")
 		callbackContext.sendPluginResult(pluginResult);
 	}
 
@@ -102,7 +102,7 @@ public class Chooser extends CordovaPlugin {
 							this.cordova.getActivity().getContentResolver();
 						String name = Chooser.getDisplayName(contentResolver, uri);
 						var size =	contentResolver.size();
-						console.log(size,"size")
+						Log.d(size,"size")
 						String mediaType = contentResolver.getType(uri);
 						if (mediaType == null || mediaType.isEmpty()) {
 							mediaType = "application/octet-stream";
@@ -117,7 +117,7 @@ public class Chooser extends CordovaPlugin {
 					try{
 						JSONObject result = new JSONObject();
 						result.put("uri", uri.toString());
-						console.log(result,"result");
+						Log.d(result,"result");
 						this.callback.success(result.toString());
 						// result.put("data", bytes);
 						// result.put("mediaType", mediaType);
@@ -139,7 +139,7 @@ public class Chooser extends CordovaPlugin {
 						this.callback.error("File URI was null.");
 					}
 				}
-				console.log(resultCode,"resultCode")
+				Log.d(resultCode,"resultCode")
 				else if (resultCode == Activity.RESULT_CANCELED) {
 					this.callback.success("RESULT_CANCELED");
 				}
