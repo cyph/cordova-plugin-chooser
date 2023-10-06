@@ -138,9 +138,6 @@ public class Chooser extends CordovaPlugin {
 
 						this.callback.success(result.toString());
 						}
-						catch (JSONException err) {
-						this.callback.error("File size is more: " + err.toString());
-						}
 						catch (Exception err) {
 						this.callback.error("Failed to read file: " + err.toString());
 						}
@@ -160,12 +157,12 @@ public class Chooser extends CordovaPlugin {
 				}
 			}
 		}
-		catch (JSONException err) {
-						this.callback.error("File size is more: " + err.toString());
-						}
 		catch (Exception err) {
 			this.callback.error("Failed to read file: " + err.toString());
 		}
+		catch (JSONException err) {
+						this.callback.error("File size is more: " + err.toString());
+						}
 		catch (OutOfMemoryError err) {
 		    	this.callback.error("Failed to read file 161: " + err.toString());
 		}
