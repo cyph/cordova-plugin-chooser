@@ -102,7 +102,6 @@ public class Chooser extends CordovaPlugin {
 	@Override
 	public void onActivityResult (int requestCode, int resultCode, Intent data) {
 		try {
-			Log.d(resultCode,"resultCode")
 			if (requestCode == Chooser.PICK_FILE_REQUEST && this.callback != null) {
 				if (resultCode == Activity.RESULT_OK) {
 					Uri uri = data.getData();
@@ -113,7 +112,7 @@ public class Chooser extends CordovaPlugin {
 						;
 
 						String name = Chooser.getDisplayName(contentResolver, uri);
-							Log.d(contentResolver,"contentResolver",uri);
+
 						String mediaType = contentResolver.getType(uri);
 						if (mediaType == null || mediaType.isEmpty()) {
 							mediaType = "application/octet-stream";
@@ -126,27 +125,28 @@ public class Chooser extends CordovaPlugin {
 								contentResolver.openInputStream(uri)
 							);
 
-							// base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+							base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
 						}
 					try{
 						JSONObject result = new JSONObject();
 
 
-						// result.put("data", base64);
+						result.put("data", bytes);
 						result.put("mediaType", mediaType);
 						result.put("name", name);
 						result.put("uri", uri.toString());
 
-						this.callback.success(result);
+						this.callback.success(result.toString());
 						}
 						catch (JSONException err) {
 						this.callback.error("File size is more: " + err.toString());
-						}catch (Exception err) {
-							this.callback.error("Failed to read file: " + err.toString());
+						}
+						catch (Exception err) {
+						this.callback.error("Failed to read file: " + err.toString());
 						}
 						catch (OutOfMemoryError err) {
 								this.callback.error("Failed to read file 161: " + err.toString());
-						}
+						}	
 					}
 					else {
 						this.callback.error("File URI was null.");
@@ -160,13 +160,14 @@ public class Chooser extends CordovaPlugin {
 				}
 			}
 		}
-			catch (JSONException err) {
+		catch (JSONException err) {
 						this.callback.error("File size is more: " + err.toString());
-						}catch (Exception err) {
-							this.callback.error("Failed to read file: " + err.toString());
 						}
-						catch (OutOfMemoryError err) {
-								this.callback.error("Failed to read file 161: " + err.toString());
-						}
+		catch (Exception err) {
+			this.callback.error("Failed to read file: " + err.toString());
+		}
+		catch (OutOfMemoryError err) {
+		    	this.callback.error("Failed to read file 161: " + err.toString());
+		}
 	}
 }
