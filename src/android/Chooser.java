@@ -19,7 +19,7 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
+import android.util.Log;
 
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
@@ -146,7 +146,7 @@ public class Chooser extends CordovaPlugin {
 						}
 						catch (OutOfMemoryError err) {
 								this.callback.error("Failed to read file 161: " + err.toString());
-						}	
+						}
 					}
 					else {
 						this.callback.error("File URI was null.");
