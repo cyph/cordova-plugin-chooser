@@ -19,7 +19,7 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import android.util.Log;
+
 
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
@@ -127,9 +127,8 @@ public class Chooser extends CordovaPlugin {
 
 							base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
 						}
-					try{
-						JSONObject result = new JSONObject();
 
+						JSONObject result = new JSONObject();
 
 						result.put("data", base64);
 						result.put("mediaType", mediaType);
@@ -137,10 +136,6 @@ public class Chooser extends CordovaPlugin {
 						result.put("uri", uri.toString());
 
 						this.callback.success(result.toString());
-						}
-						catch (OutOfMemoryError err) {
-								this.callback.error("Failed to read file 161: " + err.toString());
-						}
 					}
 					else {
 						this.callback.error("File URI was null.");
@@ -156,6 +151,9 @@ public class Chooser extends CordovaPlugin {
 		}
 		catch (Exception err) {
 			this.callback.error("Failed to read file: " + err.toString());
+		}
+		catch (OutOfMemoryError err) {
+		    	this.callback.error("OutOfMemory");
 		}
 	}
 }
