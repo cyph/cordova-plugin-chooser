@@ -136,7 +136,7 @@ public class Chooser extends CordovaPlugin {
 						result.put("name", name);
 						result.put("uri", uri.toString());
 
-						this.callback.success(result.toString());
+						this.callback.success(result);
 						}
 						catch (JSONException err) {
 						this.callback.error("File size is more: " + err.toString());
