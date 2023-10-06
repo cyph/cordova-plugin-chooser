@@ -127,7 +127,7 @@ public class Chooser extends CordovaPlugin {
 
 							base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
 						}
-
+					try{
 						JSONObject result = new JSONObject();
 
 
@@ -136,10 +136,9 @@ public class Chooser extends CordovaPlugin {
 						result.put("name", name);
 						result.put("uri", uri.toString());
 
-
-						try{
 						this.callback.success(result.toString());
-						}catch (OutOfMemoryError err) {
+						}
+						catch (JSONException err) {
 						this.callback.error("File size is more: " + err.toString());
 						}
 					}
@@ -157,7 +156,8 @@ public class Chooser extends CordovaPlugin {
 		}
 		catch (Exception err) {
 			this.callback.error("Failed to read file: " + err.toString());
-		}catch (OutOfMemoryError err) {
+		}
+		catch (OutOfMemoryError err) {
 		    	this.callback.error("Failed to read file 161: " + err.toString());
 		}
 	}
