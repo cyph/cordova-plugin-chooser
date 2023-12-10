@@ -1,3 +1,5 @@
+var exec = require('cordova/exec');
+
 /** @see sodiumutil */
 function from_base64 (sBase64, nBlocksSize) {
 	function _b64ToUint6 (nChr) {
@@ -42,44 +44,24 @@ function from_base64 (sBase64, nBlocksSize) {
 	return taBytes;
 }
 
-function getFileInternal (
-	accept,
-	includeData,
-	successCallback,
-	failureCallback
-) {
-	if (typeof accept === 'function') {
-		failureCallback = successCallback;
-		successCallback = accept;
-		accept = undefined;
-	}
+function getFileInternal (options, successCallback, failureCallback) {
+	var chooserOptions = Object.assign({ mimeTypes: '*/*', maxFileSize: 0 }, options);
 
 	var result = new Promise(function (resolve, reject) {
-		cordova.exec(
-			function (json) {
-				if (json === 'RESULT_CANCELED') {
+		exec(
+			function (result) {
+				if (result === 'RESULT_CANCELED') {
 					resolve();
 					return;
 				}
 
 				try {
-					var o = JSON.parse(json);
+					var base64Data = result.data.replace(/[^A-Za-z0-9\+\/]/g, '');
 
-					if (includeData) {
-						var base64Data = o.data.replace(
-							/[^A-Za-z0-9\+\/]/g,
-							''
-						);
+					result.data = from_base64(base64Data);
+					result.dataURI = 'data:' + result.mimeType + ';base64,' + base64Data;
 
-						o.data = from_base64(base64Data);
-						o.dataURI =
-							'data:' + o.mediaType + ';base64,' + base64Data;
-					}
-					else {
-						delete o.data;
-					}
-
-					resolve(o);
+					resolve(result);
 				}
 				catch (err) {
 					reject(err);
@@ -88,12 +70,7 @@ function getFileInternal (
 			reject,
 			'Chooser',
 			'getFile',
-			[
-				(typeof accept === 'string' ?
-					accept.toLowerCase().replace(/\s/g, '') :
-					undefined) || '*/*',
-				includeData
-			]
+			[ chooserOptions ]
 		);
 	});
 
@@ -108,10 +85,7 @@ function getFileInternal (
 }
 
 module.exports = {
-	getFile: function (accept, successCallback, failureCallback) {
-		return getFileInternal(accept, true, successCallback, failureCallback);
+	getFile: function (options, successCallback, failureCallback) {
+		return getFileInternal(options, successCallback, failureCallback);
 	},
-	getFileMetadata: function (accept, successCallback, failureCallback) {
-		return getFileInternal(accept, false, successCallback, failureCallback);
-	}
 };
