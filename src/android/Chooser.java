@@ -5,11 +5,15 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
-import android.provider.MediaStore;
 import android.util.Base64;
+import android.provider.OpenableColumns;
+import android.webkit.MimeTypeMap;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.IOException;
 import java.lang.Exception;
 
@@ -20,56 +24,45 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-
 public class Chooser extends CordovaPlugin {
 	private static final String ACTION_OPEN = "getFile";
 	private static final int PICK_FILE_REQUEST = 1;
 	private static final String TAG = "Chooser";
 
-	/** @see https://stackoverflow.com/a/17861016/459881 */
-	public static byte[] getBytesFromInputStream (InputStream is) throws IOException {
-		ByteArrayOutputStream os = new ByteArrayOutputStream();
-		byte[] buffer = new byte[0xFFFF];
-
-		for (int len = is.read(buffer); len != -1; len = is.read(buffer)) {
-			os.write(buffer, 0, len);
-		}
-
-		return os.toByteArray();
-	}
-
-	/** @see https://stackoverflow.com/a/23270545/459881 */
-	public static String getDisplayName (ContentResolver contentResolver, Uri uri) {
-		String[] projection = {MediaStore.MediaColumns.DISPLAY_NAME};
-		Cursor metaCursor = contentResolver.query(uri, projection, null, null, null);
-
-		if (metaCursor != null) {
-			try {
-				if (metaCursor.moveToFirst()) {
-					return metaCursor.getString(0);
-				}
-			} finally {
-				metaCursor.close();
-			}
-		}
-
-		return "File";
-	}
-
-
 	private CallbackContext callback;
-	private Boolean includeData;
+	private int maxFileSize = 0;
 
-	public void chooseFile (CallbackContext callbackContext, String accept, Boolean includeData) {
+	@Override
+    public boolean execute(String action, JSONArray args, CallbackContext callbackContext) {
+        try {
+            if (action.equals(Chooser.ACTION_OPEN)) {
+                this.chooseFile(callbackContext, args);
+                return true;
+            }
+        } catch (JSONException err) {
+            this.callback.error("Execute failed: " + err.toString());
+        }
+
+        return false;
+    }
+
+	public void chooseFile (CallbackContext callbackContext, JSONArray args) throws JSONException {
+		JSONObject options = args.optJSONObject(0);
+        String mimeTypes = options.optString("mimeTypes");
+        int maxFileSize = options.optInt("maxFileSize");
+
+		if (maxFileSize != 0) {
+            this.maxFileSize = maxFileSize;
+        }
+		
 		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
 		intent.setType("*/*");
-		if (!accept.equals("*/*")) {
-			intent.putExtra(Intent.EXTRA_MIME_TYPES, accept.split(","));
-		}
+        if (!mimeTypes.equals("*/*")) {
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.split(","));
+        }
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
 		intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
 		intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
-		this.includeData = includeData;
 
 		Intent chooser = Intent.createChooser(intent, "Select File");
 		cordova.startActivityForResult(this, chooser, Chooser.PICK_FILE_REQUEST);
@@ -81,25 +74,6 @@ public class Chooser extends CordovaPlugin {
 	}
 
 	@Override
-	public boolean execute (
-		String action,
-		JSONArray args,
-		CallbackContext callbackContext
-	) {
-		try {
-			if (action.equals(Chooser.ACTION_OPEN)) {
-				this.chooseFile(callbackContext, args.getString(0), args.getBoolean(1));
-				return true;
-			}
-		}
-		catch (JSONException err) {
-			this.callback.error("Execute failed: " + err.toString());
-		}
-
-		return false;
-	}
-
-	@Override
 	public void onActivityResult (int requestCode, int resultCode, Intent data) {
 		try {
 			if (requestCode == Chooser.PICK_FILE_REQUEST && this.callback != null) {
@@ -107,35 +81,83 @@ public class Chooser extends CordovaPlugin {
 					Uri uri = data.getData();
 
 					if (uri != null) {
-						ContentResolver contentResolver =
-							this.cordova.getActivity().getContentResolver()
-						;
-
-						String name = Chooser.getDisplayName(contentResolver, uri);
-
-						String mediaType = contentResolver.getType(uri);
-						if (mediaType == null || mediaType.isEmpty()) {
-							mediaType = "application/octet-stream";
-						}
-
-						String base64 = "";
-
-						if (this.includeData) {
-							byte[] bytes = Chooser.getBytesFromInputStream(
-								contentResolver.openInputStream(uri)
-							);
-
-							base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
-						}
-
+						Activity activity = cordova.getActivity();
+                        ContentResolver contentResolver = activity.getContentResolver();
+						InputStream inputStream = contentResolver.openInputStream(uri);
+						String displayName = "File";
+                        String uriString = uri.toString();
+                        String mimeType = null;
+                        String extension = null;
+                        String filePath = null;
 						JSONObject result = new JSONObject();
 
-						result.put("data", base64);
-						result.put("mediaType", mediaType);
-						result.put("name", name);
-						result.put("uri", uri.toString());
+						int size = inputStream.available();
+                        if (this.maxFileSize != 0) {
+                            if (size > this.maxFileSize) {
+								result.put("error", true);
+								result.put("code", 1);
+								result.put("code_name", "FILE_SIZE_EXCEEDED");
+								result.put("message", "Invalid size");
+                                this.callback.error(result);
+                                return;
+                            }
+                        }
 
-						this.callback.success(result.toString());
+						if (uriString.startsWith("content://")) {
+                            Cursor cursor = null;
+                            try {
+                                cursor = contentResolver.query(uri, null, null, null, null);
+                                if (cursor != null && cursor.moveToFirst()) {
+                                    displayName = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME));
+                                }
+                                mimeType = contentResolver.getType(uri);
+                            } finally {
+                                assert cursor != null;
+                                cursor.close();
+                            }
+                        } else if (uriString.startsWith("file://")) {
+                            displayName = new File(uriString).getName();
+                            String[] parts = uriString.split("\\.");
+                            String ext = parts[parts.length - 1];
+                            if (ext != null) {
+                                MimeTypeMap mime = MimeTypeMap.getSingleton();
+                                mimeType = mime.getMimeTypeFromExtension(ext);
+                            }
+						}
+
+						if (mimeType != null) {
+                            MimeTypeMap mime = MimeTypeMap.getSingleton();
+                            extension = mime.getExtensionFromMimeType(mimeType);
+                        }
+
+                        if (mimeType == null || mimeType.isEmpty()) {
+                            mimeType = "application/octet-stream";
+                        }
+
+                        filePath = activity.getCacheDir().getAbsolutePath() + '/' + displayName;
+                        copyInputStreamToFile(inputStream, filePath);
+                        
+						ContentResolver contentB64 = this.cordova.getActivity().getContentResolver();
+						String base64 = "";
+
+						byte[] bytes = this.getBytesFromInputStream(contentB64.openInputStream(uri));
+						base64 = Base64.encodeToString(bytes, Base64.DEFAULT);
+
+						try {
+                            result.put("path", new File(filePath).exists() ? "file://" + filePath : "");
+                            result.put("name",  this.getFileName(displayName)); // without extension
+                            result.put("displayName",  displayName); // with extension
+                            result.put("mimeType", mimeType);
+                            result.put("extension", extension);
+                            result.put("size", size);
+							result.put("data", base64);
+							result.put("uri", uriString);
+
+                            this.callback.success(result);
+							// this.callback.success(result.toString());
+                        } catch (JSONException e) {
+                            this.callback.error("JSON Object not supported");
+                        }
 					}
 					else {
 						this.callback.error("File URI was null.");
@@ -152,5 +174,51 @@ public class Chooser extends CordovaPlugin {
 		catch (Exception err) {
 			this.callback.error("Failed to read file: " + err.toString());
 		}
+	}
+
+	private void copyInputStreamToFile(InputStream inputStream, String file) {
+        OutputStream out = null;
+
+        try {
+            out = new FileOutputStream(file);
+            byte[] buf = new byte[1024];
+            int len;
+            while ((len = inputStream.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            // Ensure that the InputStreams are closed even if there's an exception.
+            try {
+                if (out != null) {
+                    out.close();
+                }
+
+                // If you want to close the "in" InputStream yourself then remove this
+                // from here but ensure that you close it yourself eventually.
+                inputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public String getFileName(String fileName) {
+        if(!fileName.contains(".")){
+            return fileName;
+        }
+        return fileName.substring(0,fileName.lastIndexOf("."));
+    }
+
+	public byte[] getBytesFromInputStream (InputStream is) throws IOException {
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		byte[] buffer = new byte[0xFFFF];
+
+		for (int len = is.read(buffer); len != -1; len = is.read(buffer)) {
+			os.write(buffer, 0, len);
+		}
+
+		return os.toByteArray();
 	}
 }
