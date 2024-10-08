@@ -32,4 +32,16 @@
 			</feature>
 		</config-file>
 	</platform>
+	
+	<platform name="browser">
+		<config-file target="config.xml" parent="/*">
+		  <feature name="Chooser">
+			<param name="browser-package" value="Chooser"/>
+		  </feature>
+		</config-file>
+		<js-module src="src/browser/ChooserProxy.js" name="ChooserProxy">
+		  <runs/>
+		</js-module>
+	</platform>
+
 </plugin>

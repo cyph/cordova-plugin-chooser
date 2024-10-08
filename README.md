@@ -1,4 +1,6 @@
-# Chooser
+![npm](https://img.shields.io/npm/dt/cordova-plugin-chooser) ![npm](https://img.shields.io/npm/v/cordova-plugin-chooser) ![GitHub package.json version](https://img.shields.io/github/package-json/v/cyph/cordova-plugin-chooser?color=FF6D00&label=master&logo=github) ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/cyph/cordova-plugin-chooser) ![GitHub top language](https://img.shields.io/github/languages/top/cyph/cordova-plugin-chooser) ![GitHub last commit](https://img.shields.io/github/last-commit/cyph/cordova-plugin-chooser)
+
+# cordova-plugin-chooser
 
 ## Overview
 
@@ -6,12 +8,12 @@ File chooser plugin for Cordova.
 
 Install with Cordova CLI:
 
-	$ cordova plugin add cordova-plugin-chooser
+	cordova plugin add cordova-plugin-chooser
 
 Supported Platforms:
 
 * Android
-
+* Browser
 * iOS
 
 ## API
