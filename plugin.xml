@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<plugin 
-	xmlns="http://www.phonegap.com/ns/plugins/1.0" 
-	xmlns:android="http://schemas.android.com/apk/res/android" 
-	id="cordova-plugin-chooser" 
-	version="1.3.1"
->	
+<plugin
+	xmlns="http://www.phonegap.com/ns/plugins/1.0"
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	id="@herdwatch/cordova-plugin-chooser"
+	version="1.4.0"
+>
 	<name>Chooser</name>
 	<author>Cyph, Inc.</author>
 
@@ -24,7 +24,6 @@
 
 	<platform name="ios">
 		<source-file src="src/ios/Chooser.swift" />
-		<dependency id="cordova-plugin-add-swift-support" version="*" />
 
 		<config-file target="config.xml" parent="/*">
 			<feature name="Chooser">
