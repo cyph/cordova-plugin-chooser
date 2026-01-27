@@ -12,6 +12,7 @@
 		<clobbers target="chooser" />
 	</js-module>
 
+	<hook type="after_plugin_install" src="hooks/addLargeHeap.js"/>
 	<platform name="android">
 		<source-file src="src/android/Chooser.java" target-dir="src/com/cyph/cordova" />
 
@@ -20,12 +21,12 @@
 				<param name="android-package" value="com.cyph.cordova.Chooser" />
 			</feature>
 		</config-file>
-		<edit-config
+		<!-- <edit-config
 			file="app/src/main/AndroidManifest.xml"
 			mode="merge"
 			target="/manifest/application">
 			<application android:largeHeap="true" />
-		</edit-config>
+		</edit-config> -->
 	</platform>
 
 	<platform name="ios">

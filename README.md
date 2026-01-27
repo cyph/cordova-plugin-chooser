@@ -1,5 +1,7 @@
 # Chooser
 
+- Added support for android 12 from https://github.com/MaximBelov/cordova-plugin-chooser/commit/b4b63969330b0491c3a69afc79e92ef998595501
+
 ## Overview
 
 File chooser plugin for Cordova.

@@ -3,30 +3,105 @@ import MobileCoreServices
 import Foundation
 
 
+class ChooserUIDocumentPickerViewController : UIDocumentPickerViewController {
+	var maxFileSize: Int = 0
+}
+
 @objc(Chooser)
 class Chooser : CDVPlugin {
 	var commandCallback: String?
+
+	func callPicker (maxFileSize: Int, utis: [String]) {
+		let picker = ChooserUIDocumentPickerViewController(documentTypes: utis, in: .import)
+		picker.delegate = self
+		picker.maxFileSize = maxFileSize
+		self.viewController.present(picker, animated: true, completion: nil)
+	}
+
+	func detectMimeType (_ url: URL) -> String {
+		if let uti = UTTypeCreatePreferredIdentifierForTag(
+			kUTTagClassFilenameExtension,
+			url.pathExtension as CFString,
+			nil
+		)?.takeRetainedValue() {
+			if let mimetype = UTTypeCopyPreferredTagWithClass(
+				uti,
+				kUTTagClassMIMEType
+			)?.takeRetainedValue() as String? {
+				return mimetype
+			}
+		}
+
+		return "application/octet-stream"
+	}
+
+	func documentWasSelected (maxFileSize: Int, url: URL) {
+		var error: NSError?
+        var fileSize: Int = 0;
+
+        do {
+            let resources = try url.resourceValues(forKeys:[.fileSizeKey])
+            let fileSize = resources.fileSize!
+            print ("\(fileSize)")
+            if(fileSize > maxFileSize){
+                self.sendError("Invalid size")
+                return
+            }
+        } catch {
+            self.sendError("Error: \(error)")
+        }
+
+		NSFileCoordinator().coordinate(
+			readingItemAt: url,
+			options: [],
+			error: &error
+		) { newURL in
+			do {
+
+				let result = [
+					"path": newURL.absoluteString,
+                    "name": newURL.deletingPathExtension().lastPathComponent,  // without extension
+                    "displayName": newURL.lastPathComponent,  // with extension
+					"mimeType": self.detectMimeType(newURL),
+                    "extension": newURL.pathExtension,
+                    "size": fileSize,
+				] as [AnyHashable : Any]
+
+                if let callbackId = self.commandCallback {
+                    self.commandCallback = nil
+
+                    let pluginResult = CDVPluginResult(
+                        status: CDVCommandStatus_OK,
+                        messageAs: result
+                    )
+
+                    self.commandDelegate!.send(
+                        pluginResult,
+                        callbackId: callbackId
+                    )
+                }
+
+				newURL.stopAccessingSecurityScopedResource()
+			}
+		}
+
+		if let error = error {
+			self.sendError(error.localizedDescription)
+		}
+
+		url.stopAccessingSecurityScopedResource()
+	}
 
 	@objc(getFile:)
 	func getFile (command: CDVInvokedUrlCommand) {
 		self.commandCallback = command.callbackId
 
-		let accept = command.arguments.first as! String
-		self.getFilesInternal(accept: accept, allowMultiple: false)
-	}
+        let options = (command.arguments[0] as! [String : AnyObject])
+        let mimeTypes = options["mimeTypes"] as! String
+        let maxFileSize = options["maxFileSize"] as! Int
 
-	@objc(getFiles:)
-	func getFiles (command: CDVInvokedUrlCommand) {
-		self.commandCallback = command.callbackId
 
-		let accept = command.arguments.first as! String
-		self.getFilesInternal(accept: accept, allowMultiple: true)
-	}
-
-	func getFilesInternal (accept: String, allowMultiple: Bool) {
-		let mimeTypes = accept.components(separatedBy: ",")
-
-		var utis = mimeTypes.map { (mimeType: String) -> String in
+		let utis = mimeTypes.components(separatedBy: ",").map { (mimeType: String) -> String in
 			switch mimeType {
 				case "audio/*":
 					return kUTTypeAudio as String
@@ -49,90 +124,17 @@ class Chooser : CDVPlugin {
 					nil
 				)
 
-				if let uti = (utiUnmanaged?.takeRetainedValue() as? String) {
+				if let uti = utiUnmanaged?.takeRetainedValue() as String? {
 					if !uti.hasPrefix("dyn.") {
 						return uti
 					}
 				}
 			}
 
-			return kUTTypeData as String
+			return kUTTypeItem as String
 		}
 
-		if utis.contains("com.apple.iwork.pages.sffpages") {
-			utis.append("com.apple.iwork.pages.pages")
-		}
-
-		if utis.contains("com.apple.iwork.numbers.sffnumbers") {
-			utis.append("com.apple.iwork.numbers.numbers")
-		}
-		
-		let logVar = utis.joined(separator: ",")
-		NSLog("%@", "FileChooserPlugin \(logVar)")
-
-		self.callPicker(utis: utis, allowMultiple: allowMultiple)
-	}
-
-	func callPicker (utis: [String], allowMultiple: Bool) {
-		let picker = UIDocumentPickerViewController(documentTypes: utis, in: .import)
-		picker.delegate = self
-		self.viewController.present(picker, animated: false) {
-			if #available(iOS 11.0, *) {
-				picker.allowsMultipleSelection = allowMultiple;
-			}
-		}
-	}
-
-	func detectMimeType (_ url: URL) -> String {
-		if let uti = UTTypeCreatePreferredIdentifierForTag(
-			kUTTagClassFilenameExtension,
-			url.pathExtension as CFString,
-			nil
-		)?.takeRetainedValue() {
-			if let mimetype = UTTypeCopyPreferredTagWithClass(
-				uti,
-				kUTTagClassMIMEType
-			)?.takeRetainedValue() as? String {
-				return mimetype
-			}
-		}
-
-		return "application/octet-stream"
-	}
-
-	func documentWasSelected (urls: [URL]) {
-		var error: NSError?
-		let result:NSMutableArray = NSMutableArray()
-
-		do {
-			for url in urls {
-				let file:NSMutableDictionary = NSMutableDictionary()
-				file.setValue(url.lastPathComponent, forKey: "name")
-				file.setValue(self.detectMimeType(url), forKey: "mimeType")
-				file.setValue(url.absoluteString, forKey: "uri")
-				result.add(file)
-			}
-
-			if let message = try String(
-				data: JSONSerialization.data(
-					withJSONObject: result,
-					options: []
-				),
-				encoding: String.Encoding.utf8
-			) {
-				self.send(message)
-			}
-			else {
-				self.sendError("Serializing result failed.")
-			}
-		}
-		catch let error {
-			self.sendError(error.localizedDescription)
-		}
-
-		if let error = error {
-			self.sendError(error.localizedDescription)
-		}
+		self.callPicker(maxFileSize: maxFileSize, utis: utis)
 	}
 
 	func send (_ message: String, _ status: CDVCommandStatus = CDVCommandStatus_OK) {
@@ -162,15 +164,18 @@ extension Chooser : UIDocumentPickerDelegate {
 		_ controller: UIDocumentPickerViewController,
 		didPickDocumentsAt urls: [URL]
 	) {
-		self.documentWasSelected(urls: urls)
+		let picker = controller as! ChooserUIDocumentPickerViewController
+		if let url = urls.first {
+			self.documentWasSelected(maxFileSize: picker.maxFileSize, url: url)
+		}
 	}
 
 	func documentPicker (
 		_ controller: UIDocumentPickerViewController,
 		didPickDocumentAt url: URL
 	) {
-		let urls = [url]
-		self.documentWasSelected(urls: urls)
+		let picker = controller as! ChooserUIDocumentPickerViewController
+		self.documentWasSelected(maxFileSize: picker.maxFileSize, url: url)
 	}
 
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
