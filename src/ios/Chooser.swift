@@ -3,97 +3,30 @@ import MobileCoreServices
 import Foundation
 
 
-class ChooserUIDocumentPickerViewController : UIDocumentPickerViewController {
-	var includeData: Bool = false
-}
-
 @objc(Chooser)
 class Chooser : CDVPlugin {
 	var commandCallback: String?
-
-	func callPicker (includeData: Bool, utis: [String]) {
-		let picker = ChooserUIDocumentPickerViewController(documentTypes: utis, in: .import)
-		picker.delegate = self
-		picker.includeData = includeData
-		self.viewController.present(picker, animated: true, completion: nil)
-	}
-
-	func detectMimeType (_ url: URL) -> String {
-		if let uti = UTTypeCreatePreferredIdentifierForTag(
-			kUTTagClassFilenameExtension,
-			url.pathExtension as CFString,
-			nil
-		)?.takeRetainedValue() {
-			if let mimetype = UTTypeCopyPreferredTagWithClass(
-				uti,
-				kUTTagClassMIMEType
-			)?.takeRetainedValue() as String? {
-				return mimetype
-			}
-		}
-
-		return "application/octet-stream"
-	}
-
-	func documentWasSelected (includeData: Bool, url: URL) {
-		var error: NSError?
-
-		NSFileCoordinator().coordinate(
-			readingItemAt: url,
-			options: [],
-			error: &error
-		) { newURL in
-			let maybeData = try? Data(contentsOf: newURL, options: [])
-
-			guard let data = maybeData else {
-				self.sendError("Failed to fetch data.")
-				return
-			}
-
-			do {
-				let result = [
-					"data": includeData ? data.base64EncodedString() : "",
-					"mediaType": self.detectMimeType(newURL),
-					"name": newURL.lastPathComponent,
-					"uri": newURL.absoluteString
-				]
-
-				if let message = try String(
-					data: JSONSerialization.data(
-						withJSONObject: result,
-						options: []
-					),
-					encoding: String.Encoding.utf8
-				) {
-					self.send(message)
-				}
-				else {
-					self.sendError("Serializing result failed.")
-				}
-
-				newURL.stopAccessingSecurityScopedResource()
-			}
-			catch let error {
-				self.sendError(error.localizedDescription)
-			}
-		}
-
-		if let error = error {
-			self.sendError(error.localizedDescription)
-		}
-
-		url.stopAccessingSecurityScopedResource()
-	}
 
 	@objc(getFile:)
 	func getFile (command: CDVInvokedUrlCommand) {
 		self.commandCallback = command.callbackId
 
 		let accept = command.arguments.first as! String
-		let includeData = command.arguments.last as! Bool
+		self.getFilesInternal(accept: accept, allowMultiple: false)
+	}
+
+	@objc(getFiles:)
+	func getFiles (command: CDVInvokedUrlCommand) {
+		self.commandCallback = command.callbackId
+
+		let accept = command.arguments.first as! String
+		self.getFilesInternal(accept: accept, allowMultiple: true)
+	}
+
+	func getFilesInternal (accept: String, allowMultiple: Bool) {
 		let mimeTypes = accept.components(separatedBy: ",")
 
-		let utis = mimeTypes.map { (mimeType: String) -> String in
+		var utis = mimeTypes.map { (mimeType: String) -> String in
 			switch mimeType {
 				case "audio/*":
 					return kUTTypeAudio as String
@@ -116,17 +49,90 @@ class Chooser : CDVPlugin {
 					nil
 				)
 
-				if let uti = utiUnmanaged?.takeRetainedValue() as String? {
+				if let uti = (utiUnmanaged?.takeRetainedValue() as? String) {
 					if !uti.hasPrefix("dyn.") {
 						return uti
 					}
 				}
 			}
 
-			return kUTTypeItem as String
+			return kUTTypeData as String
 		}
 
-		self.callPicker(includeData: includeData, utis: utis)
+		if utis.contains("com.apple.iwork.pages.sffpages") {
+			utis.append("com.apple.iwork.pages.pages")
+		}
+
+		if utis.contains("com.apple.iwork.numbers.sffnumbers") {
+			utis.append("com.apple.iwork.numbers.numbers")
+		}
+		
+		let logVar = utis.joined(separator: ",")
+		NSLog("%@", "FileChooserPlugin \(logVar)")
+
+		self.callPicker(utis: utis, allowMultiple: allowMultiple)
+	}
+
+	func callPicker (utis: [String], allowMultiple: Bool) {
+		let picker = UIDocumentPickerViewController(documentTypes: utis, in: .import)
+		picker.delegate = self
+		self.viewController.present(picker, animated: false) {
+			if #available(iOS 11.0, *) {
+				picker.allowsMultipleSelection = allowMultiple;
+			}
+		}
+	}
+
+	func detectMimeType (_ url: URL) -> String {
+		if let uti = UTTypeCreatePreferredIdentifierForTag(
+			kUTTagClassFilenameExtension,
+			url.pathExtension as CFString,
+			nil
+		)?.takeRetainedValue() {
+			if let mimetype = UTTypeCopyPreferredTagWithClass(
+				uti,
+				kUTTagClassMIMEType
+			)?.takeRetainedValue() as? String {
+				return mimetype
+			}
+		}
+
+		return "application/octet-stream"
+	}
+
+	func documentWasSelected (urls: [URL]) {
+		var error: NSError?
+		let result:NSMutableArray = NSMutableArray()
+
+		do {
+			for url in urls {
+				let file:NSMutableDictionary = NSMutableDictionary()
+				file.setValue(url.lastPathComponent, forKey: "name")
+				file.setValue(self.detectMimeType(url), forKey: "mimeType")
+				file.setValue(url.absoluteString, forKey: "uri")
+				result.add(file)
+			}
+
+			if let message = try String(
+				data: JSONSerialization.data(
+					withJSONObject: result,
+					options: []
+				),
+				encoding: String.Encoding.utf8
+			) {
+				self.send(message)
+			}
+			else {
+				self.sendError("Serializing result failed.")
+			}
+		}
+		catch let error {
+			self.sendError(error.localizedDescription)
+		}
+
+		if let error = error {
+			self.sendError(error.localizedDescription)
+		}
 	}
 
 	func send (_ message: String, _ status: CDVCommandStatus = CDVCommandStatus_OK) {
@@ -156,18 +162,15 @@ extension Chooser : UIDocumentPickerDelegate {
 		_ controller: UIDocumentPickerViewController,
 		didPickDocumentsAt urls: [URL]
 	) {
-		let picker = controller as! ChooserUIDocumentPickerViewController
-		if let url = urls.first {
-			self.documentWasSelected(includeData: picker.includeData, url: url)
-		}
+		self.documentWasSelected(urls: urls)
 	}
 
 	func documentPicker (
 		_ controller: UIDocumentPickerViewController,
 		didPickDocumentAt url: URL
 	) {
-		let picker = controller as! ChooserUIDocumentPickerViewController
-		self.documentWasSelected(includeData: picker.includeData, url: url)
+		let urls = [url]
+		self.documentWasSelected(urls: urls)
 	}
 
 	func documentPickerWasCancelled (_ controller: UIDocumentPickerViewController) {
