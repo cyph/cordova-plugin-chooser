@@ -130,7 +130,7 @@ class Chooser : CDVPlugin {
 		self.callPicker(includeData: includeData, utis: utis)
 	}
 
-	func send (_ message: String, _ status: CDVCommandStatus = CDVCommandStatus_OK) {
+	func send (_ message: String, _ status: CDVCommandStatus = .ok) {
 		if let callbackId = self.commandCallback {
 			self.commandCallback = nil
 
@@ -147,7 +147,7 @@ class Chooser : CDVPlugin {
 	}
 
 	func sendError (_ message: String) {
-		self.send(message, CDVCommandStatus_ERROR)
+		self.send(message, .error)
 	}
 }
 
