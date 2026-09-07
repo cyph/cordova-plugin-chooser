@@ -153,7 +153,7 @@ public class Chooser extends CordovaPlugin {
 			this.callback.error("Failed to read file: " + err.toString());
 		}
 		catch (OutOfMemoryError err) {
-		    	this.callback.error("Failed to read file: " + err.toString());
+			this.callback.error("Failed to read file: OutOfMemory");
 		}
 	}
 }
