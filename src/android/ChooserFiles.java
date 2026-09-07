@@ -77,7 +77,7 @@ final class ChooserFiles {
 			throw new IOException("INVALID_ARGUMENT: Expected a managed file id.");
 		}
 		File file = new File(directory(cache), id);
-		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || file.isDirectory()) {
+		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || (file.exists() && !file.isFile())) {
 			throw new IOException("INVALID_ARGUMENT: Not a managed regular file.");
 		}
 		if (file.exists() && !file.delete()) {

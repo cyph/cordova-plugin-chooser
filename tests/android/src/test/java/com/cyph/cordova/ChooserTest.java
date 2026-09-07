@@ -104,6 +104,11 @@ public class ChooserTest {
 		plugin.onReset();
 		worker.shutdownNow();
 		worker.awaitTermination(5, TimeUnit.SECONDS);
+		File root = new File(activity.getCacheDir(), "cordova-plugin-chooser");
+		File[] files = root.listFiles();
+		if (files != null) for (File file : files) file.delete();
+		root.delete();
+		provider.source.delete();
 	}
 
 	private void drain() throws Exception {

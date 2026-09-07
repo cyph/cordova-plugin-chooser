@@ -63,6 +63,9 @@ public class ChooserFilesTest {
 		Files.createSymbolicLink(copy.toPath(), source.toPath());
 		assertThrows(IOException.class, () -> ChooserFiles.release(cache, copy.getName()));
 		assertArrayEquals(new byte[]{42}, Files.readAllBytes(source.toPath()));
+		Files.delete(copy.toPath());
+		assertTrue(copy.mkdir());
+		assertThrows(IOException.class, () -> ChooserFiles.release(cache, copy.getName()));
 	}
 
 	@Test public void unwritableOutputPropagatesFailure() {

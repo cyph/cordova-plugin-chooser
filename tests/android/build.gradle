@@ -2,7 +2,7 @@ plugins { id 'com.android.library' version '8.10.1' }
 
 android {
 	namespace 'com.cyph.cordova.fixtures'
-	compileSdk 36
+	compileSdk Integer.parseInt(findProperty('compileSdk') ?: '36')
 	defaultConfig { minSdk 24 }
 	compileOptions {
 		sourceCompatibility JavaVersion.VERSION_17
