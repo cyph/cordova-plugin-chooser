@@ -64,6 +64,11 @@ public class ChooserFilesTest {
 		assertThrows(IOException.class, () -> ChooserFiles.release(cache, copy.getName()));
 		assertArrayEquals(new byte[]{42}, Files.readAllBytes(source.toPath()));
 		Files.delete(copy.toPath());
+		File missing = new File(cache, "missing-target");
+		Files.createSymbolicLink(copy.toPath(), missing.toPath());
+		assertThrows(IOException.class, () -> ChooserFiles.release(cache, copy.getName()));
+		assertFalse(missing.exists());
+		Files.delete(copy.toPath());
 		assertTrue(copy.mkdir());
 		assertThrows(IOException.class, () -> ChooserFiles.release(cache, copy.getName()));
 	}
