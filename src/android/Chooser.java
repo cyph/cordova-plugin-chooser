@@ -37,7 +37,6 @@ public class Chooser extends CordovaPlugin {
 	private int nextRequestCode = 1000;
 	private long generation;
 
-
 	@Override
 	public boolean execute(String action, JSONArray args, CallbackContext callback) {
 		if ("releaseFile".equals(action)) {
@@ -117,11 +116,11 @@ public class Chooser extends CordovaPlugin {
 				cordova.getActivity().runOnUiThread(() -> launch(request));
 			}
 			catch (Exception error) {
-				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "") + message(error)));
+				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, message(error))));
 			}
 		}
 		catch (Exception error) {
-			callback.error(ChooserError.message(ChooserError.Code.INVALID_ARGUMENT, "") + message(error));
+			callback.error(ChooserError.message(ChooserError.Code.INVALID_ARGUMENT, message(error)));
 		}
 		return true;
 	}
@@ -156,7 +155,7 @@ public class Chooser extends CordovaPlugin {
 				cordova.startActivityForResult(this, Intent.createChooser(intent, "Select File"), request.code);
 			}
 			catch (Exception error) {
-				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "") + message(error)));
+				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, message(error))));
 			}
 		}
 	}
@@ -175,7 +174,7 @@ public class Chooser extends CordovaPlugin {
 			return;
 		}
 		if (resultCode != Activity.RESULT_OK) {
-			finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "Unexpected activity result ") + resultCode));
+			finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "Unexpected activity result " + resultCode)));
 			return;
 		}
 		try {
@@ -255,7 +254,7 @@ public class Chooser extends CordovaPlugin {
 				results.put(result);
 			}
 			request.checkCanceled();
-			if (request.transaction() != null) request.transaction().commit();
+			if (request.transaction() != null) request.transaction().commit(() -> request.canceled);
 			String json = request.multiple ? results.toString() : results.getJSONObject(0).toString();
 			delivered = finish(request, new PluginResult(PluginResult.Status.OK, json));
 		}
@@ -343,7 +342,7 @@ public class Chooser extends CordovaPlugin {
 	@Override
 	public Bundle onSaveInstanceState() {
 		synchronized (lock) {
-			if (active == null || active.canceled) {
+			if (active == null || active.state() != ChooserRequest.State.SELECTING) {
 				return null;
 			}
 			Bundle state = new Bundle();
@@ -361,18 +360,34 @@ public class Chooser extends CordovaPlugin {
 
 	@Override
 	public void onRestoreStateForActivityResult(Bundle state, CallbackContext callback) {
-		if (state == null) {
-			callback.error(ChooserError.message(ChooserError.Code.READ_INTERRUPTED, "Missing picker state."));
-			return;
-		}
 		ChooserRequest previous;
 		synchronized (lock) {
 			previous = active;
-			nextRequestCode = state.getInt("code", 1001);
-			active = new ChooserRequest(callback, state.getString("accept", "*/*"), ChooserRequest.Mode.parse(state.getString("mode", "metadata")),
-				state.getBoolean("multiple"), state.getBoolean("localOnly"), state.getLong("limit"), state.getLong("maxFiles"), state.getLong("maxTotalSize"), nextRequestCode);
+			active = null;
+			generation++;
+			try {
+				if (state == null) throw new IllegalArgumentException("Missing picker state.");
+				int code = state.getInt("code", 1001);
+				long limit = restoredLimit(state, "limit");
+				long maxFiles = restoredLimit(state, "maxFiles");
+				long maxTotalSize = restoredLimit(state, "maxTotalSize");
+				String accept = state.getString("accept", "*/*");
+				if (code < 1000 || code > 32767 || accept == null) throw new IllegalArgumentException("Invalid picker state.");
+				active = new ChooserRequest(callback, accept, ChooserRequest.Mode.parse(state.getString("mode", "metadata")),
+					state.getBoolean("multiple"), state.getBoolean("localOnly"), limit, maxFiles, maxTotalSize, code);
+				nextRequestCode = code;
+			}
+			catch (RuntimeException error) {
+				callback.error(ChooserError.message(ChooserError.Code.READ_INTERRUPTED, "Picker state could not be restored."));
+			}
 		}
 		if (previous != null) previous.cancel();
+	}
+
+	private static long restoredLimit(Bundle state, String name) {
+		long value = state.getLong(name);
+		if (value < 0 || value > ChooserFiles.MAX_SAFE_INTEGER) throw new IllegalArgumentException("Invalid saved limit.");
+		return value;
 	}
 
 	@Override

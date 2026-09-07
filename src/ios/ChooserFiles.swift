@@ -68,6 +68,13 @@ enum ChooserFiles {
 		throw ChooserFailure(code: .cacheFailed, detail: "Cannot allocate a private cache file.")
 	}
 
+	static func entryExists(_ file: URL) throws -> Bool {
+		var information = stat()
+		if file.path.withCString({ Darwin.lstat($0, &information) }) == 0 { return true }
+		if errno == ENOENT { return false }
+		throw ChooserFailure(code: .cacheFailed, detail: "Cannot inspect cache directory.")
+	}
+
 	static func release(in cache: URL, id: String) throws {
 		guard isID(id) else {
 			throw ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.")
@@ -76,7 +83,7 @@ enum ChooserFiles {
 		guard file.resolvingSymlinksInPath().path == file.path else {
 			throw ChooserFailure(code: .invalidArgument, detail: "Not a managed regular file.")
 		}
-		if FileManager.default.fileExists(atPath: file.path) {
+		if try entryExists(file) {
 			guard try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
 				throw ChooserFailure(code: .invalidArgument, detail: "Not a managed regular file.")
 			}

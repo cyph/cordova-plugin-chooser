@@ -220,7 +220,7 @@ class Chooser: CDVPlugin {
 					results.append(try self.read(url: url, request: request))
 				}
 				try request.checkCanceled()
-				try request.transaction?.commit()
+				try request.transaction?.commit(canceled: { request.canceled })
 				let object: Any = request.multiple ? results as Any : results[0] as Any
 				let json = try JSONSerialization.data(withJSONObject: object, options: [])
 				guard let message = String(data: json, encoding: .utf8) else {

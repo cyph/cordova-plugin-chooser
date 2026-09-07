@@ -67,20 +67,24 @@ final class ChooserTransaction {
 		return root.appendingPathComponent(file.lastPathComponent)
 	}
 
-	func commit() throws {
+	func commit(canceled: () -> Bool = { false }) throws {
 		guard !committed, !settled else { throw Self.failure() }
+		let existing = Set(try FileManager.default.contentsOfDirectory(atPath: root.path))
 		for index in entries.indices {
+			try Self.checkCanceled(canceled)
 			let source = staging.appendingPathComponent(entries[index].id)
 			let target = root.appendingPathComponent(entries[index].id)
 			try Self.regular(source)
 			try Self.canonical(target)
-			guard !FileManager.default.fileExists(atPath: target.path) else { throw Self.failure() }
+			guard !existing.contains(entries[index].id) else { throw Self.failure() }
 			entries[index].promoting = true
 		}
 		try save(committed: false)
 		for entry in entries {
+			try Self.checkCanceled(canceled)
 			try operations.move(staging.appendingPathComponent(entry.id), root.appendingPathComponent(entry.id))
 		}
+		try Self.checkCanceled(canceled)
 		try save(committed: true)
 		committed = true
 	}
@@ -105,8 +109,8 @@ final class ChooserTransaction {
 		let temp = staging.appendingPathComponent("journal.tmp")
 		try Self.canonical(file)
 		try Self.canonical(temp)
-		if FileManager.default.fileExists(atPath: file.path) { try Self.regular(file) }
-		if FileManager.default.fileExists(atPath: temp.path) { try Self.regular(temp) }
+		if try ChooserFiles.entryExists(file) { try Self.regular(file) }
+		if try ChooserFiles.entryExists(temp) { try Self.regular(temp) }
 		try Data(journal.utf8).write(to: temp)
 		// A fixed temporary name is recoverable even if the process dies during a write.
 		let result = temp.path.withCString { from in file.path.withCString { to in Darwin.rename(from, to) } }
@@ -206,6 +210,9 @@ final class ChooserTransaction {
 		try canonical(file)
 		try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 		return file
+	}
+	private static func checkCanceled(_ canceled: () -> Bool) throws {
+		if canceled() { throw ChooserFailure(code: .readInterrupted, detail: "Request was reset.") }
 	}
 	private static func failure() -> ChooserFailure { return ChooserFailure(code: .cacheFailed, detail: "Cache transaction could not be completed.") }
 	private static func diagnostic() { NSLog("Chooser cache cleanup/recovery incomplete; private entries retained for retry.") }

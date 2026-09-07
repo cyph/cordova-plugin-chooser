@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -15,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
+import java.util.function.BooleanSupplier;
 
 /** Cache-only work never waits behind document-provider I/O. */
 final class ChooserTransaction {
@@ -87,19 +89,27 @@ final class ChooserTransaction {
 		return new File(root, staged.getName());
 	}
 
-	void commit() throws IOException {
+	void commit() throws IOException { commit(() -> false); }
+
+	void commit(BooleanSupplier canceled) throws IOException {
 		if (committed || settled) throw failure();
+		String[] names = root.list();
+		if (names == null) throw failure();
+		Set<String> existing = new HashSet<>(Arrays.asList(names));
 		for (Entry entry : entries) {
+			checkCanceled(canceled);
 			regular(new File(staging, entry.id));
 			File target = new File(root, entry.id);
-			if (target.exists() || !target.getCanonicalFile().equals(target.getAbsoluteFile())) throw failure();
+			if (existing.contains(entry.id) || !target.getCanonicalFile().equals(target.getAbsoluteFile())) throw failure();
 			entry.promoting = true;
 		}
 		// One atomic intent record covers the batch; source absence proves promotion.
 		save(false);
 		for (Entry entry : entries) {
+			checkCanceled(canceled);
 			if (!operations.move(new File(staging, entry.id), new File(root, entry.id))) throw failure();
 		}
+		checkCanceled(canceled);
 		save(true);
 		committed = true;
 	}
@@ -121,13 +131,13 @@ final class ChooserTransaction {
 		StringBuilder journal = new StringBuilder("chooser-1\n").append(complete ? "committed\n" : "pending\n");
 		for (Entry entry : entries) journal.append(entry.promoting ? "p:" : "s:").append(entry.id).append('\n');
 		File temp = new File(staging, "journal.tmp");
-		if (temp.exists()) regular(temp);
+		if (ChooserFiles.entryExists(temp)) regular(temp);
 		try (FileOutputStream output = new FileOutputStream(temp)) {
 			output.write(journal.toString().getBytes(StandardCharsets.US_ASCII));
 			output.getFD().sync();
 		}
 		File journalFile = new File(staging, "journal");
-		if (journalFile.exists()) regular(journalFile);
+		if (ChooserFiles.entryExists(journalFile)) regular(journalFile);
 		if (!operations.move(temp, journalFile)) throw failure();
 	}
 
@@ -216,6 +226,9 @@ final class ChooserTransaction {
 		if (!file.getCanonicalFile().equals(file.getAbsoluteFile())) throw failure();
 		if (!file.isDirectory() && !file.mkdir()) throw failure();
 		return file;
+	}
+	private static void checkCanceled(BooleanSupplier canceled) throws ChooserError {
+		if (canceled.getAsBoolean()) throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Request was reset.");
 	}
 	private static ChooserError failure() { return new ChooserError(ChooserError.Code.CACHE_FAILED, "Cache transaction could not be completed."); }
 	private static void diagnostic() { LOG.warning("Chooser cache cleanup/recovery incomplete; private entries retained for retry."); }

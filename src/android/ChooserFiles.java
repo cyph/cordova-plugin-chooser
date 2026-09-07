@@ -76,15 +76,24 @@ final class ChooserFiles {
 		throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot allocate a unique cache file.");
 	}
 
+	// Directory lookup detects dangling links too; File.exists() follows their missing targets.
+	static boolean entryExists(File file) throws IOException {
+		String[] entries = file.getParentFile().list();
+		if (entries == null) throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot inspect cache directory.");
+		for (String entry : entries) if (entry.equals(file.getName())) return true;
+		return false;
+	}
+
 	static void release(File cache, String id) throws IOException {
 		if (!isId(id)) {
 			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Expected a managed file id.");
 		}
 		File file = new File(directory(cache), id);
-		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || (file.exists() && !file.isFile())) {
+		boolean exists = entryExists(file);
+		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || (exists && !file.isFile())) {
 			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Not a managed regular file.");
 		}
-		if (file.exists() && !file.delete()) {
+		if (exists && !file.delete()) {
 			throw new ChooserError(ChooserError.Code.RELEASE_FAILED, "Could not remove the cached file.");
 		}
 	}
