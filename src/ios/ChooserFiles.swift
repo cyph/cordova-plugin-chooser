@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-/** Bounded I/O and ownership checks, independently usable by the native fixtures. */
+/** Bounded I/O and cache ownership checks. */
 enum ChooserFiles {
 	static let maxSafeInteger: Int64 = 9007199254740991
 

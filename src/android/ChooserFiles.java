@@ -8,7 +8,7 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
 
-/** Filesystem operations shared by the plugin and host-side regression fixtures. */
+/** Bounded I/O and cache ownership checks. */
 final class ChooserFiles {
 	static final long MAX_SAFE_INTEGER = 9007199254740991L;
 	private static final Pattern ID = Pattern.compile(
@@ -78,6 +78,7 @@ final class ChooserFiles {
 
 	// Directory lookup detects dangling links too; File.exists() follows their missing targets.
 	static boolean entryExists(File file) throws IOException {
+		if (file.exists()) return true;
 		String[] entries = file.getParentFile().list();
 		if (entries == null) throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot inspect cache directory.");
 		for (String entry : entries) if (entry.equals(file.getName())) return true;
