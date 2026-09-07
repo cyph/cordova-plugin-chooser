@@ -1,117 +1,171 @@
-/** @see sodiumutil */
-function from_base64 (sBase64, nBlocksSize) {
-	function _b64ToUint6 (nChr) {
-		return nChr > 64 && nChr < 91 ?
-			nChr - 65 :
-		nChr > 96 && nChr < 123 ?
-			nChr - 71 :
-		nChr > 47 && nChr < 58 ?
-			nChr + 4 :
-		nChr === 43 ?
-			62 :
-		nChr === 47 ?
-			63 :
-			0;
+var exec = require('cordova/exec');
+var alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+var managedId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/* Keep padding in data URIs without decoding padding as additional zero bytes. */
+function decodeFile(file, includeData) {
+	if (!file || typeof file !== 'object' || Array.isArray(file)) {
+		throw new TypeError('Invalid file result.');
 	}
-
-	var nInLen = sBase64.length;
-	var nOutLen = nBlocksSize ?
-		Math.ceil(((nInLen * 3 + 1) >> 2) / nBlocksSize) * nBlocksSize :
-		(nInLen * 3 + 1) >> 2;
-	var taBytes = new Uint8Array(nOutLen);
-
-	for (
-		var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0;
-		nInIdx < nInLen;
-		nInIdx++
-	) {
-		nMod4 = nInIdx & 3;
-		nUint24 |= _b64ToUint6(sBase64.charCodeAt(nInIdx)) << (18 - 6 * nMod4);
-		if (nMod4 === 3 || nInLen - nInIdx === 1) {
-			for (
-				nMod3 = 0;
-				nMod3 < 3 && nOutIdx < nOutLen;
-				nMod3++, nOutIdx++
-			) {
-				taBytes[nOutIdx] = (nUint24 >>> ((16 >>> nMod3) & 24)) & 255;
-			}
-			nUint24 = 0;
+	if (!includeData) {
+		delete file.data;
+		delete file.dataURI;
+		return file;
+	}
+	if (typeof file.data !== 'string') {
+		throw new TypeError('Missing base64 file data.');
+	}
+	var input = file.data.replace(/\s/g, '');
+	if (!/^[A-Za-z0-9+/]*={0,2}$/.test(input)) {
+		throw new TypeError('Invalid base64 file data.');
+	}
+	var raw = input.replace(/=+$/, '');
+	var remainder = raw.length % 4;
+	if (remainder === 1 || (input.length !== raw.length && input.length % 4 !== 0)) {
+		throw new TypeError('Invalid base64 file length.');
+	}
+	var padding = remainder === 2 ? '==' : remainder === 3 ? '=' : '';
+	if (input.length !== raw.length && input !== raw + padding) {
+		throw new TypeError('Invalid base64 padding.');
+	}
+	var bytes = new Uint8Array(Math.floor(raw.length * 3 / 4));
+	var buffer = 0;
+	var bits = 0;
+	var index = 0;
+	for (var i = 0; i < raw.length; i++) {
+		buffer = (buffer << 6) | alphabet.indexOf(raw[i]);
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			bytes[index++] = (buffer >> bits) & 255;
 		}
+		buffer &= (1 << bits) - 1;
 	}
-
-	return taBytes;
+	if (buffer !== 0) {
+		throw new TypeError('Invalid base64 trailing bits.');
+	}
+	file.data = bytes;
+	file.dataURI = 'data:' + file.mediaType + ';base64,' + raw + padding;
+	return file;
 }
 
-function getFileInternal (
-	accept,
-	includeData,
-	successCallback,
-	failureCallback
-) {
+function normalizeAccept(accept) {
+	return (typeof accept === 'string' ? accept.toLowerCase().replace(/\s/g, '') : '') || '*/*';
+}
+
+/* A callback's exception must not change the returned Promise's file result. */
+function notify(callback, value) {
+	if (typeof callback === 'function') {
+		try {
+			callback(value);
+		}
+		catch (error) {
+			setTimeout(function () { throw error; }, 0);
+		}
+	}
+}
+
+function withCallbacks(promise, success, failure) {
+	if (typeof success === 'function' || typeof failure === 'function') {
+		promise.then(
+			function (value) { notify(success, value); },
+			function (error) { notify(failure, error); }
+		);
+	}
+	return promise;
+}
+
+function callPicker(accept, success, failure, mode, multiple, copy) {
 	if (typeof accept === 'function') {
-		failureCallback = successCallback;
-		successCallback = accept;
+		failure = success;
+		success = accept;
 		accept = undefined;
 	}
-
 	var result = new Promise(function (resolve, reject) {
-		cordova.exec(
-			function (json) {
-				if (json === 'RESULT_CANCELED') {
-					resolve();
-					return;
+		var options = {
+			accept: normalizeAccept(accept),
+			mode: mode,
+			multiple: multiple,
+			maxFileSize: 0,
+			localOnly: false
+		};
+		if (copy) {
+			if (accept !== undefined && accept !== null && typeof accept !== 'string') {
+				if (typeof accept !== 'object' || Array.isArray(accept)) {
+					throw new TypeError('Expected a MIME filter or copy options.');
 				}
-
-				try {
-					var o = JSON.parse(json);
-
-					if (includeData) {
-						var base64Data = o.data.replace(
-							/[^A-Za-z0-9\+\/]/g,
-							''
-						);
-
-						o.data = from_base64(base64Data);
-						o.dataURI =
-							'data:' + o.mediaType + ';base64,' + base64Data;
+				if (accept.accept !== undefined && typeof accept.accept !== 'string') {
+					throw new TypeError('accept must be a string.');
+				}
+				options.accept = normalizeAccept(accept.accept);
+				if (accept.maxFileSize !== undefined) {
+					if (typeof accept.maxFileSize !== 'number' || !Number.isSafeInteger(accept.maxFileSize) || accept.maxFileSize < 0) {
+						throw new TypeError('maxFileSize must be a nonnegative safe integer in bytes.');
 					}
-					else {
-						delete o.data;
+					options.maxFileSize = accept.maxFileSize;
+				}
+				if (accept.localOnly !== undefined) {
+					if (typeof accept.localOnly !== 'boolean') {
+						throw new TypeError('localOnly must be a boolean.');
 					}
-
-					resolve(o);
+					options.localOnly = accept.localOnly;
 				}
-				catch (err) {
-					reject(err);
+			}
+		}
+		var legacy = !multiple && !copy;
+		exec(function (response) {
+			if (response === 'RESULT_CANCELED') {
+				resolve();
+				return;
+			}
+			try {
+				var value = typeof response === 'string' ? JSON.parse(response) : response;
+				if (multiple) {
+					if (!Array.isArray(value) || value.length === 0) {
+						throw new TypeError('Expected a nonempty file array.');
+					}
+					value = value.map(function (file) { return decodeFile(file, mode === 'data'); });
 				}
-			},
-			reject,
-			'Chooser',
-			'getFile',
-			[
-				(typeof accept === 'string' ?
-					accept.toLowerCase().replace(/\s/g, '') :
-					undefined) || '*/*',
-				includeData
-			]
-		);
+				else {
+					value = decodeFile(value, mode === 'data');
+				}
+				resolve(value);
+			}
+			catch (error) {
+				reject(error);
+			}
+		}, reject, 'Chooser', legacy ? 'getFile' : 'pick',
+		legacy ? [options.accept, mode === 'data'] : [options]);
 	});
-
-	if (typeof successCallback === 'function') {
-		result.then(successCallback);
-	}
-	if (typeof failureCallback === 'function') {
-		result.catch(failureCallback);
-	}
-
-	return result;
+	return withCallbacks(result, success, failure);
 }
 
 module.exports = {
-	getFile: function (accept, successCallback, failureCallback) {
-		return getFileInternal(accept, true, successCallback, failureCallback);
+	getFile: function (accept, success, failure) {
+		return callPicker(accept, success, failure, 'data', false, false);
 	},
-	getFileMetadata: function (accept, successCallback, failureCallback) {
-		return getFileInternal(accept, false, successCallback, failureCallback);
+	getFileMetadata: function (accept, success, failure) {
+		return callPicker(accept, success, failure, 'metadata', false, false);
+	},
+	getFiles: function (accept, success, failure) {
+		return callPicker(accept, success, failure, 'data', true, false);
+	},
+	getFilesMetadata: function (accept, success, failure) {
+		return callPicker(accept, success, failure, 'metadata', true, false);
+	},
+	getFileUri: function (options, success, failure) {
+		return callPicker(options, success, failure, 'copy', false, true);
+	},
+	getFilesUri: function (options, success, failure) {
+		return callPicker(options, success, failure, 'copy', true, true);
+	},
+	releaseFile: function (id, success, failure) {
+		var result = new Promise(function (resolve, reject) {
+			if (typeof id !== 'string' || !managedId.test(id)) {
+				throw new TypeError('Expected a managed file id returned by chooser.');
+			}
+			exec(function () { resolve(); }, reject, 'Chooser', 'releaseFile', [id]);
+		});
+		return withCallbacks(result, success, failure);
 	}
 };
