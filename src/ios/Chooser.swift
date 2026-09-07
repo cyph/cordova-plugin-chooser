@@ -266,9 +266,11 @@ class Chooser: CDVPlugin {
 		var result: [String: Any]?
 		NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
 			do {
-				let values = try coordinated.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+				let values = try coordinated.resourceValues(forKeys: [.isRegularFileKey])
 				guard values.isRegularFile == true else { throw ChooserFailure(message: "READ_FAILED: Select a regular file, not a directory or package.") }
-				let reportedSize: Any = values.fileSize.flatMap { size -> Int? in
+				// Size is optional provider metadata; failure must not block a counted copy.
+				let sizeValues = try? coordinated.resourceValues(forKeys: [.fileSizeKey])
+				let reportedSize: Any = sizeValues?.fileSize.flatMap { size -> Int? in
 					return size >= 0 && Int64(size) <= ChooserFiles.maxSafeInteger ? size : nil
 				}.map { $0 as Any } ?? NSNull()
 				var file: [String: Any] = [
