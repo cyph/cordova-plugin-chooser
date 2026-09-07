@@ -143,7 +143,8 @@ class Chooser: CDVPlugin {
 		let controller: ChooserDocumentPicker
 		#if canImport(UniformTypeIdentifiers)
 		if #available(iOS 14.0, *) {
-			controller = ChooserDocumentPicker(forOpeningContentTypes: utis.map { UTType($0) ?? .item }, asCopy: mode != "copy")
+			let types = utis.compactMap { UTType($0) }
+			controller = ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: mode != "copy")
 		}
 		else {
 			controller = ChooserDocumentPicker(documentTypes: utis, in: mode == "copy" ? .open : .import)
@@ -168,7 +169,7 @@ class Chooser: CDVPlugin {
 	}
 
 	private func identifiers(for accept: String) -> [String] {
-		return accept.components(separatedBy: ",").map { mime in
+		var identifiers = accept.components(separatedBy: ",").map { mime in
 			// Movie includes audiovisual formats which public.video alone may exclude.
 			let wildcards = [
 				"audio/*": "public.audio", "font/*": "public.font",
@@ -188,6 +189,14 @@ class Chooser: CDVPlugin {
 			}
 			return "public.item"
 		}
+		// @DavidSousa's compatibility aliases cover older iWork document registrations.
+		for (legacy, alternate) in [
+			("com.apple.iwork.pages.sffpages", "com.apple.iwork.pages.pages"),
+			("com.apple.iwork.numbers.sffnumbers", "com.apple.iwork.numbers.numbers")
+		] where identifiers.contains(legacy) && !identifiers.contains(alternate) {
+			identifiers.append(alternate)
+		}
+		return identifiers
 	}
 
 	private func mediaType(for url: URL) -> String {
