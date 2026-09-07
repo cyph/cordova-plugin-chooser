@@ -2,9 +2,10 @@
 	"name": "cordova-plugin-chooser",
 	"version": "1.3.2",
 	"description": "Cordova file chooser plugin",
+	"homepage": "https://github.com/cyph/cordova-plugin-chooser#readme",
 	"main": "www/chooser.js",
 	"types": "index.d.ts",
-	"files": ["plugin.xml", "www/", "src/", "index.d.ts", "README.md", "CHANGELOG.md", "LICENSE", "NOTICE"],
+	"files": ["plugin.xml", "www/", "src/", "index.d.ts", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "docs/", "LICENSE", "NOTICE"],
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/cyph/cordova-plugin-chooser.git"
@@ -15,7 +16,10 @@
 		"picker",
 		"file-chooser",
 		"android",
-		"ios"
+		"ios",
+		"browser",
+		"multiple-files",
+		"typescript"
 	],
 	"author": "Cyph, Inc. <cordova-plugin-chooser@cyph.com> (https://github.com/cyph)",
 	"license": "Apache-2.0",
