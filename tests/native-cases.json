@@ -1,0 +1,19 @@
+{
+	"status": "authored; not executed",
+	"purpose": "Shared provider and lifecycle scenarios for later native integration; use fixture-app and host fixtures. OS UI/provider scenarios require a separate authorized device tranche.",
+	"cases": [
+		{"id": "bytes", "input": "Regular files containing 0, 1, 2, 3, 65535, 65536, 65537 and 200003 bytes; byte i = i modulo 251", "expect": "data and managed copy bytes identical to input; size exact; base64 canonical and padded; no trailing zero bytes"},
+		{"id": "metadata", "input": "Metadata-only request with unavailable/offline contents, null cursor, absent columns, null or negative reported size", "expect": "No complete-file read; Android absent metadata defaults to name File and null size; provider/coordination failures can still reject"},
+		{"id": "limits", "input": "Reported size null, zero, too small or too large; actual length 65537; limits 65536, 65537, 0 and omitted", "expect": "Copies enforce actual bytes; exact limit succeeds; zero/omitted unlimited; failure deletes partial batch files"},
+		{"id": "short-io", "input": "Provider returns partial reads, Android zero-length bulk read, partial output writes, or an error after the first buffer", "expect": "Bytes preserved; no available()-based size; all streams closed; no successful partial result"},
+		{"id": "batch", "input": "Two selectable files with identical display names; duplicate URI; second file offline or too large", "expect": "Distinct generated names for distinct files; ordered URI deduplication; failure rolls back all created outputs"},
+		{"id": "ownership", "input": "Display name ../source.bin; release source URI, path, directory ID, symlink ID, forged non-UUID or valid missing ID", "expect": "Provider name never determines cache path; only plugin cache files can be removed; missing valid ID is idempotent; original source unchanged"},
+		{"id": "cancel", "input": "Cancel button, Android back, iOS swipe dismissal, browser cancel event; duplicate or late delegate events", "expect": "One success with undefined; original request remains the sole owner of its callback"},
+		{"id": "busy", "input": "Start two requests while picker or read is pending", "expect": "Second rejects BUSY; first still completes normally"},
+		{"id": "reset", "input": "Reset/dispose with picker displayed, copy queued, copy mid-stream, release queued or result awaiting main-thread delivery", "expect": "No native callback to the replacement webview; abandoned copy output removed when I/O returns; stale picker cannot settle a newer request; browser pagehide revokes URLs"},
+		{"id": "restore", "input": "Save Android state while picker is open; recreate plugin with replacement callback; deliver original result", "expect": "Mode, filter, multiplicity, limit and request code restored; Cordova resume pendingResult delivers to replacement page"},
+		{"id": "ios-provider", "input": "Security-scoped provider URL; access grant success/failure; coordinated read error; regular file versus directory/package", "expect": "Balanced successful security-scope acquisition/release; one error on read failure; no recursive directory copy; metadata mode avoids Data(contentsOf:)"},
+		{"id": "presentation", "input": "iPad landscape/portrait restrictions, rapid reopen, existing modal, iOS 11/13 fallback and 14+ UTType paths", "expect": "No incompatible orientation mask; safe popover anchor; no callback theft or stuck busy state; unavailable presenter returns an error"},
+		{"id": "eviction", "input": "Delete managed cache entry externally before release; navigate away/back in browser; terminate app mid-copy", "expect": "Missing entry release succeeds; expired URI requires reselection; private leftovers after process death are cache-evictable and never source files"}
+	]
+}

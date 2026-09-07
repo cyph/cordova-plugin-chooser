@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chooser verification fixture</title></head>
+<body>
+	<h1>Chooser verification fixture</h1>
+	<p>Manual fixture for a provisioned Cordova app. Results here are observations, not an automatic pass.</p>
+	<label>Method <select id="method">
+		<option>getFile</option><option>getFileMetadata</option><option>getFiles</option>
+		<option>getFilesMetadata</option><option>getFileUri</option><option>getFilesUri</option>
+	</select></label>
+	<label>MIME filter <input id="accept" value="*/*"></label>
+	<label>Copy limit in bytes (0 = unlimited) <input id="limit" type="number" min="0" step="1" value="0"></label>
+	<label><input id="local" type="checkbox">Android copies: local only</label>
+	<button id="pick" disabled>Choose files</button>
+	<button id="twice" disabled>Start two concurrent requests</button>
+	<button id="release" disabled>Release recorded references</button>
+	<p>After a result, use the application’s URI consumer to inspect the managed file before release. Native file URLs are not browser fetch URLs.</p>
+	<pre id="log" aria-live="polite"></pre>
+	<script src="cordova.js"></script>
+	<script src="app.js"></script>
+</body>
+</html>
