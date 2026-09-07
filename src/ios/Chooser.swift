@@ -50,11 +50,17 @@ private final class ChooserDocumentPicker: UIDocumentPickerViewController {
 class Chooser: CDVPlugin {
 	private var active: ChooserRequest?
 	private var picker: ChooserDocumentPicker?
+	private var generation: UInt64 = 0 // Main-thread only, including release completions.
 	private let work = DispatchQueue(label: "com.cyph.cordova.chooser.files", qos: .userInitiated)
+
+	private func onMain(_ action: @escaping () -> Void) {
+		if Thread.isMainThread { action() }
+		else { DispatchQueue.main.async(execute: action) }
+	}
 
 	@objc(getFile:)
 	func getFile(command: CDVInvokedUrlCommand) {
-		DispatchQueue.main.async {
+		onMain {
 			guard command.arguments.count >= 2,
 				let accept = command.arguments[0] as? String,
 				let includeData = command.arguments[1] as? Bool else {
@@ -67,7 +73,7 @@ class Chooser: CDVPlugin {
 
 	@objc(pick:)
 	func pick(command: CDVInvokedUrlCommand) {
-		DispatchQueue.main.async {
+		onMain {
 			guard let options = command.arguments.first as? [String: Any],
 				let accept = options["accept"] as? String,
 				let mode = options["mode"] as? String,
@@ -89,18 +95,27 @@ class Chooser: CDVPlugin {
 
 	@objc(releaseFile:)
 	func releaseFile(command: CDVInvokedUrlCommand) {
-		guard let id = command.arguments.first as? String else {
-			send("INVALID_ARGUMENT: Expected a managed file id.", .error, command.callbackId)
-			return
-		}
-		work.async {
-			do {
-				try ChooserFiles.release(in: self.cacheDirectory(), id: id)
-				DispatchQueue.main.async { self.send("", .ok, command.callbackId) }
+		onMain {
+			guard let id = command.arguments.first as? String else {
+				self.send("INVALID_ARGUMENT: Expected a managed file id.", .error, command.callbackId)
+				return
 			}
-			catch {
-				let message = error.localizedDescription
-				DispatchQueue.main.async { self.send(message, .error, command.callbackId) }
+			let owner = self.generation
+			self.work.async {
+				let message: String
+				let status: CDVCommandStatus
+				do {
+					try ChooserFiles.release(in: self.cacheDirectory(), id: id)
+					message = ""
+					status = .ok
+				}
+				catch {
+					message = error.localizedDescription
+					status = .error
+				}
+				DispatchQueue.main.async {
+					if self.generation == owner { self.send(message, status, command.callbackId) }
+				}
 			}
 		}
 	}
@@ -201,11 +216,12 @@ class Chooser: CDVPlugin {
 			unique.append(url)
 			if !request.multiple { break }
 		}
+		let selection = unique
 		work.async {
 			var created: [URL] = []
 			do {
 				var results: [[String: Any]] = []
-				for url in unique {
+				for url in selection {
 					if request.canceled { throw ChooserFailure(message: "READ_INTERRUPTED: Request was reset.") }
 					results.append(try self.read(url: url, request: request, created: &created))
 				}
@@ -243,7 +259,9 @@ class Chooser: CDVPlugin {
 			do {
 				let values = try coordinated.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
 				guard values.isRegularFile == true else { throw ChooserFailure(message: "READ_FAILED: Select a regular file, not a directory or package.") }
-				let reportedSize: Any = values.fileSize.map { $0 as Any } ?? NSNull()
+				let reportedSize: Any = values.fileSize.flatMap { size -> Int? in
+					return size >= 0 && Int64(size) <= ChooserFiles.maxSafeInteger ? size : nil
+				}.map { $0 as Any } ?? NSNull()
 				var file: [String: Any] = [
 					"name": coordinated.lastPathComponent,
 					"mediaType": self.mediaType(for: coordinated),
@@ -298,6 +316,7 @@ class Chooser: CDVPlugin {
 
 	override func onReset() {
 		let reset = {
+			self.generation &+= 1
 			self.active?.cancel()
 			self.active = nil
 			self.picker?.dismiss(animated: false, completion: nil)
@@ -305,6 +324,11 @@ class Chooser: CDVPlugin {
 		}
 		if Thread.isMainThread { reset() }
 		else { DispatchQueue.main.async(execute: reset) }
+	}
+
+	override func dispose() {
+		onReset()
+		super.dispose()
 	}
 }
 

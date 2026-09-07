@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct ChooserFailure: LocalizedError {
 	let message: String
@@ -55,9 +56,13 @@ enum ChooserFiles {
 		let root = try directory(in: cache)
 		for _ in 0..<10 {
 			let file = root.appendingPathComponent(UUID().uuidString.lowercased())
-			if !FileManager.default.fileExists(atPath: file.path) && FileManager.default.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600]) {
+			// Exclusive creation cannot overwrite an existing entry, even on a UUID collision.
+			let descriptor = file.path.withCString { Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode_t(0o600)) }
+			if descriptor >= 0 {
+				Darwin.close(descriptor)
 				return file
 			}
+			if errno != EEXIST { throw ChooserFailure(message: "CACHE_FAILED: Cannot allocate a private cache file.") }
 		}
 		throw ChooserFailure(message: "CACHE_FAILED: Cannot allocate a private cache file.")
 	}

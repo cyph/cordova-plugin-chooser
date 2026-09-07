@@ -56,11 +56,15 @@ function normalizeAccept(accept) {
 /* A callback's exception must not change the returned Promise's file result. */
 function notify(callback, value) {
 	if (typeof callback === 'function') {
+		function report(error) { setTimeout(function () { throw error; }, 0); }
 		try {
-			callback(value);
+			var returned = callback(value);
+			if (returned && typeof returned.then === 'function') {
+				Promise.resolve(returned).catch(report);
+			}
 		}
 		catch (error) {
-			setTimeout(function () { throw error; }, 0);
+			report(error);
 		}
 	}
 }
@@ -161,7 +165,7 @@ module.exports = {
 	},
 	releaseFile: function (id, success, failure) {
 		var result = new Promise(function (resolve, reject) {
-			if (typeof id !== 'string' || !managedId.test(id)) {
+			if (typeof id !== 'string' || id.length !== 36 || !managedId.test(id)) {
 				throw new TypeError('Expected a managed file id returned by chooser.');
 			}
 			exec(function () { resolve(); }, reject, 'Chooser', 'releaseFile', [id]);

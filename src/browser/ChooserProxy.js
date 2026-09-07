@@ -168,7 +168,7 @@ module.exports = {
 	},
 	releaseFile: function (success, failure, args) {
 		var id = args && args[0];
-		if (typeof id !== 'string' || !idPattern.test(id)) {
+		if (typeof id !== 'string' || id.length !== 36 || !idPattern.test(id)) {
 			failure('INVALID_ARGUMENT: Expected a managed file id.');
 			return;
 		}

@@ -42,6 +42,9 @@ final class ChooserFiles {
 			if (total > MAX_SAFE_INTEGER - count || (limit > 0 && count > limit - total)) {
 				throw new IOException("FILE_TOO_LARGE: Selected file exceeds the byte limit.");
 			}
+			if (canceled.getAsBoolean()) {
+				throw new IOException("READ_INTERRUPTED: Request was reset.");
+			}
 			output.write(buffer, 0, count);
 			total += count;
 		}

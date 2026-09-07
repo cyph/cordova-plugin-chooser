@@ -34,6 +34,7 @@ public class Chooser extends CordovaPlugin {
 	private final Object lock = new Object();
 	private Request active;
 	private int nextRequestCode = 1000;
+	private long generation;
 
 	private static final class Request {
 		final CallbackContext callback;
@@ -62,13 +63,19 @@ public class Chooser extends CordovaPlugin {
 		if ("releaseFile".equals(action)) {
 			try {
 				final String id = args.getString(0);
+				final long owner;
+				synchronized (lock) { owner = generation; }
 				cordova.getThreadPool().execute(() -> {
+					PluginResult result;
 					try {
 						ChooserFiles.release(cordova.getContext().getCacheDir(), id);
-						callback.success();
+						result = new PluginResult(PluginResult.Status.OK);
 					}
 					catch (Exception error) {
-						callback.error(message(error));
+						result = new PluginResult(PluginResult.Status.ERROR, message(error));
+					}
+					synchronized (lock) {
+						if (generation == owner) { callback.sendPluginResult(result); }
 					}
 				});
 			}
@@ -95,6 +102,10 @@ public class Chooser extends CordovaPlugin {
 			}
 			else {
 				JSONObject options = args.getJSONObject(0);
+				if (!(options.get("accept") instanceof String) || !(options.get("mode") instanceof String) ||
+					!(options.get("multiple") instanceof Boolean) || !(options.get("localOnly") instanceof Boolean)) {
+					throw new JSONException("Invalid picker option types.");
+				}
 				accept = options.getString("accept");
 				mode = options.getString("mode");
 				multiple = options.getBoolean("multiple");
@@ -129,7 +140,12 @@ public class Chooser extends CordovaPlugin {
 				pending.setKeepCallback(true);
 				callback.sendPluginResult(pending);
 			}
-			cordova.getActivity().runOnUiThread(() -> launch(request));
+			try {
+				cordova.getActivity().runOnUiThread(() -> launch(request));
+			}
+			catch (Exception error) {
+				finish(request, new PluginResult(PluginResult.Status.ERROR, "PICKER_FAILED: " + message(error)));
+			}
 		}
 		catch (Exception error) {
 			callback.error("INVALID_ARGUMENT: " + message(error));
@@ -365,6 +381,7 @@ public class Chooser extends CordovaPlugin {
 	@Override
 	public void onReset() {
 		synchronized (lock) {
+			generation++;
 			if (active != null) {
 				active.canceled = true;
 				active = null;
