@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+.verification/
+tests/android/.gradle/
+tests/android/build/
+tests/android/local.properties

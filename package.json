@@ -2,7 +2,9 @@
 	"name": "cordova-plugin-chooser",
 	"version": "1.3.2",
 	"description": "Cordova file chooser plugin",
-	"main": "index.js",
+	"main": "www/chooser.js",
+	"types": "index.d.ts",
+	"files": ["plugin.xml", "www/", "src/", "index.d.ts", "README.md", "CHANGELOG.md", "LICENSE", "NOTICE"],
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/cyph/cordova-plugin-chooser.git"
@@ -24,10 +26,15 @@
 		"id": "cordova-plugin-chooser",
 		"platforms": [
 			"android",
-			"ios"
+			"ios",
+			"browser"
 		]
 	},
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"test": "node --test tests/js/*.test.js",
+		"test:types": "tsc --noEmit --strict --lib ES2020,DOM tests/types/contracts.ts"
+	},
+	"devDependencies": {
+		"typescript": "5.9.3"
 	}
 }

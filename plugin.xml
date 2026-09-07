@@ -7,6 +7,12 @@
 >
 	<name>Chooser</name>
 	<author>Cyph, Inc.</author>
+	<license>Apache-2.0</license>
+
+	<engines>
+		<engine name="cordova-android" version=">=14.0.0" />
+		<engine name="cordova-ios" version=">=7.0.0" />
+	</engines>
 
 	<js-module src="www/chooser.js" name="Chooser">
 		<clobbers target="chooser" />
@@ -33,16 +39,10 @@
 			</feature>
 		</config-file>
 	</platform>
-	
+
 	<platform name="browser">
-		<config-file target="config.xml" parent="/*">
-		  <feature name="Chooser">
-			<param name="browser-package" value="Chooser"/>
-		  </feature>
-		</config-file>
 		<js-module src="src/browser/ChooserProxy.js" name="ChooserProxy">
-		  <runs/>
+			<runs/>
 		</js-module>
 	</platform>
-
 </plugin>
