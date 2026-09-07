@@ -48,8 +48,8 @@
 		},
 		{
 			"id": "restore",
-			"input": "Save Android state while picker is open; recreate plugin with replacement callback; deliver original result",
-			"expect": "Mode, filter, multiplicity, limit and request code restored; Cordova resume pendingResult delivers to replacement page"
+			"input": "Save Android state while picker is open; recreate plugin with replacement callback; deliver original result; repeat with invalid mode, request code and negative/unsafe limits",
+			"expect": "Mode, filter, multiplicity, all copy limits and request code restored; Cordova resume pendingResult delivers to replacement page; malformed state fails once and does not leave the plugin busy"
 		},
 		{
 			"id": "ios-provider",
@@ -64,7 +64,27 @@
 		{
 			"id": "eviction",
 			"input": "Delete managed cache entry externally before release; navigate away/back in browser; terminate app mid-copy",
-			"expect": "Missing entry release succeeds; expired URI requires reselection; private leftovers after process death are cache-evictable and never source files"
+			"expect": "Missing entry release succeeds; expired URI requires reselection; uncommitted interrupted copies recovered at the next process startup copy; unrecoverable leftovers remain cache-evictable and never source files"
+		},
+		{
+			"id": "batch-budgets",
+			"input": "Copy selections with duplicate native URIs, empty files, maxFiles at/below count, exact maxTotalSize, one excess byte, zero/omitted limits and a new request after failure",
+			"expect": "Count applies after normalization/deduplication and before content reads; actual bytes count across files; empty input still passes an exhausted budget; per-file and aggregate limits both apply; failed batch fully rolls back; budgets never leak to another request"
+		},
+		{
+			"id": "provider-cancellation",
+			"input": "Reset while Android query/typed descriptor open or iOS coordination waits; repeat with a provider ignoring cancellation; release an earlier reference during the wait",
+			"expect": "Request-owned signal/coordinator receives cancellation; stale callbacks suppressed; release runs independently; partial output cleaned after blocked work returns; asset descriptor offsets and lengths remain honored"
+		},
+		{
+			"id": "transaction-recovery",
+			"input": "Stop the app during staging before a journal exists, after intent journaling, between promotions, and after commit but before callback delivery; restart and start a copy",
+			"expect": "Startup recovery removes staged and uncommitted output; committed references survive, including the documented commit-to-callback crash gap; another request in the same process never sweeps active staging"
+		},
+		{
+			"id": "transaction-failures",
+			"input": "Inject rename failure, reset after the first promotion, failed deletion, malformed/traversal journal records, source/destination symlinks including dangling journal.tmp, and destination collision",
+			"expect": "No successful partial batch; retryable pending journal retained on cleanup failure; independent deletes still attempted; foreign files never overwritten/deleted; unsafe entries retained with redacted diagnostics"
 		}
 	]
 }

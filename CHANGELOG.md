@@ -10,6 +10,7 @@ Package/plugin versions remain at 1.3.2 until release preparation.
 - Additive `getFiles()` and `getFilesMetadata()` methods; existing single-file methods remain available.
 - `getFileUri()` and `getFilesUri()` for managed native cache copies / browser Blob references, with MIME hints and optional per-file, file-count and aggregate byte limits.
 - Opaque-ID `releaseFile()` cleanup, complete TypeScript declarations, regression fixtures and an explicit verification guide.
+- Native copy staging and journal recovery for interrupted batches, preserving the existing reference IDs and cache paths.
 - Numeric size metadata (null when unknown), actual byte counts for contents/copies, remote-provider support in new Android methods and Android picker-state restoration.
 
 ### Fixed
@@ -17,6 +18,8 @@ Package/plugin versions remain at 1.3.2 until release preparation.
 - Exact base64 decoding and canonical padding without extra decoded bytes.
 - Callback overloads, detached callback rejections, concurrent request ownership, stale completions, cancellation, reset and failed launch recovery.
 - Native stream/cursor closure, background processing, null provider responses, counted copy limits, partial-batch rollback and generated cache filenames.
+- Explicit native request states, request-owned provider cancellation and an independent cache cleanup/release queue.
+- Recovery journal symlink checks, cancellation during batch promotion and malformed Android restoration state handling.
 - Metadata-only paths no longer materialize whole-file contents in the plugin.
 - iOS coordinated/security-scoped reads, dismissal handling, iPad presentation/orientation, modern type identifiers and older iWork aliases.
 - Removal of obsolete Swift-support dependency, current Cordova result enums, package entrypoint/types and platform/source registration.

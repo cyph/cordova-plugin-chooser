@@ -10,7 +10,7 @@ From a repository checkout with a maintained Node.js version supporting `node:te
 npm test
 ```
 
-The JavaScript suite has no third-party runtime dependencies. It loads the real wrapper/proxy in isolated VM contexts, supplies a Cordova bridge fixture and drives FileReader/DOM events. It covers legacy arguments, callback overloads and callback failures, cancellation, duplicate settlement, malformed responses, exact bytes and padding, multi-selection, metadata avoiding reads, copy limits, ownership, errors and page reset. DOM fixtures do not establish real-browser gesture or cancellation behavior.
+The JavaScript suite has no third-party runtime dependencies. It loads the real wrapper/proxy in isolated VM contexts, supplies a Cordova bridge fixture and drives FileReader/DOM events. It covers legacy arguments, callback overloads and callback failures, cancellation, duplicate settlement, malformed responses, exact bytes and padding, multi-selection, metadata avoiding reads, per-file/count/aggregate copy limits, exact budget exhaustion, ownership, errors and page reset. DOM fixtures do not establish real-browser gesture or cancellation behavior.
 
 For typings, provision the pinned development dependency first, then:
 
@@ -29,7 +29,7 @@ gradle -p tests/android -PcordovaVersion=14.0.0 -PcompileSdk=35 testDebugUnitTes
 gradle -p tests/android -PcordovaVersion=15.0.0 -PcompileSdk=36 testDebugUnitTest
 ```
 
-The library fixture compiles the production Java files. JUnit exercises exact streaming, limits, zero/short reads, cancellation, I/O failure and cache ownership. Robolectric drives the production plugin against a synthetic ContentProvider and Cordova interface for null/unknown metadata, failed selection/read, duplicate callbacks, busy state, state restoration, queued reset/release, multi-selection, launch failure and partial-file cleanup.
+The library fixture compiles the production Java files. JUnit exercises exact streaming, shared byte budgets, zero/short reads, cancellation, I/O failure and cache ownership. Transaction fixtures inject promotion/deletion failures and model process exit before promotion, between promotions and after commit. They check journal recovery, retry after cleanup failure, collisions, malformed records and symlinks, including dangling journal links. Robolectric drives the production plugin against a synthetic ContentProvider and Cordova interface for null/unknown metadata, failed selection/read, duplicate callbacks, busy state, state restoration, queued reset/release, deduplicated count limits, restored aggregate limits, asset descriptor slices, release during a blocked query, launch failure and partial-file cleanup. The synthetic provider implements both typed and untyped descriptor entrypoints so the read-only resolver path preserves its slices and cancellation signal.
 
 The Robolectric fixture uses API 28 for host behavior, while the two lanes compile against the platform generations' SDKs. This does not emulate Android 14/15 devices or prove behavior on API 24/35/36. Add API-level host variants only after these fixtures compile and their framework assumptions are reviewed. Do not replace failing assertions with implementation-shaped assertions simply to obtain a green lane.
 
@@ -43,7 +43,7 @@ xcrun swiftc -swift-version 5 src/ios/ChooserError.swift src/ios/ChooserBudget.s
 .verification/chooser-foundation-fixtures
 ```
 
-These fixtures compile the actual Foundation/Darwin helper and exercise byte boundaries, unlimited/exact/exceeded limits, stream closure, cancellation, missing input, output failure, ID validation, symlink/directory rejection and source preservation. They do not import UIKit or Cordova and therefore cannot prove picker delegation, security-scoped provider behavior, presentation or plugin reset delivery. Partial-write handling has a source-reviewed loop; add a controlled short-write OutputStream double in the later native harness.
+These fixtures compile the actual Foundation/Darwin helpers and exercise byte boundaries, unlimited/exact/exceeded aggregate budgets, stream closure, short/stalled writes, cancellation, missing input, output failure, ID validation, symlink/directory rejection and source preservation. Transaction fixtures inject rename/deletion failures, recover abandoned and partially promoted batches, preserve committed references, reject journal links and check request-owned coordinator cancellation and cleanup. They do not import UIKit or Cordova and therefore cannot prove picker delegation, security-scoped provider behavior, presentation or plugin reset delivery. Review the Foundation stream subclass and coordinator-double behavior against the macOS SDK used for this lane.
 
 ## Cordova installation and native builds
 
@@ -83,7 +83,7 @@ In current Chrome, Edge, Firefox and Safari, record observations for direct clic
 
 `tests/native-cases.json` is the shared scenario fixture; `tests/fixture-app/www` is the manual driver. The executable Android host tests and Foundation tests cover subsets, as described above. UIKit/file-provider, rotation, genuine process death, system cancellation UI, cloud access, filesystem exhaustion and OS eviction scenarios remain integration work. Real-device and emulator checks are separate from the host/build checks above.
 
-In an integration environment, adapt the scenarios to its provider/test doubles. Include inaccurate metadata size, delayed/offline providers, blocking reads returning after reset, duplicate display names, second-file batch failure, partial output writes, revoked security-scoped access, swipe dismissal, app-restricted orientation masks, rapid reopen and outstanding-picker activity restoration. Hash source/copy bytes and inspect the dedicated cache before/after each failure. Never use real private user files as destructive fixtures.
+In an integration environment, adapt the scenarios to its provider/test doubles. Include inaccurate metadata size, delayed/offline providers, blocking reads returning after reset, duplicate display names, second-file batch failure, partial output writes, revoked security-scoped access, swipe dismissal, app-restricted orientation masks, rapid reopen and outstanding-picker activity restoration. Interrupt native copies before journal creation, between promotions and between commit and callback delivery; restart the app and check recovery without deleting earlier committed references. Exercise release while another provider is blocked, and verify that cancellation reaches cooperative providers while stale callbacks remain suppressed for uncooperative ones. Hash source/copy bytes and inspect the dedicated cache before/after each failure. Never use real private user files as destructive fixtures.
 
 ## Packaging checks
 
