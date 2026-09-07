@@ -25,6 +25,7 @@
 
 	<platform name="ios">
 		<source-file src="src/ios/Chooser.swift" />
+		<source-file src="src/ios/ChooserFiles.swift" />
 
 		<config-file target="config.xml" parent="/*">
 			<feature name="Chooser">
