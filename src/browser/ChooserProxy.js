@@ -1,82 +1,110 @@
-function arrayBufferToBase64(buffer) {
-	var binary = '';
-	var bytes = new Uint8Array(buffer);
-	var len = bytes.byteLength;
-	for (var i = 0; i < len; i++) {
-		binary += String.fromCharCode(bytes[i]);
-	}
-	return window.btoa(binary);
-}
+/* Browser implementation originally contributed by @andreszs in upstream PR #52. */
+var active = null;
+var urls = [];
 
-function getFileInternalBrowser(accept, includeData, successCallback, failureCallback) {
+function getFile(success, failure, args) {
+	if (active) {
+		failure('BUSY: A file picker is already active.');
+		return;
+	}
+
 	var input = document.createElement('input');
+	var reader;
+	var uri;
+	var finished = false;
 	input.type = 'file';
-	if (accept) {
-		input.accept = accept;
+	input.accept = args[0] === '*/*' ? '' : args[0];
+	input.style.display = 'none';
+
+	function finish(error, result) {
+		if (finished) {
+			return;
+		}
+		finished = true;
+		active = null;
+		input.remove();
+		if (error && uri) {
+			URL.revokeObjectURL(uri);
+		}
+		if (error) {
+			failure(error);
+		}
+		else {
+			if (uri) {
+				urls.push(uri);
+			}
+			success(result);
+		}
 	}
 
-	input.addEventListener('change', function (event) {
-		var file = event.target.files[0];
+	active = function () {
+		finish(null, 'RESULT_CANCELED');
+		if (reader && reader.readyState === 1) {
+			reader.abort();
+		}
+	};
+	input.addEventListener('cancel', function () {
+		finish(null, 'RESULT_CANCELED');
+	});
+	input.addEventListener('change', function () {
+		if (finished) {
+			return;
+		}
+		var file = input.files && input.files[0];
 		if (!file) {
-			if (failureCallback) {
-				failureCallback('No file selected');
-			}
+			finish(null, 'RESULT_CANCELED');
 			return;
 		}
-
-		// Create a blob URL
-		var blobURL = URL.createObjectURL(file);
-
-		// If data inclusion (like base64) is not required, return only the file metadata
-		if (!includeData) {
+		try {
+			uri = URL.createObjectURL(file);
 			var result = {
-				mediaType: file.type,
+				mediaType: file.type || 'application/octet-stream',
 				name: file.name,
-				uri: blobURL // Blob URL of the file
+				uri: uri
 			};
-			successCallback(JSON.stringify(result)); // Send as JSON
-			return;
-		}
-
-		// If includeData is true, process the file as Blob
-		var reader = new FileReader();
-
-		reader.onload = function (e) {
-			// Prepare the result object here
-			var arrayBuffer = e.target.result; // This is the ArrayBuffer
-
-			// Convert ArrayBuffer to Base64
-			var base64Data = arrayBufferToBase64(arrayBuffer);
-
-			var result = {
-				data: base64Data, // Store Base64 data
-				mediaType: file.type,
-				name: file.name,
-				uri: blobURL // Use Blob URL
-			};
-
-			if (successCallback) {
-				successCallback(JSON.stringify(result)); // Send as JSON
+			if (!args[1]) {
+				finish(null, JSON.stringify(result));
+				return;
 			}
-		};
-
-		// Now read the file as an arrayBuffer to handle the blob
-		reader.readAsArrayBuffer(file); // Read the file as an arrayBuffer
+			reader = new FileReader();
+			reader.onerror = function () {
+				finish('READ_FAILED: Could not read the selected file.');
+			};
+			reader.onabort = function () {
+				finish('READ_FAILED: Reading the selected file was aborted.');
+			};
+			reader.onload = function () {
+				try {
+					result.data = reader.result.slice(reader.result.indexOf(',') + 1);
+					finish(null, JSON.stringify(result));
+				}
+				catch (error) {
+					finish('READ_FAILED: ' + error.message);
+				}
+			};
+			reader.readAsDataURL(file);
+		}
+		catch (error) {
+			finish('READ_FAILED: ' + error.message);
+		}
 	});
 
-	// Trigger the input click
-	document.body.appendChild(input);
-	input.click();
-	document.body.removeChild(input);
+	try {
+		document.body.appendChild(input);
+		input.click();
+	}
+	catch (error) {
+		finish('PICKER_FAILED: ' + error.message);
+	}
 }
 
-module.exports = {
-	getFile: function (successCallback, failureCallback, accept) {
-		return getFileInternalBrowser(accept, true, successCallback, failureCallback);
-	},
-	getFileMetadata: function (successCallback, failureCallback, accept) {
-		return getFileInternalBrowser(accept, false, successCallback, failureCallback);
+window.addEventListener('pagehide', function () {
+	if (active) {
+		active();
 	}
-};
+	urls.forEach(function (uri) { URL.revokeObjectURL(uri); });
+	urls = [];
+});
 
+module.exports = {getFile: getFile};
 require('cordova/exec/proxy').add('Chooser', module.exports);
