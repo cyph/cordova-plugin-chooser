@@ -6,6 +6,10 @@ enum ChooserFiles {
 	static let maxSafeInteger: Int64 = 9007199254740991
 
 	static func copy(input: InputStream, output: OutputStream, limit: Int64, canceled: () -> Bool) throws -> Int64 {
+		return try copy(input: input, output: output, budget: ChooserBudget(fileLimit: limit, totalLimit: 0), canceled: canceled)
+	}
+
+	static func copy(input: InputStream, output: OutputStream, budget: ChooserBudget, canceled: () -> Bool) throws -> Int64 {
 		input.open()
 		output.open()
 		defer {
@@ -21,9 +25,7 @@ enum ChooserFiles {
 			let count = input.read(&buffer, maxLength: buffer.count)
 			if count < 0 { throw input.streamError ?? ChooserFailure(code: .readFailed, detail: "Cannot read selected file.") }
 			if count == 0 { return total }
-			if total > maxSafeInteger - Int64(count) || (limit > 0 && Int64(count) > limit - total) {
-				throw ChooserFailure(code: .fileTooLarge, detail: "Selected file exceeds the byte limit.")
-			}
+			try budget.consume(fileBytes: total, count: count)
 			try buffer.withUnsafeBufferPointer { pointer in
 				guard let base = pointer.baseAddress else { return }
 				var offset = 0

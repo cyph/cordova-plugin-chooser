@@ -94,6 +94,8 @@ function callPicker(accept, success, failure, configuration) {
 			mode: mode,
 			multiple: multiple,
 			maxFileSize: 0,
+			maxFiles: 0,
+			maxTotalSize: 0,
 			localOnly: false
 		};
 		if (copy) {
@@ -105,12 +107,14 @@ function callPicker(accept, success, failure, configuration) {
 					throw new TypeError('accept must be a string.');
 				}
 				options.accept = normalizeAccept(accept.accept);
-				if (accept.maxFileSize !== undefined) {
-					if (typeof accept.maxFileSize !== 'number' || !Number.isSafeInteger(accept.maxFileSize) || accept.maxFileSize < 0) {
-						throw new TypeError('maxFileSize must be a nonnegative safe integer in bytes.');
+				['maxFileSize', 'maxFiles', 'maxTotalSize'].forEach(function (name) {
+					if (accept[name] !== undefined) {
+						if (typeof accept[name] !== 'number' || !Number.isSafeInteger(accept[name]) || accept[name] < 0) {
+							throw new TypeError(name + ' must be a nonnegative safe integer' + (name === 'maxFiles' ? '.' : ' in bytes.'));
+						}
+						options[name] = accept[name];
 					}
-					options.maxFileSize = accept.maxFileSize;
-				}
+				});
 				if (accept.localOnly !== undefined) {
 					if (typeof accept.localOnly !== 'boolean') {
 						throw new TypeError('localOnly must be a boolean.');

@@ -9,7 +9,9 @@
 		<option>getFilesMetadata</option><option>getFileUri</option><option>getFilesUri</option>
 	</select></label>
 	<label>MIME filter <input id="accept" value="*/*"></label>
-	<label>Copy limit in bytes (0 = unlimited) <input id="limit" type="number" min="0" step="1" value="0"></label>
+	<label>Copy limit per file in bytes (0 = unlimited) <input id="limit" type="number" min="0" step="1" value="0"></label>
+	<label>Copy file count (0 = unlimited) <input id="count" type="number" min="0" step="1" value="0"></label>
+	<label>Copy total bytes (0 = unlimited) <input id="total" type="number" min="0" step="1" value="0"></label>
 	<label><input id="local" type="checkbox">Android copies: local only</label>
 	<button id="pick" disabled>Choose files</button>
 	<button id="twice" disabled>Start two concurrent requests</button>

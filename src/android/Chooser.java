@@ -73,6 +73,8 @@ public class Chooser extends CordovaPlugin {
 			boolean multiple = false;
 			boolean localOnly = true;
 			long limit = 0;
+			long maxFiles = 0;
+			long maxTotalSize = 0;
 			if ("getFile".equals(action)) {
 				if (!(args.get(0) instanceof String) || !(args.get(1) instanceof Boolean)) {
 					throw new JSONException("Expected a MIME filter and includeData boolean.");
@@ -90,15 +92,9 @@ public class Chooser extends CordovaPlugin {
 				mode = ChooserRequest.Mode.parse(options.getString("mode"));
 				multiple = options.getBoolean("multiple");
 				localOnly = options.getBoolean("localOnly");
-				Object value = options.get("maxFileSize");
-				if (!(value instanceof Number)) {
-					throw new JSONException("Expected a numeric byte limit.");
-				}
-				double numeric = ((Number) value).doubleValue();
-				if (!Double.isFinite(numeric) || numeric < 0 || numeric > ChooserFiles.MAX_SAFE_INTEGER || numeric != Math.floor(numeric)) {
-					throw new JSONException("Invalid byte limit.");
-				}
-				limit = (long) numeric;
+				limit = limitOption(options, "maxFileSize");
+				maxFiles = limitOption(options, "maxFiles");
+				maxTotalSize = limitOption(options, "maxTotalSize");
 			}
 			accept = accept.toLowerCase(Locale.ROOT).replaceAll("\\s", "");
 			if (accept.isEmpty()) {
@@ -111,7 +107,7 @@ public class Chooser extends CordovaPlugin {
 					return true;
 				}
 				nextRequestCode = nextRequestCode == 32767 ? 1000 : nextRequestCode + 1;
-				request = new ChooserRequest(callback, accept, mode, multiple, localOnly, limit, nextRequestCode);
+				request = new ChooserRequest(callback, accept, mode, multiple, localOnly, limit, maxFiles, maxTotalSize, nextRequestCode);
 				active = request;
 				PluginResult pending = new PluginResult(PluginResult.Status.NO_RESULT);
 				pending.setKeepCallback(true);
@@ -128,6 +124,17 @@ public class Chooser extends CordovaPlugin {
 			callback.error(ChooserError.message(ChooserError.Code.INVALID_ARGUMENT, "") + message(error));
 		}
 		return true;
+	}
+
+	private static long limitOption(JSONObject options, String name) throws JSONException {
+		Object value = options.opt(name);
+		if (value == null) return 0;
+		if (!(value instanceof Number)) throw new JSONException("Expected a numeric limit.");
+		double number = ((Number) value).doubleValue();
+		if (!Double.isFinite(number) || number < 0 || number > ChooserFiles.MAX_SAFE_INTEGER || number != Math.floor(number)) {
+			throw new JSONException("Expected a nonnegative safe-integer limit.");
+		}
+		return (long) number;
 	}
 
 	private void launch(ChooserRequest request) {
@@ -193,6 +200,9 @@ public class Chooser extends CordovaPlugin {
 			if (selected.isEmpty()) {
 				throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned no file URI.");
 			}
+			if (request.mode == ChooserRequest.Mode.COPY && request.maxFiles > 0 && selected.size() > request.maxFiles) {
+				throw new ChooserError(ChooserError.Code.TOO_MANY_FILES, "Selection exceeds the file count limit.");
+			}
 			List<Uri> uris = new ArrayList<>(selected);
 			cordova.getThreadPool().execute(() -> read(request, uris));
 		}
@@ -223,7 +233,7 @@ public class Chooser extends CordovaPlugin {
 					try (AssetFileDescriptor descriptor = open(resolver, uri, request);
 						 InputStream input = descriptor.createInputStream();
 						 FileOutputStream output = new FileOutputStream(file)) {
-						size = ChooserFiles.copy(input, output, request.limit, () -> request.canceled);
+						size = ChooserFiles.copy(input, output, request.budget, () -> request.canceled);
 					}
 					result.put("sourceUri", uri.toString());
 					result.put("uri", Uri.fromFile(request.transaction().destination(file)).toString());
@@ -342,6 +352,8 @@ public class Chooser extends CordovaPlugin {
 			state.putBoolean("multiple", active.multiple);
 			state.putBoolean("localOnly", active.localOnly);
 			state.putLong("limit", active.limit);
+			state.putLong("maxFiles", active.maxFiles);
+			state.putLong("maxTotalSize", active.maxTotalSize);
 			state.putInt("code", active.code);
 			return state;
 		}
@@ -358,7 +370,7 @@ public class Chooser extends CordovaPlugin {
 			previous = active;
 			nextRequestCode = state.getInt("code", 1001);
 			active = new ChooserRequest(callback, state.getString("accept", "*/*"), ChooserRequest.Mode.parse(state.getString("mode", "metadata")),
-				state.getBoolean("multiple"), state.getBoolean("localOnly"), state.getLong("limit"), nextRequestCode);
+				state.getBoolean("multiple"), state.getBoolean("localOnly"), state.getLong("limit"), state.getLong("maxFiles"), state.getLong("maxTotalSize"), nextRequestCode);
 		}
 		if (previous != null) previous.cancel();
 	}

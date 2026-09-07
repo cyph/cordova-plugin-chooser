@@ -8,7 +8,7 @@ Package/plugin versions remain at 1.3.2 until release preparation.
 
 - Browser platform support, incorporating original PR #52 and correcting its bridge and resource behavior.
 - Additive `getFiles()` and `getFilesMetadata()` methods; existing single-file methods remain available.
-- `getFileUri()` and `getFilesUri()` for managed native cache copies / browser Blob references, with MIME hints and optional per-file byte limits.
+- `getFileUri()` and `getFilesUri()` for managed native cache copies / browser Blob references, with MIME hints and optional per-file, file-count and aggregate byte limits.
 - Opaque-ID `releaseFile()` cleanup, complete TypeScript declarations, regression fixtures and an explicit verification guide.
 - Numeric size metadata (null when unknown), actual byte counts for contents/copies, remote-provider support in new Android methods and Android picker-state restoration.
 

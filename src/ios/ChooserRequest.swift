@@ -9,18 +9,24 @@ final class ChooserRequest {
 	let mode: ChooserReadMode
 	let multiple: Bool
 	let limit: Int64
+	let maxFiles: Int64
+	let maxTotalSize: Int64
+	let budget: ChooserBudget
 	private let lock = NSLock()
 	private var invalidated = false
 	private var currentState = ChooserRequestState.selecting
 	private var coordinator: NSFileCoordinator?
 	private var resource: ChooserTransaction?
 
-	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64) {
+	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0) {
 		self.callback = callback
 		self.accept = accept
 		self.mode = mode
 		self.multiple = multiple
 		self.limit = limit
+		self.maxFiles = maxFiles
+		self.maxTotalSize = maxTotalSize
+		self.budget = ChooserBudget(fileLimit: limit, totalLimit: maxTotalSize)
 	}
 	var canceled: Bool {
 		lock.lock(); defer { lock.unlock() }

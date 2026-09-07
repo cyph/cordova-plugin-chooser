@@ -14,6 +14,8 @@ function pick() {
 	var accept = document.getElementById('accept').value;
 	var options = method.endsWith('Uri') ? {
 		accept: accept, maxFileSize: Number(document.getElementById('limit').value),
+		maxFiles: Number(document.getElementById('count').value),
+		maxTotalSize: Number(document.getElementById('total').value),
 		localOnly: document.getElementById('local').checked
 	} : accept;
 	chooser[method](options).then(function (result) {

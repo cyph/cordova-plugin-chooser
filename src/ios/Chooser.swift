@@ -47,19 +47,30 @@ class Chooser: CDVPlugin {
 				let accept = options["accept"] as? String,
 				let modeName = options["mode"] as? String,
 				let mode = ChooserReadMode(rawValue: modeName),
-				let multiple = options["multiple"] as? Bool,
-				let number = options["maxFileSize"] as? NSNumber,
-				CFGetTypeID(number) != CFBooleanGetTypeID() else {
+				let multiple = options["multiple"] as? Bool else {
 				self.send(ChooserFailure(code: .invalidArgument, detail: "Invalid picker options.").message, .error, command.callbackId)
 				return
 			}
-			let size = number.doubleValue
-			guard size.isFinite, size >= 0, size <= Double(ChooserFiles.maxSafeInteger), size.rounded(.down) == size else {
-				self.send(ChooserFailure(code: .invalidArgument, detail: "Invalid byte limit.").message, .error, command.callbackId)
-				return
+			do {
+				let limit = try self.limitOption(options, name: "maxFileSize")
+				let maxFiles = try self.limitOption(options, name: "maxFiles")
+				let maxTotalSize = try self.limitOption(options, name: "maxTotalSize")
+				self.begin(callback: command.callbackId, accept: accept, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize)
 			}
-			self.begin(callback: command.callbackId, accept: accept, mode: mode, multiple: multiple, limit: Int64(size))
+			catch { self.send(error.localizedDescription, .error, command.callbackId) }
 		}
+	}
+
+	private func limitOption(_ options: [String: Any], name: String) throws -> Int64 {
+		guard let value = options[name] else { return 0 }
+		guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else {
+			throw ChooserFailure(code: .invalidArgument, detail: "Expected a numeric limit.")
+		}
+		let size = number.doubleValue
+		guard size.isFinite, size >= 0, size <= Double(ChooserFiles.maxSafeInteger), size.rounded(.down) == size else {
+			throw ChooserFailure(code: .invalidArgument, detail: "Expected a nonnegative safe-integer limit.")
+		}
+		return Int64(size)
 	}
 
 	@objc(releaseFile:)
@@ -96,7 +107,7 @@ class Chooser: CDVPlugin {
 		return cache
 	}
 
-	private func begin(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64) {
+	private func begin(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0) {
 		guard active == nil else {
 			send(ChooserFailure(code: .busy, detail: "A file picker is already active.").message, .error, callback)
 			return
@@ -107,7 +118,7 @@ class Chooser: CDVPlugin {
 			return
 		}
 		let normalized = accept.lowercased().components(separatedBy: .whitespacesAndNewlines).joined()
-		let request = ChooserRequest(callback: callback, accept: normalized.isEmpty ? "*/*" : normalized, mode: mode, multiple: multiple, limit: limit)
+		let request = ChooserRequest(callback: callback, accept: normalized.isEmpty ? "*/*" : normalized, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize)
 		let utis = identifiers(for: request.accept)
 		let controller: ChooserDocumentPicker
 		#if canImport(UniformTypeIdentifiers)
@@ -189,9 +200,14 @@ class Chooser: CDVPlugin {
 			return
 		}
 		var unique: [URL] = []
-		for url in urls where !unique.contains(url) {
+		var seen = Set<URL>()
+		for url in urls where seen.insert(url).inserted {
 			unique.append(url)
 			if !request.multiple { break }
+		}
+		if request.mode == .copy && request.maxFiles > 0 && Int64(unique.count) > request.maxFiles {
+			complete(request, message: ChooserFailure(code: .tooManyFiles, detail: "Selection exceeds the file count limit.").message, status: .error)
+			return
 		}
 		let selection = unique
 		work.async {
@@ -262,7 +278,7 @@ class Chooser: CDVPlugin {
 					guard let input = InputStream(url: coordinated), let output = OutputStream(url: destination, append: false) else {
 						throw ChooserFailure(code: .copyFailed, detail: "Could not open file streams.")
 					}
-					let count = try ChooserFiles.copy(input: input, output: output, limit: request.limit, canceled: { request.canceled })
+					let count = try ChooserFiles.copy(input: input, output: output, budget: request.budget, canceled: { request.canceled })
 					file["sourceUri"] = url.absoluteString
 					file["uri"] = try transaction.destination(for: destination).absoluteString
 					file["id"] = destination.lastPathComponent

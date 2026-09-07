@@ -27,6 +27,10 @@ declare namespace chooser {
 		accept?: string;
 		/** Per-file byte limit. Omitted or zero means unlimited. */
 		maxFileSize?: number;
+		/** Selection count limit after native URI deduplication. Zero/omitted is unlimited. */
+		maxFiles?: number;
+		/** Aggregate byte limit across the selection. Zero/omitted is unlimited. */
+		maxTotalSize?: number;
 		/** Android only: restrict the chooser to local providers. Default false. */
 		localOnly?: boolean;
 	}

@@ -133,7 +133,12 @@ if (reference) {
 `getFilesUri(options)` returns an array of the same references. Release every ID after consumption:
 
 ```js
-const references = await chooser.getFilesUri({accept: '*/*', maxFileSize: 0});
+const references = await chooser.getFilesUri({
+  accept: '*/*',
+  maxFileSize: 500 * 1024 * 1024,
+  maxFiles: 10,
+  maxTotalSize: 1024 * 1024 * 1024
+});
 if (references) {
   try {
     for (const reference of references) {
@@ -162,9 +167,11 @@ In real code, retain the returned reference before doing other work. Options:
 | --- | --- | --- |
 | `accept` | `"*/*"` | MIME filter hint |
 | `maxFileSize` | `0` | Nonnegative safe-integer byte limit per file; omitted/zero means unlimited |
+| `maxFiles` | `0` | Nonnegative safe-integer selection count limit; omitted/zero means unlimited |
+| `maxTotalSize` | `0` | Nonnegative safe-integer byte limit across the selection; omitted/zero means unlimited |
 | `localOnly` | `false` | Android only: ask the picker to exclude remote providers |
 
-Positive limits are enforced against bytes read while streaming, independent of provider size metadata. Exact-limit files and zero-byte files are valid. The browser checks the selected File's byte size. The limit is per file, not a total batch quota.
+All three limits apply to both copy methods. `maxFiles` is checked after selection normalization and native URI deduplication, before content reads. Positive byte limits are enforced while streaming, independent of provider size metadata. The browser uses each selected File's byte size. Per-file and aggregate limits apply together: exact limits and empty files are valid, but an exhausted aggregate budget cannot admit another nonempty file. Any limit failure rejects the entire batch and rolls back its copies. Limits reset for each request; they do not cap resources retained from earlier requests.
 
 Legacy data methods intentionally retain their unlimited, whole-file behavior. Native buffers, base64 strings, JSON transport and JS byte arrays can coexist in memory; multiple selection compounds the cost. Android attempts to report OOM, but allocation failure or OS process termination can prevent any callback. iOS allocation termination cannot be reliably caught. Use URI methods to avoid this cost.
 
@@ -210,7 +217,7 @@ The OS may evict cache files at any time. Copy into application-owned durable st
 
 Cancellation resolves successfully to `undefined`; it does not reject. Empty browser selections do the same. A second picker request while selection/processing is pending rejects with `BUSY`; it cannot replace the first callback. There is no public programmatic cancellation method.
 
-Errors may be native strings or JavaScript Error objects. Descriptive prefixes include `INVALID_ARGUMENT`, `PICKER_FAILED`, `READ_FAILED`, `READ_INTERRUPTED`, `FILE_TOO_LARGE`, `CACHE_FAILED`, `COPY_FAILED`, `RELEASE_FAILED` and `OUT_OF_MEMORY`. Provider errors can retain platform-specific messages; do not parse them as a stable machine-readable error schema.
+Errors may be native strings or JavaScript Error objects. Descriptive prefixes include `INVALID_ARGUMENT`, `PICKER_FAILED`, `READ_FAILED`, `READ_INTERRUPTED`, `FILE_TOO_LARGE`, `TOO_MANY_FILES`, `TOTAL_SIZE_EXCEEDED`, `CACHE_FAILED`, `COPY_FAILED`, `RELEASE_FAILED` and `OUT_OF_MEMORY`. Provider errors can retain platform-specific messages; do not parse them as a stable machine-readable error schema.
 
 On reset/dispose, pending native work loses callback ownership and abandoned copies are cleaned when I/O returns. Blocking provider reads or iOS coordination can delay this cleanup. A destroyed JS context cannot receive its old Promise result.
 

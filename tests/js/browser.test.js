@@ -90,3 +90,42 @@ test('read errors and page reset clean partial URLs and do not affect the next r
 	assert.equal((await next).name, 'next');
 	assert.equal(f.blobs.size, 1);
 });
+
+test('copy count limits reject before creating resources', async () => {
+	const f = browserFixture();
+	const pending = f.chooser.getFilesUri({maxFiles: 1});
+	const rejection = assert.rejects(pending, error => error.startsWith('TOO_MANY_FILES:'));
+	await f.elements[0].emit('change', [file(), file('second')]);
+	await rejection;
+	assert.equal(f.blobs.size, 0);
+	assert.equal(f.readers.length, 0);
+	const single = f.chooser.getFileUri({maxFiles: 1});
+	await f.elements[1].emit('change', [file(), file('ignored')]);
+	assert.equal((await single).name, 'a.bin');
+});
+
+test('aggregate budgets permit exact totals and empty files, then roll back on the first excess byte', async () => {
+	const f = browserFixture();
+	const exact = f.chooser.getFilesUri({maxTotalSize: 3, maxFileSize: 2, maxFiles: 3});
+	await f.elements[0].emit('change', [file('one', [1]), file('two', [2, 3]), file('empty', [])]);
+	const kept = await exact;
+	assert.equal(kept.length, 3);
+	const exceeded = f.chooser.getFilesUri({maxTotalSize: 3});
+	const rejection = assert.rejects(exceeded, error => error.startsWith('TOTAL_SIZE_EXCEEDED:'));
+	await f.elements[1].emit('change', [file(), file('empty', []), file('excess', [4])]);
+	await rejection;
+	assert.equal(f.blobs.size, 3); // Only the earlier successful request remains owned.
+	for (const ref of kept) await f.chooser.releaseFile(ref.id);
+	const unlimited = f.chooser.getFilesUri({maxFileSize: 0, maxFiles: 0, maxTotalSize: 0});
+	await f.elements[2].emit('change', [file(), file('second')]);
+	assert.equal((await unlimited).length, 2);
+	assert.equal(f.readers.length, 0);
+});
+
+test('single copy methods apply aggregate limits too', async () => {
+	const f = browserFixture();
+	const rejection = assert.rejects(f.chooser.getFileUri({maxTotalSize: 2}), error => error.startsWith('TOTAL_SIZE_EXCEEDED:'));
+	await f.elements[0].emit('change', [file()]);
+	await rejection;
+	assert.equal(f.blobs.size, 0);
+});

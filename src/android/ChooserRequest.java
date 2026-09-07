@@ -20,6 +20,9 @@ final class ChooserRequest {
 	final boolean multiple;
 	final boolean localOnly;
 	final long limit;
+	final long maxFiles;
+	final long maxTotalSize;
+	final ChooserBudget budget;
 	final int code;
 	final CancellationSignal cancellation = new CancellationSignal();
 	volatile boolean canceled;
@@ -27,12 +30,18 @@ final class ChooserRequest {
 	private ChooserTransaction transaction;
 
 	ChooserRequest(CallbackContext callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, int code) {
+		this(callback, accept, mode, multiple, localOnly, limit, 0, 0, code);
+	}
+	ChooserRequest(CallbackContext callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, long maxFiles, long maxTotalSize, int code) {
 		this.callback = callback;
 		this.accept = accept;
 		this.mode = mode;
 		this.multiple = multiple;
 		this.localOnly = localOnly;
 		this.limit = limit;
+		this.maxFiles = maxFiles;
+		this.maxTotalSize = maxTotalSize;
+		this.budget = new ChooserBudget(limit, maxTotalSize);
 		this.code = code;
 	}
 	synchronized State state() { return state; }

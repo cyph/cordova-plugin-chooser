@@ -73,4 +73,16 @@ public class ChooserFilesTest {
 			@Override public void write(int value) throws IOException { throw new IOException("disk full"); }
 		}, 0, () -> false));
 	}
+
+	@Test public void aggregateBudgetSurvivesFileBoundariesAndExhaustionIsNotUnlimited() throws Exception {
+		ChooserBudget budget = new ChooserBudget(2, 3);
+		assertEquals(1, ChooserFiles.copy(new ByteArrayInputStream(new byte[]{1}), new ByteArrayOutputStream(), budget, () -> false));
+		assertEquals(2, ChooserFiles.copy(new ByteArrayInputStream(new byte[]{2, 3}), new ByteArrayOutputStream(), budget, () -> false));
+		assertEquals(0, ChooserFiles.copy(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), budget, () -> false));
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		ChooserError error = assertThrows(ChooserError.class, () -> ChooserFiles.copy(new ByteArrayInputStream(new byte[]{4}), output, budget, () -> false));
+		assertEquals(ChooserError.Code.TOTAL_SIZE_EXCEEDED, error.code);
+		assertEquals(0, output.size());
+		assertEquals(4, ChooserFiles.copy(new ByteArrayInputStream(new byte[4]), output, new ChooserBudget(0, 0), () -> false));
+	}
 }

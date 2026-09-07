@@ -21,6 +21,7 @@
 	<platform name="android">
 		<source-file src="src/android/Chooser.java" target-dir="src/com/cyph/cordova" />
 		<source-file src="src/android/ChooserFiles.java" target-dir="src/com/cyph/cordova" />
+		<source-file src="src/android/ChooserBudget.java" target-dir="src/com/cyph/cordova" />
 		<source-file src="src/android/ChooserTransaction.java" target-dir="src/com/cyph/cordova" />
 		<source-file src="src/android/ChooserRequest.java" target-dir="src/com/cyph/cordova" />
 		<source-file src="src/android/ChooserError.java" target-dir="src/com/cyph/cordova" />
@@ -35,6 +36,7 @@
 	<platform name="ios">
 		<source-file src="src/ios/Chooser.swift" />
 		<source-file src="src/ios/ChooserFiles.swift" />
+		<source-file src="src/ios/ChooserBudget.swift" />
 		<source-file src="src/ios/ChooserTransaction.swift" />
 		<source-file src="src/ios/ChooserRequest.swift" />
 		<source-file src="src/ios/ChooserError.swift" />

@@ -36,7 +36,10 @@ function select(success, failure, options) {
 	if (!options || typeof options.accept !== 'string' ||
 		['data', 'metadata', 'copy'].indexOf(options.mode) < 0 ||
 		typeof options.multiple !== 'boolean' ||
-		!Number.isSafeInteger(options.maxFileSize) || options.maxFileSize < 0) {
+		!Number.isSafeInteger(options.maxFileSize) || options.maxFileSize < 0 ||
+		['maxFiles', 'maxTotalSize'].some(function (name) {
+			return options[name] !== undefined && (!Number.isSafeInteger(options[name]) || options[name] < 0);
+		})) {
 		failure(errorMessage('INVALID_ARGUMENT', 'Invalid picker options.'));
 		return;
 	}
@@ -108,6 +111,10 @@ function select(success, failure, options) {
 				finish(null, 'RESULT_CANCELED');
 				return;
 			}
+			if (options.mode === 'copy' && options.maxFiles > 0 && files.length > options.maxFiles) {
+				throw new Error(errorMessage('TOO_MANY_FILES', 'Selection exceeds the file count limit.'));
+			}
+			var total = 0;
 			var results = [];
 			for (var i = 0; i < files.length; i++) {
 				if (finished) {
@@ -116,6 +123,12 @@ function select(success, failure, options) {
 				var file = files[i];
 				if (options.mode === 'copy' && options.maxFileSize > 0 && file.size > options.maxFileSize) {
 					throw new Error(errorMessage('FILE_TOO_LARGE', 'Selected file exceeds the byte limit.'));
+				}
+				if (options.mode === 'copy' && options.maxTotalSize > 0) {
+					if (file.size > options.maxTotalSize - total) {
+						throw new Error(errorMessage('TOTAL_SIZE_EXCEEDED', 'Selection exceeds the total byte limit.'));
+					}
+					total += file.size;
 				}
 				var id = newId();
 				var uri = URL.createObjectURL(file);

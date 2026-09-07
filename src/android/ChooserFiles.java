@@ -20,6 +20,10 @@ final class ChooserFiles {
 	static boolean isId(String id) { return id != null && ID.matcher(id).matches(); }
 
 	static long copy(InputStream input, OutputStream output, long limit, BooleanSupplier canceled) throws IOException {
+		return copy(input, output, new ChooserBudget(limit, 0), canceled);
+	}
+
+	static long copy(InputStream input, OutputStream output, ChooserBudget budget, BooleanSupplier canceled) throws IOException {
 		if (input == null) {
 			throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned no stream.");
 		}
@@ -41,12 +45,10 @@ final class ChooserFiles {
 				buffer[0] = (byte) next;
 				count = 1;
 			}
-			if (total > MAX_SAFE_INTEGER - count || (limit > 0 && count > limit - total)) {
-				throw new ChooserError(ChooserError.Code.FILE_TOO_LARGE, "Selected file exceeds the byte limit.");
-			}
 			if (canceled.getAsBoolean()) {
 				throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Request was reset.");
 			}
+			budget.consume(total, count);
 			output.write(buffer, 0, count);
 			total += count;
 		}

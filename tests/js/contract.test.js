@@ -81,7 +81,7 @@ test('new methods preserve array shape and distinguish copy mode from data', asy
 	});
 	assert.equal((await chooser.getFiles())[0].data.byteLength, 1);
 	assert.equal('data' in (await chooser.getFilesMetadata())[0], false);
-	const copy = await chooser.getFileUri({accept: ' TEXT/PLAIN ', maxFileSize: 42, localOnly: true});
+	const copy = await chooser.getFileUri({accept: ' TEXT/PLAIN ', maxFileSize: 42, maxFiles: 1, maxTotalSize: 60, localOnly: true});
 	assert.equal('data' in copy, false);
 	await chooser.getFilesUri();
 	assert.deepEqual(calls.map(x => [x.action, x.options.mode, x.options.multiple]), [
@@ -90,14 +90,18 @@ test('new methods preserve array shape and distinguish copy mode from data', asy
 	assert.equal(calls[2].options.maxFileSize, 42);
 	assert.equal(calls[2].options.accept, 'text/plain');
 	assert.equal(calls[2].options.localOnly, true);
-	assert.equal(calls[3].options.maxFileSize, 0);
+	assert.equal(calls[2].options.maxFiles, 1);
+	assert.equal(calls[2].options.maxTotalSize, 60);
+	for (const name of ['maxFileSize', 'maxFiles', 'maxTotalSize']) assert.equal(calls[3].options[name], 0);
 });
 
 test('invalid copy options and foreign release identifiers never reach native code', async () => {
 	let calls = 0;
 	const chooser = loadChooser(() => { calls++; });
-	for (const maxFileSize of [-1, 1.1, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, '10', true]) {
-		await assert.rejects(chooser.getFileUri({maxFileSize}));
+	for (const name of ['maxFileSize', 'maxFiles', 'maxTotalSize']) {
+		for (const value of [-1, 1.1, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, '10', true, null]) {
+			for (const method of ['getFileUri', 'getFilesUri']) await assert.rejects(chooser[method]({[name]: value}));
+		}
 	}
 	for (const options of [[], 2, {localOnly: 'yes'}, {accept: 1}]) await assert.rejects(chooser.getFileUri(options));
 	for (const id of ['../source', 'file:///private/source', '', '00000000-0000-4000-8000-000000000001\n']) {
