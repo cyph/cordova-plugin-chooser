@@ -70,7 +70,7 @@ class Chooser: CDVPlugin {
 				return
 			}
 			let owner = self.generation
-			self.work.async {
+			ChooserTransaction.housekeeping.async {
 				let message: String
 				let status: CDVCommandStatus
 				do {
@@ -195,37 +195,35 @@ class Chooser: CDVPlugin {
 		}
 		let selection = unique
 		work.async {
-			var created: [URL] = []
 			do {
+				try request.checkCanceled()
+				if request.mode == .copy { request.attach(try ChooserTransaction.begin(in: self.cacheDirectory())) }
 				var results: [[String: Any]] = []
 				for url in selection {
 					if request.canceled { throw ChooserFailure(code: .readInterrupted, detail: "Request was reset.") }
-					results.append(try self.read(url: url, request: request, created: &created))
+					results.append(try self.read(url: url, request: request))
 				}
+				try request.checkCanceled()
+				try request.transaction?.commit()
 				let object: Any = request.multiple ? results as Any : results[0] as Any
 				let json = try JSONSerialization.data(withJSONObject: object, options: [])
 				guard let message = String(data: json, encoding: .utf8) else {
 					throw ChooserFailure(code: .readFailed, detail: "Could not serialize file result.")
 				}
-				let owned = created
 				DispatchQueue.main.async {
-					if self.active === request && !request.canceled {
-						self.complete(request, message: message, status: .ok)
-					}
-					else {
-						self.work.async { self.removePartialFiles(owned) }
-					}
+					let delivered = self.complete(request, message: message, status: .ok)
+					request.finishResources(delivered: delivered)
 				}
 			}
 			catch {
-				self.removePartialFiles(created)
+				request.finishResources(delivered: false)
 				let message = error.localizedDescription
 				DispatchQueue.main.async { self.complete(request, message: message, status: .error) }
 			}
 		}
 	}
 
-	private func read(url: URL, request: ChooserRequest, created: inout [URL]) throws -> [String: Any] {
+	private func read(url: URL, request: ChooserRequest) throws -> [String: Any] {
 		guard url.isFileURL else { throw ChooserFailure(code: .readFailed, detail: "Expected a file URL from the document picker.") }
 		let scoped = url.startAccessingSecurityScopedResource()
 		defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -259,14 +257,14 @@ class Chooser: CDVPlugin {
 					file["size"] = data.count
 				}
 				else if request.mode == .copy {
-					let destination = try ChooserFiles.create(in: self.cacheDirectory())
-					created.append(destination)
+					guard let transaction = request.transaction else { throw ChooserFailure(code: .cacheFailed, detail: "Missing copy transaction.") }
+					let destination = try transaction.create()
 					guard let input = InputStream(url: coordinated), let output = OutputStream(url: destination, append: false) else {
 						throw ChooserFailure(code: .copyFailed, detail: "Could not open file streams.")
 					}
 					let count = try ChooserFiles.copy(input: input, output: output, limit: request.limit, canceled: { request.canceled })
 					file["sourceUri"] = url.absoluteString
-					file["uri"] = destination.absoluteString
+					file["uri"] = try transaction.destination(for: destination).absoluteString
 					file["id"] = destination.lastPathComponent
 					file["size"] = count
 				}
@@ -280,19 +278,15 @@ class Chooser: CDVPlugin {
 		return file
 	}
 
-	private func removePartialFiles(_ urls: [URL]) {
-		for url in urls {
-			// Only generated paths from this request are passed here.
-			try? FileManager.default.removeItem(at: url)
-		}
-	}
-
-	private func complete(_ request: ChooserRequest, message: String, status: CDVCommandStatus) {
-		guard active === request, request.complete() else { return }
+	@discardableResult
+	private func complete(_ request: ChooserRequest, message: String, status: CDVCommandStatus) -> Bool {
+		guard active === request, request.complete() else { return false }
 		defer { request.finish() }
 		active = nil
 		picker = nil
+		guard commandDelegate != nil else { return false }
 		send(message, status, request.callback)
+		return true
 	}
 
 	private func send(_ message: String, _ status: CDVCommandStatus, _ callback: String) {

@@ -49,6 +49,10 @@ enum ChooserFiles {
 
 	static func create(in cache: URL) throws -> URL {
 		let root = try directory(in: cache)
+		return try createFile(in: root)
+	}
+
+	static func createFile(in root: URL) throws -> URL {
 		for _ in 0..<10 {
 			let file = root.appendingPathComponent(UUID().uuidString.lowercased())
 			// Exclusive creation cannot overwrite an existing entry, even on a UUID collision.
@@ -63,7 +67,7 @@ enum ChooserFiles {
 	}
 
 	static func release(in cache: URL, id: String) throws {
-		guard id.utf8.count == 36, id.range(of: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", options: .regularExpression) != nil else {
+		guard isID(id) else {
 			throw ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.")
 		}
 		let file = try directory(in: cache).appendingPathComponent(id)
@@ -76,5 +80,9 @@ enum ChooserFiles {
 			}
 			try FileManager.default.removeItem(at: file)
 		}
+	}
+
+	static func isID(_ id: String) -> Bool {
+		return id.utf8.count == 36 && id.range(of: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", options: .regularExpression) != nil
 	}
 }

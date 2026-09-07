@@ -13,6 +13,7 @@ final class ChooserRequest {
 	private var invalidated = false
 	private var currentState = ChooserRequestState.selecting
 	private var coordinator: NSFileCoordinator?
+	private var resource: ChooserTransaction?
 
 	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64) {
 		self.callback = callback
@@ -44,6 +45,23 @@ final class ChooserRequest {
 	func finish() {
 		lock.lock(); defer { lock.unlock() }
 		currentState = .finished
+	}
+	var transaction: ChooserTransaction? {
+		lock.lock(); defer { lock.unlock() }
+		return resource
+	}
+	func attach(_ transaction: ChooserTransaction) {
+		lock.lock(); defer { lock.unlock() }
+		resource = transaction
+	}
+	func finishResources(delivered: Bool) {
+		lock.lock()
+		let value = resource
+		resource = nil
+		lock.unlock()
+		if let transaction = value {
+			ChooserTransaction.housekeeping.async { transaction.finish(delivered: delivered) }
+		}
 	}
 	func coordinate(using value: NSFileCoordinator?) {
 		lock.lock()

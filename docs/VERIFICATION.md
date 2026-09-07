@@ -39,7 +39,7 @@ On a macOS host with Xcode command-line tools:
 
 ```sh
 mkdir -p .verification
-xcrun swiftc -swift-version 5 src/ios/ChooserError.swift src/ios/ChooserRequest.swift src/ios/ChooserFiles.swift tests/ios/main.swift -o .verification/chooser-foundation-fixtures
+xcrun swiftc -swift-version 5 src/ios/ChooserError.swift src/ios/ChooserRequest.swift src/ios/ChooserFiles.swift src/ios/ChooserTransaction.swift tests/ios/main.swift -o .verification/chooser-foundation-fixtures
 .verification/chooser-foundation-fixtures
 ```
 

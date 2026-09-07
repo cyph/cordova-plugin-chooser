@@ -17,6 +17,8 @@ final class ChooserFiles {
 
 	private ChooserFiles() {}
 
+	static boolean isId(String id) { return id != null && ID.matcher(id).matches(); }
+
 	static long copy(InputStream input, OutputStream output, long limit, BooleanSupplier canceled) throws IOException {
 		if (input == null) {
 			throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned no stream.");
@@ -73,7 +75,7 @@ final class ChooserFiles {
 	}
 
 	static void release(File cache, String id) throws IOException {
-		if (id == null || !ID.matcher(id).matches()) {
+		if (!isId(id)) {
 			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Expected a managed file id.");
 		}
 		File file = new File(directory(cache), id);

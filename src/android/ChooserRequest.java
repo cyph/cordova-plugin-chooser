@@ -24,6 +24,7 @@ final class ChooserRequest {
 	final CancellationSignal cancellation = new CancellationSignal();
 	volatile boolean canceled;
 	private State state = State.SELECTING;
+	private ChooserTransaction transaction;
 
 	ChooserRequest(CallbackContext callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, int code) {
 		this.callback = callback;
@@ -46,6 +47,13 @@ final class ChooserRequest {
 		return true;
 	}
 	synchronized void finish() { state = State.FINISHED; }
+	synchronized void attach(ChooserTransaction value) { transaction = value; }
+	synchronized ChooserTransaction transaction() { return transaction; }
+	void finishResources(boolean delivered) {
+		final ChooserTransaction value;
+		synchronized (this) { value = transaction; transaction = null; }
+		if (value != null) ChooserTransaction.HOUSEKEEPING.execute(() -> value.finish(delivered));
+	}
 	void cancel() {
 		synchronized (this) { canceled = true; state = State.FINISHED; }
 		// Never call provider cancellation while holding a plugin/request monitor.

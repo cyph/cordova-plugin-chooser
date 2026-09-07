@@ -45,7 +45,7 @@ public class Chooser extends CordovaPlugin {
 				final String id = args.getString(0);
 				final long owner;
 				synchronized (lock) { owner = generation; }
-				cordova.getThreadPool().execute(() -> {
+				ChooserTransaction.HOUSEKEEPING.execute(() -> {
 					PluginResult result;
 					try {
 						ChooserFiles.release(cordova.getContext().getCacheDir(), id);
@@ -202,14 +202,15 @@ public class Chooser extends CordovaPlugin {
 	}
 
 	private void read(ChooserRequest request, List<Uri> uris) {
-		List<File> created = new ArrayList<>();
 		boolean delivered = false;
 		try {
+			request.checkCanceled();
+			if (request.mode == ChooserRequest.Mode.COPY) request.attach(ChooserTransaction.begin(cordova.getContext().getCacheDir()));
 			ContentResolver resolver = cordova.getContext().getContentResolver();
 			JSONArray results = new JSONArray();
 			for (Uri uri : uris) {
 				if (request.canceled) {
-					throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "ChooserRequest was reset.");
+					throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Request was reset.");
 				}
 				// Current Android document providers use content URIs, not arbitrary private paths.
 				if (!"content".equalsIgnoreCase(uri.getScheme())) {
@@ -217,8 +218,7 @@ public class Chooser extends CordovaPlugin {
 				}
 				JSONObject result = metadata(resolver, uri, request);
 				if (request.mode == ChooserRequest.Mode.COPY) {
-					File file = ChooserFiles.create(cordova.getContext().getCacheDir());
-					created.add(file);
+					File file = request.transaction().create();
 					long size;
 					try (AssetFileDescriptor descriptor = open(resolver, uri, request);
 						 InputStream input = descriptor.createInputStream();
@@ -226,7 +226,7 @@ public class Chooser extends CordovaPlugin {
 						size = ChooserFiles.copy(input, output, request.limit, () -> request.canceled);
 					}
 					result.put("sourceUri", uri.toString());
-					result.put("uri", Uri.fromFile(file).toString());
+					result.put("uri", Uri.fromFile(request.transaction().destination(file)).toString());
 					result.put("id", file.getName());
 					result.put("size", size);
 				}
@@ -244,6 +244,8 @@ public class Chooser extends CordovaPlugin {
 				}
 				results.put(result);
 			}
+			request.checkCanceled();
+			if (request.transaction() != null) request.transaction().commit();
 			String json = request.multiple ? results.toString() : results.getJSONObject(0).toString();
 			delivered = finish(request, new PluginResult(PluginResult.Status.OK, json));
 		}
@@ -254,12 +256,7 @@ public class Chooser extends CordovaPlugin {
 			finish(request, new PluginResult(PluginResult.Status.ERROR, message(error)));
 		}
 		finally {
-			if (!delivered) {
-				for (File file : created) {
-					// A failed deletion leaves an OS-evictable private cache entry, never a source file.
-					file.delete();
-				}
-			}
+			request.finishResources(delivered);
 		}
 	}
 
