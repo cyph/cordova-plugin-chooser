@@ -14,6 +14,7 @@
 
 	<platform name="android">
 		<source-file src="src/android/Chooser.java" target-dir="src/com/cyph/cordova" />
+		<source-file src="src/android/ChooserFiles.java" target-dir="src/com/cyph/cordova" />
 
 		<config-file target="config.xml" parent="/*">
 			<feature name="Chooser">
