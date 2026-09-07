@@ -2,7 +2,7 @@
 
 Choose regular files using the system document picker in Cordova, or a file input in the browser.
 
-**These documents describe Unreleased APIs.** The published `1.3.2` package predates the new methods. See the [verification guide](docs/VERIFICATION.md) for supported checks.
+**Unreleased:** the published `1.3.2` package predates the new methods described here. Install this checkout to use them. See the [verification guide](docs/VERIFICATION.md) for development checks.
 
 ## Installation and compatibility
 
@@ -224,6 +224,6 @@ Browsers require a direct user gesture. Call the method in the click handler bef
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution practices and [docs/VERIFICATION.md](docs/VERIFICATION.md) for verification instructions. Attribution is retained in Git history and [NOTICE](NOTICE).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution practices and [docs/VERIFICATION.md](docs/VERIFICATION.md) for development checks. Attribution is retained in Git history and [NOTICE](NOTICE).
 
 Apache-2.0; see [LICENSE](LICENSE).

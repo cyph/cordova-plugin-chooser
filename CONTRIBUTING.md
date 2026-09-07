@@ -10,6 +10,6 @@ Add regression cases at the contract or resource boundary. The current fixtures 
 
 For imported contributions, preserve authorship with `git cherry-pick -x` when practical. For adapted ports, identify the contributor and original immutable commit URL in the commit body, and describe the adaptations. Retain copyright/license notices. Source attribution is separate from claiming a fork's entire implementation is sound.
 
-PR heads accepted for GitHub merge recognition must remain ancestors through genuine merge commits. Do not squash/rebase away accepted PR ancestry during upstream integration. Unaccepted PRs need explicit dispositions rather than cosmetic merge commits.
+PR heads accepted for GitHub merge recognition must remain ancestors through genuine merge commits. Do not squash/rebase away accepted PR ancestry during upstream handoff. Unaccepted PRs need explicit dispositions rather than cosmetic merge commits.
 
 Version bumps, tagging, publication and upstream issue/PR updates belong to release preparation after verification.

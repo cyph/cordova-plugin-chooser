@@ -1,5 +1,7 @@
 # Development verification
 
+Run these checks in a provisioned development environment and record the exact revision, toolchain and outcomes. Source inspection, host fixtures and native integration establish different things; report their results separately.
+
 ## JavaScript and declarations
 
 From a repository checkout with a maintained Node.js version supporting `node:test` (Node 22+ is a suitable shared baseline):
@@ -16,11 +18,11 @@ For typings, provision the pinned development dependency first, then:
 npm run test:types
 ```
 
-The usage fixture checks all methods, Promise/callback cancellation unions, metadata without data fields and invalid calls using `@ts-expect-error`.
+The usage fixture checks all methods, Promise/callback cancellation unions, metadata without data fields and invalid calls using `@ts-expect-error`. Generate and review a package lock with the chosen npm version when establishing a reproducible CI environment; use `npm ci` thereafter.
 
 ## Android host fixtures
 
-Prerequisites: JDK 17, Gradle compatible with AGP 8.10.1 (8.14.2 is the planned baseline), Android SDK platforms 35/36, corresponding build tools, and dependency access/cache.
+Prerequisites: JDK 17, Gradle compatible with AGP 8.10.1 (8.14.2 is a suitable baseline), Android SDK platforms 35/36, corresponding build tools, and dependency access/cache.
 
 ```sh
 gradle -p tests/android -PcordovaVersion=14.0.0 -PcompileSdk=35 testDebugUnitTest
@@ -69,6 +71,8 @@ cordova build ios --debug --device -- --buildFlag="CODE_SIGNING_ALLOWED=NO"
 
 Record any required project-specific adjustment to that command. Check both Swift files, the `@objc(Chooser)` registration, conditional Cordova imports, `.ok`/`.error` status names, iOS 14 availability guards, fallback UTIs and minimum deployment targets. Verify installation without the old Swift-support plugin. Do not count a Foundation-only build as this integration lane.
 
+Reference Cordova's versioned [7.1.1 headers](https://github.com/apache/cordova-ios/tree/7.1.1/CordovaLib/include/Cordova) and [8.0.0 headers](https://github.com/apache/cordova-ios/tree/8.0.0/CordovaLib/include/Cordova), plus [Android 14 interface definitions](https://github.com/apache/cordova-android/blob/14.0.0/framework/src/org/apache/cordova/CordovaInterface.java). Check Swift imports and availability against every declared minimum platform version.
+
 ## Real-browser fixture
 
 In a disposable Cordova browser app, install this checkout and replace the app's `www` files with `tests/fixture-app/www`. Prepare and serve the app through the Cordova browser workflow. The fixture uses the actual registered plugin and native file input, not the mocked DOM suite.
@@ -77,7 +81,7 @@ In current Chrome, Edge, Firefox and Safari, record observations for direct clic
 
 ## Native lifecycle/provider scenarios
 
-`tests/native-cases.json` is the shared scenario fixture; `tests/fixture-app/www` is the manual driver. The executable Android host tests and Foundation tests cover subsets, as described above. UIKit/file-provider, rotation, genuine process death, system cancellation UI, cloud access, filesystem exhaustion and OS eviction scenarios remain integration work.
+`tests/native-cases.json` is the shared scenario fixture; `tests/fixture-app/www` is the manual driver. The executable Android host tests and Foundation tests cover subsets, as described above. UIKit/file-provider, rotation, genuine process death, system cancellation UI, cloud access, filesystem exhaustion and OS eviction scenarios remain integration work. Real-device and emulator checks are separate from the host/build checks above.
 
 In an integration environment, adapt the scenarios to its provider/test doubles. Include inaccurate metadata size, delayed/offline providers, blocking reads returning after reset, duplicate display names, second-file batch failure, partial output writes, revoked security-scoped access, swipe dismissal, app-restricted orientation masks, rapid reopen and outstanding-picker activity restoration. Hash source/copy bytes and inspect the dedicated cache before/after each failure. Never use real private user files as destructive fixtures.
 
@@ -85,6 +89,6 @@ In an integration environment, adapt the scenarios to its provider/test doubles.
 
 Inspect `npm pack --dry-run` output and install the produced package into the disposable apps. Confirm `main`, `types`, `plugin.xml`, both native helper files, browser proxy, documentation and notices are shipped. The package must not include test build products or research downloads.
 
-Before eventual upstream integration, re-fetch any changed PR heads and review them. Preserve the accepted heads and local merge commits: do not squash or rebase them away. GitHub's [indirect merge behavior](https://docs.github.com/en/pull-requests/reference/pull-request-merges#indirect-merges) depends on those commits reaching the appropriate upstream base/default branch. A local merge or a push to a private branch alone does not close upstream PRs.
+Preserve original PR ancestry during upstream integration. GitHub's [indirect merge behavior](https://docs.github.com/en/pull-requests/reference/pull-request-merges#indirect-merges) requires those commits to reach the appropriate upstream base/default branch.
 
 Record each lane as **not run**, **failed** (with evidence), or **passed** (with exact revision/environment). No build, test or release badge should imply verification until the corresponding lane actually succeeds.

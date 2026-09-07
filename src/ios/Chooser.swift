@@ -42,7 +42,7 @@ private final class ChooserRequest {
 private final class ChooserDocumentPicker: UIDocumentPickerViewController {
 	var request: ChooserRequest?
 
-	// From @herdwatch-apps/@MaximBelov: let UIKit intersect with the app's mask.
+	// Let UIKit intersect with the app's supported orientation mask.
 	override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .all }
 }
 
@@ -189,7 +189,7 @@ class Chooser: CDVPlugin {
 			}
 			return "public.item"
 		}
-		// @DavidSousa's compatibility aliases cover older iWork document registrations.
+		// Compatibility aliases cover older iWork document registrations.
 		for (legacy, alternate) in [
 			("com.apple.iwork.pages.sffpages", "com.apple.iwork.pages.pages"),
 			("com.apple.iwork.numbers.sffnumbers", "com.apple.iwork.numbers.numbers")

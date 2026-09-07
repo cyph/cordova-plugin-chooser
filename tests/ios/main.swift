@@ -1,5 +1,4 @@
 // Host-only Foundation fixtures. Compile with the production ChooserFiles.swift on macOS.
-// This file has been written and statically reviewed; execution is deferred.
 import Foundation
 
 enum FixtureError: Error { case failed(String) }

@@ -1,4 +1,3 @@
-/* Browser platform contributed by @andreszs; multi-selection follows the native API. */
 var active = null;
 var owned = Object.create(null);
 var idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
