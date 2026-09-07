@@ -79,7 +79,10 @@ function withCallbacks(promise, success, failure) {
 	return promise;
 }
 
-function callPicker(accept, success, failure, mode, multiple, copy) {
+function callPicker(accept, success, failure, configuration) {
+	var mode = configuration.mode;
+	var multiple = configuration.multiple;
+	var copy = mode === 'copy';
 	if (typeof accept === 'function') {
 		failure = success;
 		success = accept;
@@ -146,22 +149,22 @@ function callPicker(accept, success, failure, mode, multiple, copy) {
 
 module.exports = {
 	getFile: function (accept, success, failure) {
-		return callPicker(accept, success, failure, 'data', false, false);
+		return callPicker(accept, success, failure, {mode: 'data', multiple: false});
 	},
 	getFileMetadata: function (accept, success, failure) {
-		return callPicker(accept, success, failure, 'metadata', false, false);
+		return callPicker(accept, success, failure, {mode: 'metadata', multiple: false});
 	},
 	getFiles: function (accept, success, failure) {
-		return callPicker(accept, success, failure, 'data', true, false);
+		return callPicker(accept, success, failure, {mode: 'data', multiple: true});
 	},
 	getFilesMetadata: function (accept, success, failure) {
-		return callPicker(accept, success, failure, 'metadata', true, false);
+		return callPicker(accept, success, failure, {mode: 'metadata', multiple: true});
 	},
 	getFileUri: function (options, success, failure) {
-		return callPicker(options, success, failure, 'copy', false, true);
+		return callPicker(options, success, failure, {mode: 'copy', multiple: false});
 	},
 	getFilesUri: function (options, success, failure) {
-		return callPicker(options, success, failure, 'copy', true, true);
+		return callPicker(options, success, failure, {mode: 'copy', multiple: true});
 	},
 	releaseFile: function (id, success, failure) {
 		var result = new Promise(function (resolve, reject) {

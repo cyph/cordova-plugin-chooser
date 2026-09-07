@@ -19,13 +19,13 @@ final class ChooserFiles {
 
 	static long copy(InputStream input, OutputStream output, long limit, BooleanSupplier canceled) throws IOException {
 		if (input == null) {
-			throw new IOException("READ_FAILED: Provider returned no stream.");
+			throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned no stream.");
 		}
 		byte[] buffer = new byte[64 * 1024];
 		long total = 0;
 		while (true) {
 			if (canceled.getAsBoolean()) {
-				throw new IOException("READ_INTERRUPTED: Request was reset.");
+				throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Request was reset.");
 			}
 			int count = input.read(buffer);
 			if (count == -1) {
@@ -40,10 +40,10 @@ final class ChooserFiles {
 				count = 1;
 			}
 			if (total > MAX_SAFE_INTEGER - count || (limit > 0 && count > limit - total)) {
-				throw new IOException("FILE_TOO_LARGE: Selected file exceeds the byte limit.");
+				throw new ChooserError(ChooserError.Code.FILE_TOO_LARGE, "Selected file exceeds the byte limit.");
 			}
 			if (canceled.getAsBoolean()) {
-				throw new IOException("READ_INTERRUPTED: Request was reset.");
+				throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Request was reset.");
 			}
 			output.write(buffer, 0, count);
 			total += count;
@@ -53,10 +53,10 @@ final class ChooserFiles {
 	static File directory(File cache) throws IOException {
 		File root = new File(cache.getCanonicalFile(), "cordova-plugin-chooser");
 		if (!root.getCanonicalFile().equals(root.getAbsoluteFile())) {
-			throw new IOException("CACHE_FAILED: Cache directory must not be a symbolic link.");
+			throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cache directory must not be a symbolic link.");
 		}
 		if (!root.isDirectory() && !root.mkdirs()) {
-			throw new IOException("CACHE_FAILED: Cannot create private cache directory.");
+			throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot create private cache directory.");
 		}
 		return root;
 	}
@@ -69,19 +69,19 @@ final class ChooserFiles {
 				return file;
 			}
 		}
-		throw new IOException("CACHE_FAILED: Cannot allocate a unique cache file.");
+		throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot allocate a unique cache file.");
 	}
 
 	static void release(File cache, String id) throws IOException {
 		if (id == null || !ID.matcher(id).matches()) {
-			throw new IOException("INVALID_ARGUMENT: Expected a managed file id.");
+			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Expected a managed file id.");
 		}
 		File file = new File(directory(cache), id);
 		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || (file.exists() && !file.isFile())) {
-			throw new IOException("INVALID_ARGUMENT: Not a managed regular file.");
+			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Not a managed regular file.");
 		}
 		if (file.exists() && !file.delete()) {
-			throw new IOException("RELEASE_FAILED: Could not remove the cached file.");
+			throw new ChooserError(ChooserError.Code.RELEASE_FAILED, "Could not remove the cached file.");
 		}
 	}
 }

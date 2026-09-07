@@ -39,7 +39,7 @@ On a macOS host with Xcode command-line tools:
 
 ```sh
 mkdir -p .verification
-xcrun swiftc -swift-version 5 src/ios/ChooserFiles.swift tests/ios/main.swift -o .verification/chooser-foundation-fixtures
+xcrun swiftc -swift-version 5 src/ios/ChooserError.swift src/ios/ChooserRequest.swift src/ios/ChooserFiles.swift tests/ios/main.swift -o .verification/chooser-foundation-fixtures
 .verification/chooser-foundation-fixtures
 ```
 
@@ -61,7 +61,7 @@ cordova prepare android
 cordova build android --debug
 ```
 
-Repeat in a separate application for `android@15`. Inspect the generated native project: both Java sources and the `Chooser` feature must be registered, no storage/media permissions or largeHeap edit must be introduced by this plugin, and remove/re-add must not leave stale source entries. Build with each platform's standard settings, including target SDK. These are build-only lanes; no emulator/device launch is required.
+Repeat in a separate application for `android@15`. Inspect the generated native project: all Java sources and the `Chooser` feature must be registered, no storage/media permissions or largeHeap edit must be introduced by this plugin, and remove/re-add must not leave stale source entries. Build with each platform's standard settings, including target SDK. These are build-only lanes; no emulator/device launch is required.
 
 On macOS, repeat with separate `ios@7` and `ios@8` applications. Cordova iOS 7 requires an SDK/toolchain capable of its iOS 11 deployment fallback; Cordova iOS 8 starts at iOS 13. See the [official platform requirements](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) and the [iOS 8 announcement](https://cordova.apache.org/announcements/2025/11/23/cordova-ios-8.0.0.html). Build a generic device target with signing disabled in the disposable project; do not provision signing accounts or deploy to a device. A typical Cordova command is:
 
@@ -69,7 +69,7 @@ On macOS, repeat with separate `ios@7` and `ios@8` applications. Cordova iOS 7 r
 cordova build ios --debug --device -- --buildFlag="CODE_SIGNING_ALLOWED=NO"
 ```
 
-Record any required project-specific adjustment to that command. Check both Swift files, the `@objc(Chooser)` registration, conditional Cordova imports, `.ok`/`.error` status names, iOS 14 availability guards, fallback UTIs and minimum deployment targets. Verify installation without the old Swift-support plugin. Do not count a Foundation-only build as this integration lane.
+Record any required project-specific adjustment to that command. Check all Swift sources, the `@objc(Chooser)` registration, conditional Cordova imports, `.ok`/`.error` status names, iOS 14 availability guards, fallback UTIs and minimum deployment targets. Verify installation without the old Swift-support plugin. Do not count a Foundation-only build as this integration lane.
 
 Reference Cordova's versioned [7.1.1 headers](https://github.com/apache/cordova-ios/tree/7.1.1/CordovaLib/include/Cordova) and [8.0.0 headers](https://github.com/apache/cordova-ios/tree/8.0.0/CordovaLib/include/Cordova), plus [Android 14 interface definitions](https://github.com/apache/cordova-android/blob/14.0.0/framework/src/org/apache/cordova/CordovaInterface.java). Check Swift imports and availability against every declared minimum platform version.
 
@@ -87,7 +87,7 @@ In an integration environment, adapt the scenarios to its provider/test doubles.
 
 ## Packaging checks
 
-Inspect `npm pack --dry-run` output and install the produced package into the disposable apps. Confirm `main`, `types`, `plugin.xml`, both native helper files, browser proxy, documentation and notices are shipped. The package must not include test build products or research downloads.
+Inspect `npm pack --dry-run` output and install the produced package into the disposable apps. Confirm `main`, `types`, `plugin.xml`, all native helpers, browser proxy, documentation and notices are shipped. The package must not include test build products or research downloads.
 
 Preserve original PR ancestry during upstream integration. GitHub's [indirect merge behavior](https://docs.github.com/en/pull-requests/reference/pull-request-merges#indirect-merges) requires those commits to reach the appropriate upstream base/default branch.
 

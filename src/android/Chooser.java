@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -32,31 +33,10 @@ import org.json.JSONObject;
 
 public class Chooser extends CordovaPlugin {
 	private final Object lock = new Object();
-	private Request active;
+	private ChooserRequest active;
 	private int nextRequestCode = 1000;
 	private long generation;
 
-	private static final class Request {
-		final CallbackContext callback;
-		final String accept;
-		final String mode;
-		final boolean multiple;
-		final boolean localOnly;
-		final long limit;
-		final int code;
-		volatile boolean canceled;
-		boolean processing;
-
-		Request(CallbackContext callback, String accept, String mode, boolean multiple, boolean localOnly, long limit, int code) {
-			this.callback = callback;
-			this.accept = accept;
-			this.mode = mode;
-			this.multiple = multiple;
-			this.localOnly = localOnly;
-			this.limit = limit;
-			this.code = code;
-		}
-	}
 
 	@Override
 	public boolean execute(String action, JSONArray args, CallbackContext callback) {
@@ -80,7 +60,7 @@ public class Chooser extends CordovaPlugin {
 				});
 			}
 			catch (Exception error) {
-				callback.error("INVALID_ARGUMENT: Expected a managed file id.");
+				callback.error(ChooserError.message(ChooserError.Code.INVALID_ARGUMENT, "Expected a managed file id."));
 			}
 			return true;
 		}
@@ -89,7 +69,7 @@ public class Chooser extends CordovaPlugin {
 		}
 		try {
 			String accept;
-			String mode;
+			ChooserRequest.Mode mode;
 			boolean multiple = false;
 			boolean localOnly = true;
 			long limit = 0;
@@ -98,7 +78,7 @@ public class Chooser extends CordovaPlugin {
 					throw new JSONException("Expected a MIME filter and includeData boolean.");
 				}
 				accept = args.getString(0);
-				mode = args.getBoolean(1) ? "data" : "metadata";
+				mode = args.getBoolean(1) ? ChooserRequest.Mode.DATA : ChooserRequest.Mode.METADATA;
 			}
 			else {
 				JSONObject options = args.getJSONObject(0);
@@ -107,7 +87,7 @@ public class Chooser extends CordovaPlugin {
 					throw new JSONException("Invalid picker option types.");
 				}
 				accept = options.getString("accept");
-				mode = options.getString("mode");
+				mode = ChooserRequest.Mode.parse(options.getString("mode"));
 				multiple = options.getBoolean("multiple");
 				localOnly = options.getBoolean("localOnly");
 				Object value = options.get("maxFileSize");
@@ -119,22 +99,19 @@ public class Chooser extends CordovaPlugin {
 					throw new JSONException("Invalid byte limit.");
 				}
 				limit = (long) numeric;
-				if (!"data".equals(mode) && !"metadata".equals(mode) && !"copy".equals(mode)) {
-					throw new JSONException("Unknown read mode.");
-				}
 			}
 			accept = accept.toLowerCase(Locale.ROOT).replaceAll("\\s", "");
 			if (accept.isEmpty()) {
 				accept = "*/*";
 			}
-			final Request request;
+			final ChooserRequest request;
 			synchronized (lock) {
 				if (active != null) {
-					callback.error("BUSY: A file picker is already active.");
+					callback.error(ChooserError.message(ChooserError.Code.BUSY, "A file picker is already active."));
 					return true;
 				}
 				nextRequestCode = nextRequestCode == 32767 ? 1000 : nextRequestCode + 1;
-				request = new Request(callback, accept, mode, multiple, localOnly, limit, nextRequestCode);
+				request = new ChooserRequest(callback, accept, mode, multiple, localOnly, limit, nextRequestCode);
 				active = request;
 				PluginResult pending = new PluginResult(PluginResult.Status.NO_RESULT);
 				pending.setKeepCallback(true);
@@ -144,16 +121,16 @@ public class Chooser extends CordovaPlugin {
 				cordova.getActivity().runOnUiThread(() -> launch(request));
 			}
 			catch (Exception error) {
-				finish(request, new PluginResult(PluginResult.Status.ERROR, "PICKER_FAILED: " + message(error)));
+				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "") + message(error)));
 			}
 		}
 		catch (Exception error) {
-			callback.error("INVALID_ARGUMENT: " + message(error));
+			callback.error(ChooserError.message(ChooserError.Code.INVALID_ARGUMENT, "") + message(error));
 		}
 		return true;
 	}
 
-	private void launch(Request request) {
+	private void launch(ChooserRequest request) {
 		synchronized (lock) {
 			if (active != request || request.canceled) {
 				return;
@@ -172,27 +149,26 @@ public class Chooser extends CordovaPlugin {
 				cordova.startActivityForResult(this, Intent.createChooser(intent, "Select File"), request.code);
 			}
 			catch (Exception error) {
-				finish(request, new PluginResult(PluginResult.Status.ERROR, "PICKER_FAILED: " + message(error)));
+				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "") + message(error)));
 			}
 		}
 	}
 
 	@Override
 	public void onActivityResult(int requestCode, int resultCode, Intent intent) {
-		final Request request;
+		final ChooserRequest request;
 		synchronized (lock) {
 			request = active;
-			if (request == null || request.code != requestCode || request.processing || request.canceled) {
+			if (request == null || request.code != requestCode || !request.process()) {
 				return;
 			}
-			request.processing = true;
 		}
 		if (resultCode == Activity.RESULT_CANCELED) {
 			finish(request, new PluginResult(PluginResult.Status.OK, "RESULT_CANCELED"));
 			return;
 		}
 		if (resultCode != Activity.RESULT_OK) {
-			finish(request, new PluginResult(PluginResult.Status.ERROR, "PICKER_FAILED: Unexpected activity result " + resultCode));
+			finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, "Unexpected activity result ") + resultCode));
 			return;
 		}
 		try {
@@ -203,7 +179,7 @@ public class Chooser extends CordovaPlugin {
 				for (int i = 0; i < clip.getItemCount(); i++) {
 					Uri uri = clip.getItemAt(i).getUri();
 					if (uri == null) {
-						throw new IOException("READ_FAILED: Provider returned an empty selection.");
+						throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned an empty selection.");
 					}
 					selected.add(uri);
 					if (!request.multiple) {
@@ -215,7 +191,7 @@ public class Chooser extends CordovaPlugin {
 				selected.add(intent.getData());
 			}
 			if (selected.isEmpty()) {
-				throw new IOException("READ_FAILED: Provider returned no file URI.");
+				throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned no file URI.");
 			}
 			List<Uri> uris = new ArrayList<>(selected);
 			cordova.getThreadPool().execute(() -> read(request, uris));
@@ -225,7 +201,7 @@ public class Chooser extends CordovaPlugin {
 		}
 	}
 
-	private void read(Request request, List<Uri> uris) {
+	private void read(ChooserRequest request, List<Uri> uris) {
 		List<File> created = new ArrayList<>();
 		boolean delivered = false;
 		try {
@@ -233,18 +209,19 @@ public class Chooser extends CordovaPlugin {
 			JSONArray results = new JSONArray();
 			for (Uri uri : uris) {
 				if (request.canceled) {
-					throw new IOException("READ_INTERRUPTED: Request was reset.");
+					throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "ChooserRequest was reset.");
 				}
 				// Current Android document providers use content URIs, not arbitrary private paths.
 				if (!"content".equalsIgnoreCase(uri.getScheme())) {
-					throw new IOException("READ_FAILED: Expected a content URI from the document provider.");
+					throw new ChooserError(ChooserError.Code.READ_FAILED, "Expected a content URI from the document provider.");
 				}
-				JSONObject result = metadata(resolver, uri);
-				if ("copy".equals(request.mode)) {
+				JSONObject result = metadata(resolver, uri, request);
+				if (request.mode == ChooserRequest.Mode.COPY) {
 					File file = ChooserFiles.create(cordova.getContext().getCacheDir());
 					created.add(file);
 					long size;
-					try (InputStream input = resolver.openInputStream(uri);
+					try (AssetFileDescriptor descriptor = open(resolver, uri, request);
+						 InputStream input = descriptor.createInputStream();
 						 FileOutputStream output = new FileOutputStream(file)) {
 						size = ChooserFiles.copy(input, output, request.limit, () -> request.canceled);
 					}
@@ -253,11 +230,12 @@ public class Chooser extends CordovaPlugin {
 					result.put("id", file.getName());
 					result.put("size", size);
 				}
-				else if ("data".equals(request.mode)) {
+				else if (request.mode == ChooserRequest.Mode.DATA) {
 					// Encode one continuous stream so padding only occurs at EOF.
 					ByteArrayOutputStream encoded = new ByteArrayOutputStream();
 					long size;
-					try (InputStream input = resolver.openInputStream(uri);
+					try (AssetFileDescriptor descriptor = open(resolver, uri, request);
+						 InputStream input = descriptor.createInputStream();
 						 Base64OutputStream output = new Base64OutputStream(encoded, Base64.NO_WRAP)) {
 						size = ChooserFiles.copy(input, output, 0, () -> request.canceled);
 					}
@@ -270,7 +248,7 @@ public class Chooser extends CordovaPlugin {
 			delivered = finish(request, new PluginResult(PluginResult.Status.OK, json));
 		}
 		catch (OutOfMemoryError error) {
-			finish(request, new PluginResult(PluginResult.Status.ERROR, "OUT_OF_MEMORY: Use getFileUri() for large files."));
+			finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.OUT_OF_MEMORY, "Use getFileUri() for large files.")));
 		}
 		catch (Exception error) {
 			finish(request, new PluginResult(PluginResult.Status.ERROR, message(error)));
@@ -285,10 +263,18 @@ public class Chooser extends CordovaPlugin {
 		}
 	}
 
-	private JSONObject metadata(ContentResolver resolver, Uri uri) throws JSONException {
+	private AssetFileDescriptor open(ContentResolver resolver, Uri uri, ChooserRequest request) throws IOException {
+		request.checkCanceled();
+		AssetFileDescriptor descriptor = resolver.openAssetFileDescriptor(uri, "r", request.cancellation);
+		if (descriptor == null) throw new ChooserError(ChooserError.Code.READ_FAILED, "Provider returned no stream.");
+		return descriptor;
+	}
+
+	private JSONObject metadata(ContentResolver resolver, Uri uri, ChooserRequest request) throws JSONException, IOException {
+		request.checkCanceled();
 		String name = "File";
 		Object size = JSONObject.NULL;
-		try (Cursor cursor = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE}, null, null, null)) {
+		try (Cursor cursor = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE}, null, null, null, request.cancellation)) {
 			if (cursor != null && cursor.moveToFirst()) {
 				int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
 				int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
@@ -309,6 +295,7 @@ public class Chooser extends CordovaPlugin {
 		catch (RuntimeException ignored) {
 			// Optional provider metadata may be absent, unsupported, or unavailable offline.
 		}
+		request.checkCanceled();
 		String type = null;
 		try {
 			type = resolver.getType(uri);
@@ -326,9 +313,9 @@ public class Chooser extends CordovaPlugin {
 		return result;
 	}
 
-	private boolean finish(Request request, PluginResult result) {
+	private boolean finish(ChooserRequest request, PluginResult result) {
 		synchronized (lock) {
-			if (active != request || request.canceled) {
+			if (active != request || !request.complete()) {
 				return false;
 			}
 			try {
@@ -336,13 +323,14 @@ public class Chooser extends CordovaPlugin {
 				return true;
 			}
 			finally {
+				request.finish();
 				active = null;
 			}
 		}
 	}
 
 	private static String message(Exception error) {
-		return error.getMessage() == null ? "READ_FAILED: File operation failed." : error.getMessage();
+		return error.getMessage() == null ? ChooserError.message(ChooserError.Code.READ_FAILED, "File operation failed.") : error.getMessage();
 	}
 
 	@Override
@@ -353,7 +341,7 @@ public class Chooser extends CordovaPlugin {
 			}
 			Bundle state = new Bundle();
 			state.putString("accept", active.accept);
-			state.putString("mode", active.mode);
+			state.putString("mode", active.mode.wire);
 			state.putBoolean("multiple", active.multiple);
 			state.putBoolean("localOnly", active.localOnly);
 			state.putLong("limit", active.limit);
@@ -365,28 +353,28 @@ public class Chooser extends CordovaPlugin {
 	@Override
 	public void onRestoreStateForActivityResult(Bundle state, CallbackContext callback) {
 		if (state == null) {
-			callback.error("READ_INTERRUPTED: Missing picker state.");
+			callback.error(ChooserError.message(ChooserError.Code.READ_INTERRUPTED, "Missing picker state."));
 			return;
 		}
+		ChooserRequest previous;
 		synchronized (lock) {
-			if (active != null) {
-				active.canceled = true;
-			}
+			previous = active;
 			nextRequestCode = state.getInt("code", 1001);
-			active = new Request(callback, state.getString("accept", "*/*"), state.getString("mode", "metadata"),
+			active = new ChooserRequest(callback, state.getString("accept", "*/*"), ChooserRequest.Mode.parse(state.getString("mode", "metadata")),
 				state.getBoolean("multiple"), state.getBoolean("localOnly"), state.getLong("limit"), nextRequestCode);
 		}
+		if (previous != null) previous.cancel();
 	}
 
 	@Override
 	public void onReset() {
+		ChooserRequest previous;
 		synchronized (lock) {
 			generation++;
-			if (active != null) {
-				active.canceled = true;
-				active = null;
-			}
+			previous = active;
+			active = null;
 		}
+		if (previous != null) previous.cancel();
 	}
 
 	@Override

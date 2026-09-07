@@ -1,3 +1,5 @@
+function errorMessage(code, detail) { return code + ': ' + detail; }
+
 var active = null;
 var owned = Object.create(null);
 var idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -16,7 +18,7 @@ function newId() {
 			return id;
 		}
 	}
-	throw new Error('CACHE_FAILED: Could not allocate a managed file id.');
+	throw new Error(errorMessage('CACHE_FAILED', 'Could not allocate a managed file id.'));
 }
 
 function revoke(id) {
@@ -28,14 +30,14 @@ function revoke(id) {
 
 function select(success, failure, options) {
 	if (active) {
-		failure('BUSY: A file picker is already active.');
+		failure(errorMessage('BUSY', 'A file picker is already active.'));
 		return;
 	}
 	if (!options || typeof options.accept !== 'string' ||
 		['data', 'metadata', 'copy'].indexOf(options.mode) < 0 ||
 		typeof options.multiple !== 'boolean' ||
 		!Number.isSafeInteger(options.maxFileSize) || options.maxFileSize < 0) {
-		failure('INVALID_ARGUMENT: Invalid picker options.');
+		failure(errorMessage('INVALID_ARGUMENT', 'Invalid picker options.'));
 		return;
 	}
 
@@ -78,12 +80,12 @@ function select(success, failure, options) {
 	function readData(file) {
 		return new Promise(function (resolve, reject) {
 			reader = new FileReader();
-			reader.onerror = function () { reject(new Error('READ_FAILED: Could not read the selected file.')); };
-			reader.onabort = function () { reject(new Error('READ_INTERRUPTED: File reading was aborted.')); };
+			reader.onerror = function () { reject(new Error(errorMessage('READ_FAILED', 'Could not read the selected file.'))); };
+			reader.onabort = function () { reject(new Error(errorMessage('READ_INTERRUPTED', 'File reading was aborted.'))); };
 			reader.onload = function () {
 				var value = reader.result;
 				if (typeof value !== 'string' || value.indexOf(',') < 0) {
-					reject(new Error('READ_FAILED: Invalid FileReader result.'));
+					reject(new Error(errorMessage('READ_FAILED', 'Invalid FileReader result.')));
 					return;
 				}
 				resolve(value.slice(value.indexOf(',') + 1));
@@ -113,7 +115,7 @@ function select(success, failure, options) {
 				}
 				var file = files[i];
 				if (options.mode === 'copy' && options.maxFileSize > 0 && file.size > options.maxFileSize) {
-					throw new Error('FILE_TOO_LARGE: Selected file exceeds the byte limit.');
+					throw new Error(errorMessage('FILE_TOO_LARGE', 'Selected file exceeds the byte limit.'));
 				}
 				var id = newId();
 				var uri = URL.createObjectURL(file);
@@ -132,7 +134,7 @@ function select(success, failure, options) {
 			finish(null, JSON.stringify(options.multiple ? results : results[0]));
 		}
 		catch (error) {
-			finish(error.message || 'READ_FAILED: File operation failed.');
+			finish(error.message || errorMessage('READ_FAILED', 'File operation failed.'));
 		}
 	}
 
@@ -150,14 +152,14 @@ function select(success, failure, options) {
 		input.click();
 	}
 	catch (error) {
-		finish('PICKER_FAILED: ' + error.message);
+		finish(errorMessage('PICKER_FAILED', '') + error.message);
 	}
 }
 
 module.exports = {
 	getFile: function (success, failure, args) {
 		if (!Array.isArray(args) || typeof args[0] !== 'string' || typeof args[1] !== 'boolean') {
-			failure('INVALID_ARGUMENT: Expected a MIME filter and includeData boolean.');
+			failure(errorMessage('INVALID_ARGUMENT', 'Expected a MIME filter and includeData boolean.'));
 			return;
 		}
 		select(success, failure, {accept: args[0], mode: args[1] ? 'data' : 'metadata', multiple: false, maxFileSize: 0});
@@ -168,7 +170,7 @@ module.exports = {
 	releaseFile: function (success, failure, args) {
 		var id = args && args[0];
 		if (typeof id !== 'string' || id.length !== 36 || !idPattern.test(id)) {
-			failure('INVALID_ARGUMENT: Expected a managed file id.');
+			failure(errorMessage('INVALID_ARGUMENT', 'Expected a managed file id.'));
 			return;
 		}
 		revoke(id);
