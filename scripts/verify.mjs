@@ -60,6 +60,7 @@ function staticChecks() {
 		}
 	}
 	run("git", ["diff", "--check"]);
+	run("git", ["diff", "--cached", "--check"]);
 }
 
 function pack() {

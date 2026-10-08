@@ -1,0 +1,78 @@
+# Keep patched versions even after temporary maturity exceptions are retired.
+[constraints."npm:uuid"]
+range = ">=11.1.1"
+reason = "GHSA-w5hq-g745-h8pq; xcode uses the retained CommonJS uuid.v4 API."
+[constraints."npm:qs"]
+range = ">=6.16.0"
+reason = "GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g."
+[constraints."npm:ip-address"]
+range = ">=10.7.1"
+reason = "GHSA-j6r3-76f7-8jcv and GHSA-h3mg-xc3c-68pw."
+[constraints."npm:brace-expansion"]
+range = ">=1.1.21 <2 || >=2.1.7 <3 || >=3.0.9 <4 || >=5.0.12"
+reason = "GHSA-q2hr-2g5m-vwhr; retain patched legacy and current API families."
+[constraints."npm:http-cache-semantics"]
+range = ">=4.3.0"
+reason = "GHSA-ch52-4w7c-c8xp."
+[constraints."npm:proxy-addr"]
+range = ">=2.0.8"
+reason = "GHSA-jqcg-44mw-7w3h."
+[constraints."npm:compression"]
+range = ">=1.8.2"
+reason = "GHSA-vc2v-76pw-4v95."
+
+[javascript.override_constraints."xcode>uuid"]
+range = "^11.1.1"
+reason = "xcode's uuid.v4 call retains CommonJS support with the advisory fix."
+[javascript.override_constraints.qs]
+range = "^6.16.0"
+reason = "Use the advisory fix even when Express retains an older minor bound."
+[javascript.override_constraints."brace-expansion@<2"]
+range = "^1.1.21"
+reason = "Patch minimatch's legacy callable export without changing its major API."
+[javascript.override_constraints."brace-expansion@>=4"]
+range = "^5.0.12"
+reason = "Patch the named-export family without substituting the legacy API."
+
+[[exceptions]]
+package = "npm:ip-address"
+version = "10.7.2"
+minimum_safe = "10.7.1"
+reason = "Permit the exact patched parser before its maturity window completes."
+advisory = "https://github.com/advisories/GHSA-j6r3-76f7-8jcv"
+expires = "2026-10-16T18:00:00Z"
+[[exceptions]]
+package = "npm:brace-expansion"
+version = "1.1.21"
+minimum_safe = "1.1.21"
+reason = "Permit the patched legacy family; the shared constraint excludes vulnerable later families."
+advisory = "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr"
+expires = "2026-10-15T12:00:00Z"
+[[exceptions]]
+package = "npm:brace-expansion"
+version = "5.0.12"
+minimum_safe = "1.1.21"
+reason = "Permit the patched current family; the shared constraint requires 5.0.12 or later in this family."
+advisory = "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr"
+expires = "2026-10-15T12:00:00Z"
+[[exceptions]]
+package = "npm:http-cache-semantics"
+version = "4.3.0"
+minimum_safe = "4.3.0"
+reason = "Permit the exact cache poisoning fix before maturity."
+advisory = "https://github.com/advisories/GHSA-ch52-4w7c-c8xp"
+expires = "2026-11-04T03:00:00Z"
+[[exceptions]]
+package = "npm:proxy-addr"
+version = "2.0.8"
+minimum_safe = "2.0.8"
+reason = "Permit the exact critical advisory fix before maturity."
+advisory = "https://github.com/advisories/GHSA-jqcg-44mw-7w3h"
+expires = "2026-10-16T07:00:00Z"
+[[exceptions]]
+package = "npm:compression"
+version = "1.8.2"
+minimum_safe = "1.8.2"
+reason = "Permit the exact compression advisory fix before maturity."
+advisory = "https://github.com/advisories/GHSA-vc2v-76pw-4v95"
+expires = "2026-10-12T12:00:00Z"

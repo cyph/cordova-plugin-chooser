@@ -75,6 +75,7 @@
               JAVA_HOME = "${pkgs.jdk17}";
               ANDROID_HOME = "${android.androidsdk}/libexec/android-sdk";
               ANDROID_SDK_ROOT = "${android.androidsdk}/libexec/android-sdk";
+              CORDOVA_ANDROID_GRADLE_DISTRIBUTION_URL = "file://${pkgs.gradle-packages.gradle_8.src}";
             };
             ios = pkgs.mkShell { packages = base ++ [ pkgs.cocoapods ]; };
           }

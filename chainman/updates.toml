@@ -1,5 +1,6 @@
 [updates]
 minimum_age_days = 30
+policy_file = "chainman/dependencies.toml"
 verify_task = "verify"
 outputs = [
   "flake.lock",
@@ -64,16 +65,16 @@ copy_inputs = [".npmrc"]
 
 # These are compatibility lanes, deliberately retained within each declared generation.
 [updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-android14"]
-range = "npm:cordova-android@>=14.0.0 <15"
+range = ">=14.0.0 <15"
 reason = "Previous supported Android platform generation."
 [updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-android15"]
-range = "npm:cordova-android@>=15.0.0 <16"
+range = ">=15.0.0 <16"
 reason = "Current supported Android platform generation."
 [updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-ios7"]
-range = "npm:cordova-ios@>=7.0.0 <8"
+range = ">=7.0.0 <8"
 reason = "Previous supported iOS platform generation and deployment fallback."
 [updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-ios8"]
-range = "npm:cordova-ios@>=8.0.0 <9"
+range = ">=8.0.0 <9"
 reason = "Current supported iOS platform generation."
 
 [updates.adapters.android14]
