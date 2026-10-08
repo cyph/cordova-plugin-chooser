@@ -26,6 +26,7 @@ final class ChooserRequest {
 	final int code;
 	final CancellationSignal cancellation = new CancellationSignal();
 	volatile boolean canceled;
+	boolean restoredAbandoned;
 	private State state = State.SELECTING;
 	private ChooserTransaction transaction;
 

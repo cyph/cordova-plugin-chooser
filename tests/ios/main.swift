@@ -311,4 +311,50 @@ do {
 	try require(!exists(destination) && !exists(transaction.staging), "request did not roll back undelivered resources")
 }
 
+// A blocked abandoned read cannot serialize a new request, but still owns capacity.
+do {
+	guard let oldWork = ChooserWork.reserve() else { throw FixtureError.failed("initial worker unavailable") }
+	let old = ChooserRequest(callback: "old", accept: "*/*", mode: .copy, multiple: false, limit: 0, worker: oldWork)
+	let started = DispatchSemaphore(value: 0)
+	let unblock = DispatchSemaphore(value: 0)
+	oldWork.run { started.signal(); unblock.wait() }
+	try require(started.wait(timeout: .now() + 5) == .success, "old read never started")
+	old.cancel()
+	guard let nextWork = ChooserWork.reserve() else { unblock.signal(); throw FixtureError.failed("old request blocked next worker") }
+	let next = ChooserRequest(callback: "next", accept: "*/*", mode: .copy, multiple: false, limit: 0, worker: nextWork)
+	let nextStarted = DispatchSemaphore(value: 0)
+	let nextUnblock = DispatchSemaphore(value: 0)
+	let nextDone = DispatchSemaphore(value: 0)
+	var result: Int64 = -1
+	nextWork.run {
+		nextStarted.signal()
+		nextUnblock.wait()
+		result = (try? ChooserFiles.copy(input: InputStream(data: Data([1, 2, 3])), output: OutputStream.toMemory(), budget: next.budget, canceled: { next.canceled })) ?? -1
+		nextDone.signal()
+	}
+	defer { unblock.signal(); nextUnblock.signal() }
+	try require(nextStarted.wait(timeout: .now() + 5) == .success, "new worker serialized behind abandoned read")
+	try require(ChooserWork.reserve() == nil, "blocked reads did not retain capacity")
+	nextUnblock.signal()
+	try require(nextDone.wait(timeout: .now() + 5) == .success && result == 3, "new read failed independently")
+	func availableWorker() throws -> ChooserWork {
+		let deadline = Date().addingTimeInterval(5)
+		while Date() < deadline {
+			if let value = ChooserWork.reserve() { return value }
+			Thread.sleep(forTimeInterval: 0.001)
+		}
+		throw FixtureError.failed("completed worker leaked capacity")
+	}
+	let idle = try availableWorker()
+	idle.releaseIfIdle(); idle.releaseIfIdle()
+	let probe = try availableWorker()
+	try require(ChooserWork.reserve() == nil, "duplicate release increased worker capacity")
+	probe.releaseIfIdle()
+	unblock.signal()
+	let one = try availableWorker()
+	let two = try availableWorker()
+	try require(ChooserWork.reserve() == nil, "capacity changed after old read returned")
+	one.releaseIfIdle(); two.releaseIfIdle()
+}
+
 print("Chooser Foundation fixtures completed")

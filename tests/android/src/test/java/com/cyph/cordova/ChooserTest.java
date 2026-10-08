@@ -29,6 +29,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CountDownLatch;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
+import org.apache.cordova.CordovaInterfaceImpl;
+import org.apache.cordova.CordovaPreferences;
+import org.apache.cordova.PluginManager;
+import org.apache.cordova.CoreAndroid;
 import org.apache.cordova.CordovaWebView;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
@@ -213,6 +217,9 @@ public class ChooserTest {
 		Recorded busy = start(false);
 		assertEquals(PluginResult.Status.ERROR.ordinal(), busy.only().getStatus());
 		plugin.onReset();
+		Recorded reserved = start(false);
+		assertEquals(PluginResult.Status.ERROR.ordinal(), reserved.only().getStatus());
+		plugin.onActivityResult(oldCode, Activity.RESULT_CANCELED, null);
 		Recorded next = start(false);
 		plugin.onActivityResult(oldCode, Activity.RESULT_CANCELED, null);
 		assertEquals(0, next.finalResults.size());
@@ -404,5 +411,57 @@ public class ChooserTest {
 		Recorded next = start(false);
 		plugin.onActivityResult(code, Activity.RESULT_CANCELED, null);
 		assertEquals(PluginResult.Status.OK.ordinal(), next.only().getStatus());
+	}
+
+	@Test public void realDispatcherRetainsTheOldPickerUntilItDrains() throws Exception {
+		CordovaInterfaceImpl dispatcher = new CordovaInterfaceImpl(activity, worker);
+		plugin = new Chooser();
+		plugin.privateInitialize("Chooser", dispatcher, mock(CordovaWebView.class), new CordovaPreferences());
+		Recorded first = start(false);
+		int oldCode = plugin.onSaveInstanceState().getInt("code");
+		dispatcher.setActivityResultRequestCode(oldCode);
+		plugin.onReset();
+		Recorded blocked = start(false);
+		assertTrue(blocked.only().getStrMessage().startsWith("BUSY:"));
+		assertTrue(dispatcher.onActivityResult(oldCode, Activity.RESULT_OK, new Intent().setData(URI)));
+		assertEquals(0, first.finalResults.size());
+		Recorded next = start(false);
+		int newCode = plugin.onSaveInstanceState().getInt("code");
+		assertNotEquals(oldCode, newCode);
+		dispatcher.setActivityResultRequestCode(newCode);
+		assertTrue(dispatcher.onActivityResult(newCode, Activity.RESULT_OK, new Intent().setData(URI)));
+		drain();
+		assertEquals("../source.bin", object(next).getString("name"));
+	}
+
+	@Test public void realDispatcherRestoresAbandonedPickerAsCancellationWithoutReading() throws Exception {
+		CordovaInterfaceImpl original = new CordovaInterfaceImpl(activity, worker);
+		plugin = new Chooser();
+		plugin.privateInitialize("Chooser", original, mock(CordovaWebView.class), new CordovaPreferences());
+		start(true);
+		plugin.onReset();
+		Bundle pickerState = plugin.onSaveInstanceState();
+		assertTrue(pickerState.getBoolean("abandoned"));
+		Bundle saved = new Bundle();
+		saved.putString("callbackService", "Chooser");
+		Bundle plugins = new Bundle();
+		plugins.putBundle("Chooser", pickerState);
+		saved.putBundle("plugin", plugins);
+		CordovaInterfaceImpl restored = new CordovaInterfaceImpl(activity, worker);
+		restored.restoreInstanceState(saved);
+		PluginManager manager = mock(PluginManager.class);
+		CoreAndroid core = mock(CoreAndroid.class);
+		when(manager.getPlugin(CoreAndroid.PLUGIN_NAME)).thenReturn(core);
+		plugin = new Chooser();
+		plugin.privateInitialize("Chooser", restored, mock(CordovaWebView.class), new CordovaPreferences());
+		when(manager.getPlugin("Chooser")).thenReturn(plugin);
+		restored.onActivityResult(pickerState.getInt("code"), Activity.RESULT_OK, new Intent().setData(URI));
+		restored.onCordovaInit(manager);
+		drain();
+		org.mockito.ArgumentCaptor<PluginResult> event = org.mockito.ArgumentCaptor.forClass(PluginResult.class);
+		verify(core, times(1)).sendResumeEvent(event.capture());
+		assertEquals("RESULT_CANCELED", event.getValue().getMultipartMessage(1).getStrMessage());
+		assertEquals(0, provider.opens);
+		assertNull(plugin.onSaveInstanceState());
 	}
 }

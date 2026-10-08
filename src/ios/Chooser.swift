@@ -20,7 +20,6 @@ class Chooser: CDVPlugin {
 	private var active: ChooserRequest?
 	private var picker: ChooserDocumentPicker?
 	private var generation: UInt64 = 0 // Main-thread only, including release completions.
-	private let work = DispatchQueue(label: "com.cyph.cordova.chooser.files", qos: .userInitiated)
 
 	private func onMain(_ action: @escaping () -> Void) {
 		if Thread.isMainThread { action() }
@@ -117,8 +116,12 @@ class Chooser: CDVPlugin {
 			send(ChooserFailure(code: .pickerFailed, detail: "The app is not ready to present a file picker.").message, .error, callback)
 			return
 		}
+		guard let worker = ChooserWork.reserve() else {
+			send(ChooserFailure(code: .busy, detail: "Previous provider reads are still pending.").message, .error, callback)
+			return
+		}
 		let normalized = accept.lowercased().components(separatedBy: .whitespacesAndNewlines).joined()
-		let request = ChooserRequest(callback: callback, accept: normalized.isEmpty ? "*/*" : normalized, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize)
+		let request = ChooserRequest(callback: callback, accept: normalized.isEmpty ? "*/*" : normalized, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize, worker: worker)
 		let utis = identifiers(for: request.accept)
 		let controller: ChooserDocumentPicker
 		#if canImport(UniformTypeIdentifiers)
@@ -210,7 +213,11 @@ class Chooser: CDVPlugin {
 			return
 		}
 		let selection = unique
-		work.async {
+		guard let worker = request.worker else {
+			complete(request, message: ChooserFailure(code: .readFailed, detail: "Missing request worker.").message, status: .error)
+			return
+		}
+		worker.run {
 			do {
 				try request.checkCanceled()
 				if request.mode == .copy { request.attach(try ChooserTransaction.begin(in: self.cacheDirectory())) }

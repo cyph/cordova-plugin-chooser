@@ -34,6 +34,7 @@ import org.json.JSONObject;
 public class Chooser extends CordovaPlugin {
 	private final Object lock = new Object();
 	private ChooserRequest active;
+	private ChooserRequest pendingPicker;
 	private int nextRequestCode = 1000;
 	private long generation;
 
@@ -101,7 +102,7 @@ public class Chooser extends CordovaPlugin {
 			}
 			final ChooserRequest request;
 			synchronized (lock) {
-				if (active != null) {
+				if (active != null || pendingPicker != null) {
 					callback.error(ChooserError.message(ChooserError.Code.BUSY, "A file picker is already active."));
 					return true;
 				}
@@ -152,9 +153,11 @@ public class Chooser extends CordovaPlugin {
 				intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, request.multiple);
 				intent.putExtra(Intent.EXTRA_LOCAL_ONLY, request.localOnly);
 				intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+				pendingPicker = request;
 				cordova.startActivityForResult(this, Intent.createChooser(intent, "Select File"), request.code);
 			}
 			catch (Exception error) {
+				if (pendingPicker == request) pendingPicker = null;
 				finish(request, new PluginResult(PluginResult.Status.ERROR, ChooserError.message(ChooserError.Code.PICKER_FAILED, message(error))));
 			}
 		}
@@ -164,10 +167,17 @@ public class Chooser extends CordovaPlugin {
 	public void onActivityResult(int requestCode, int resultCode, Intent intent) {
 		final ChooserRequest request;
 		synchronized (lock) {
-			request = active;
-			if (request == null || request.code != requestCode || !request.process()) {
+			request = pendingPicker;
+			if (request == null || request.code != requestCode) return;
+			pendingPicker = null;
+			if (active != request) return;
+			if (request.restoredAbandoned) {
+				active = null;
+				request.finish();
+				request.callback.success("RESULT_CANCELED");
 				return;
 			}
+			if (!request.process()) return;
 		}
 		if (resultCode == Activity.RESULT_CANCELED) {
 			finish(request, new PluginResult(PluginResult.Status.OK, "RESULT_CANCELED"));
@@ -342,18 +352,20 @@ public class Chooser extends CordovaPlugin {
 	@Override
 	public Bundle onSaveInstanceState() {
 		synchronized (lock) {
-			if (active == null || active.state() != ChooserRequest.State.SELECTING) {
+			ChooserRequest request = pendingPicker != null ? pendingPicker : active;
+			if (request == null || (pendingPicker == null && request.state() != ChooserRequest.State.SELECTING)) {
 				return null;
 			}
 			Bundle state = new Bundle();
-			state.putString("accept", active.accept);
-			state.putString("mode", active.mode.wire);
-			state.putBoolean("multiple", active.multiple);
-			state.putBoolean("localOnly", active.localOnly);
-			state.putLong("limit", active.limit);
-			state.putLong("maxFiles", active.maxFiles);
-			state.putLong("maxTotalSize", active.maxTotalSize);
-			state.putInt("code", active.code);
+			state.putBoolean("abandoned", request.canceled || active != request);
+			state.putString("accept", request.accept);
+			state.putString("mode", request.mode.wire);
+			state.putBoolean("multiple", request.multiple);
+			state.putBoolean("localOnly", request.localOnly);
+			state.putLong("limit", request.limit);
+			state.putLong("maxFiles", request.maxFiles);
+			state.putLong("maxTotalSize", request.maxTotalSize);
+			state.putInt("code", request.code);
 			return state;
 		}
 	}
@@ -364,6 +376,7 @@ public class Chooser extends CordovaPlugin {
 		synchronized (lock) {
 			previous = active;
 			active = null;
+			pendingPicker = null;
 			generation++;
 			try {
 				if (state == null) throw new IllegalArgumentException("Missing picker state.");
@@ -375,6 +388,9 @@ public class Chooser extends CordovaPlugin {
 				if (code < 1000 || code > 32767 || accept == null) throw new IllegalArgumentException("Invalid picker state.");
 				active = new ChooserRequest(callback, accept, ChooserRequest.Mode.parse(state.getString("mode", "metadata")),
 					state.getBoolean("multiple"), state.getBoolean("localOnly"), limit, maxFiles, maxTotalSize, code);
+				pendingPicker = active;
+				active.restoredAbandoned = state.getBoolean("abandoned");
+				if (active.restoredAbandoned) active.cancel();
 				nextRequestCode = code;
 			}
 			catch (RuntimeException error) {

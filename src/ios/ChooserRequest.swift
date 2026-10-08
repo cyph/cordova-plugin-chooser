@@ -12,13 +12,15 @@ final class ChooserRequest {
 	let maxFiles: Int64
 	let maxTotalSize: Int64
 	let budget: ChooserBudget
+	let worker: ChooserWork?
 	private let lock = NSLock()
 	private var invalidated = false
 	private var currentState = ChooserRequestState.selecting
 	private var coordinator: NSFileCoordinator?
 	private var resource: ChooserTransaction?
 
-	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0) {
+	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0, worker: ChooserWork? = nil) {
+		self.worker = worker
 		self.callback = callback
 		self.accept = accept
 		self.mode = mode
@@ -51,6 +53,7 @@ final class ChooserRequest {
 	func finish() {
 		lock.lock(); defer { lock.unlock() }
 		currentState = .finished
+		worker?.releaseIfIdle()
 	}
 	var transaction: ChooserTransaction? {
 		lock.lock(); defer { lock.unlock() }
@@ -83,6 +86,7 @@ final class ChooserRequest {
 		let value = coordinator
 		lock.unlock()
 		value?.cancel()
+		worker?.releaseIfIdle()
 	}
 	func checkCanceled() throws {
 		if canceled { throw ChooserFailure(code: .readInterrupted, detail: "Request was reset.") }

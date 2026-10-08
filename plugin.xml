@@ -39,6 +39,7 @@
 		<source-file src="src/ios/ChooserBudget.swift" />
 		<source-file src="src/ios/ChooserTransaction.swift" />
 		<source-file src="src/ios/ChooserRequest.swift" />
+		<source-file src="src/ios/ChooserWork.swift" />
 		<source-file src="src/ios/ChooserError.swift" />
 
 		<config-file target="config.xml" parent="/*">
