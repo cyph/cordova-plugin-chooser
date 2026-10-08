@@ -59,7 +59,7 @@ tools = [
 adapter = "javascript"
 profile = "toolchain"
 directory = "."
-mode = "compatible"
+mode = "aggressive"
 reconcile_policy = true
 copy_inputs = [".npmrc"]
 

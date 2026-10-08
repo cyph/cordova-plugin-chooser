@@ -29,6 +29,8 @@ jobs:
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
           nix --extra-experimental-features 'nix-command flakes' run .#just -- verify
+      - name: Development dependency advisories
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman deps-audit --targets js
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

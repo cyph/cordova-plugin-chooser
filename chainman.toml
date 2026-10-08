@@ -104,7 +104,12 @@ write = ["prettier", "--write", "--"]
 check = ["prettier", "--check", "--"]
 
 [formatters.javascript]
-paths = ["scripts/*.mjs", "tests/browser/*.cjs", "tests/browser/www/*.js"]
+paths = [
+  "scripts/*.mjs",
+  "tests/browser/*.cjs",
+  "tests/browser/www/*.js",
+  "tests/tooling/*.cjs",
+]
 profile = "toolchain"
 write = ["prettier", "--write", "--"]
 check = ["prettier", "--check", "--"]
