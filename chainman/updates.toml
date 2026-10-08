@@ -71,11 +71,28 @@ adapter = "gradle"
 profile = "android"
 directory = "tests/android"
 manifests = ["tests/android/build.gradle.kts"]
-catalogs = ["tests/android/gradle/libs.versions.toml"]
 mode = "compatible"
 maven_repositories = ["central", "google", "plugins"]
 pins = [
-  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = "[14.0.0,15.0.0)" },
+  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = ">=14.0.0,<15.0.0" },
+  # AGP 8 supports the selected Gradle 8 / JDK 17 toolchain.
+  { provider = "maven", name = "com.android.library:com.android.library.gradle.plugin", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "agp",
+  ], bound = ">=8.10.1,<9" },
+  # Fixtures use JUnit 4 and the Robolectric 4 / Mockito 5 APIs.
+  { provider = "maven", name = "junit:junit", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "junit",
+  ], bound = ">=4.13.2,<5" },
+  { provider = "maven", name = "org.robolectric:robolectric", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "robolectric",
+  ], bound = ">=4.16.1,<5" },
+  { provider = "maven", name = "org.mockito:mockito-core", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "mockito",
+  ], bound = ">=5.18.0,<6" },
 ]
 
 [updates.adapters.android15]
@@ -86,7 +103,7 @@ manifests = ["tests/android15/build.gradle.kts"]
 mode = "compatible"
 maven_repositories = ["central", "google", "plugins"]
 pins = [
-  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android15/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = "[15.0.0,16.0.0)" },
+  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android15/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = ">=15.0.0,<16.0.0" },
 ]
 
 [updates.adapters.github]
