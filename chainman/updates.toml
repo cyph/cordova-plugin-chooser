@@ -63,19 +63,8 @@ mode = "aggressive"
 reconcile_policy = true
 copy_inputs = [".npmrc"]
 
-# These are compatibility lanes, deliberately retained within each declared generation.
-[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-android14"]
-range = ">=14.0.0 <15"
-reason = "Previous supported Android platform generation."
-[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-android15"]
-range = ">=15.0.0 <16"
-reason = "Current supported Android platform generation."
-[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-ios7"]
-range = ">=7.0.0 <8"
-reason = "Previous supported iOS platform generation and deployment fallback."
-[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-ios8"]
-range = ">=8.0.0 <9"
-reason = "Current supported iOS platform generation."
+# Complex npm alias ranges in package.json are compatibility contracts, retained
+# by chainman even in aggressive mode: Android 14/15 and iOS 7/8 stay separate.
 
 [updates.adapters.android14]
 adapter = "gradle"
