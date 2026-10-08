@@ -4,3 +4,11 @@ node_modules/
 tests/android/.gradle/
 tests/android/build/
 tests/android/local.properties
+
+.chainman/
+.chainman-storage-v1/
+.cache/
+result
+tests/android15/.gradle/
+tests/android15/build/
+tests/android15/local.properties

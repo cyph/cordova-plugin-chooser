@@ -5,7 +5,18 @@
 	"homepage": "https://github.com/cyph/cordova-plugin-chooser#readme",
 	"main": "www/chooser.js",
 	"types": "index.d.ts",
-	"files": ["plugin.xml", "www/", "src/", "index.d.ts", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "docs/", "LICENSE", "NOTICE"],
+	"files": [
+		"plugin.xml",
+		"www/",
+		"src/",
+		"index.d.ts",
+		"README.md",
+		"CHANGELOG.md",
+		"CONTRIBUTING.md",
+		"docs/",
+		"LICENSE",
+		"NOTICE"
+	],
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/cyph/cordova-plugin-chooser.git"
@@ -39,6 +50,13 @@
 		"test:types": "tsc --noEmit --strict --lib ES2020,DOM tests/types/contracts.ts"
 	},
 	"devDependencies": {
-		"typescript": "5.9.3"
-	}
+		"typescript": "5.9.3",
+		"cordova": "^13.0.0",
+		"cordova-browser": "^7.0.0",
+		"cordova-android14": "npm:cordova-android@>=14.0.0 <15",
+		"cordova-android15": "npm:cordova-android@>=15.0.0 <16",
+		"cordova-ios7": "npm:cordova-ios@>=7.0.0 <8",
+		"cordova-ios8": "npm:cordova-ios@>=8.0.0 <9"
+	},
+	"packageManager": "pnpm@11.25.0"
 }

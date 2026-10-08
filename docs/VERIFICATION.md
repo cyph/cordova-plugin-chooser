@@ -1,94 +1,66 @@
 # Development verification
 
-Run these checks in a provisioned development environment and record the exact revision, toolchain and outcomes. Source inspection, host fixtures and native integration establish different things; report their results separately.
-
-## JavaScript and declarations
-
-From a repository checkout with a maintained Node.js version supporting `node:test` (Node 22+ is a suitable shared baseline):
+Chainman owns project toolchains, frozen dependency installation, update policy and verification. Start from a checkout with Git, just and Nix (flakes enabled). These are host bootstrap prerequisites; do not install separate Node, pnpm, Java, Gradle or Playwright versions. The immutable runtime is selected by `chainman.lock`; no sibling chainman checkout is required.
 
 ```sh
-npm test
+just setup
+just doctor
+just verify
 ```
 
-The JavaScript suite has no third-party runtime dependencies. It loads the real wrapper/proxy in isolated VM contexts, supplies a Cordova bridge fixture and drives FileReader/DOM events. It covers legacy arguments, callback overloads and callback failures, cancellation, duplicate settlement, malformed responses, exact bytes and padding, multi-selection, metadata avoiding reads, per-file/count/aggregate copy limits, exact budget exhaustion, ownership, errors and page reset. DOM fixtures do not establish real-browser gesture or cancellation behavior.
+`setup` installs the frozen pnpm graph and Git hooks. Run it again after changing toolchain/configuration inputs. A stale setup stops tasks before commands start. CI explicitly performs setup; authorized unattended callers can instead set `CHAINMAN_SETUP=auto`. Ordinary verification never updates dependency locks.
 
-For typings, provision the pinned development dependency first, then:
+## Lanes and their limits
+
+| Command | Environment | Checks |
+| --- | --- | --- |
+| `just verify` | Linux, host Nix or Linux container Nix | JavaScript contracts, TypeScript declarations, package/source registration, packed artifact, Chromium/Firefox/WebKit integration |
+| `just chainman run verify-portable` | Linux/macOS, host or container Nix | JavaScript, typings, source checks and packaging without browser binaries |
+| `just verify-browser` | Linux, host/container Nix | Packed plugin installed in Cordova browser; three headless engines |
+| `just verify-android` | Linux x86_64 or macOS, host Nix | Android 14/15 Robolectric/JUnit fixtures and disposable Cordova debug builds |
+| `just verify-ios` | macOS, host Nix plus approved Xcode | Foundation fixtures and unsigned device-target Cordova iOS 7/8 builds |
+| `just verify-native` | A host satisfying both native profiles | Both native lanes; fails preflight on an incompatible host |
+| `just clean` | Project toolchain profile | Removes disposable apps and fixture build output |
+
+The Nix flake supplies Node 24, pnpm, JDK 17, Gradle 8, Android SDK 35/36, CocoaPods and matching Playwright driver/browser binaries. `flake.lock` pins their package definitions, including each host’s Node patch. `chainman/tools.json` pins pnpm’s registry artifact and integrity across all hosts; its toolchain adapter reconciles `packageManager`. `chainman/node.json` declares the Node major family. Intel macOS uses the last Nixpkgs release supporting that architecture; its Node patch can differ from Linux/Apple Silicon while retaining Node 24. Browser lanes use pinned Mesa software rendering for headless hosts. The pnpm graph pins Cordova CLI and aliased platform releases within Android 14/15 and iOS 7/8. Hoisted linking accommodates platform scripts that Cordova copies into generated applications. No install scripts are approved in the dependency graph.
+
+Apple's licensed SDK is an external host prerequisite. `chainman/apple.json` is the single owner of the selected Xcode version, build and iPhoneOS SDK. The iOS task selects its developer directory (or validates an explicitly supplied `DEVELOPER_DIR`) and fails on a mismatch. Upgrade this contract deliberately after qualifying both platform generations. The configured [macOS runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md) supplies that Xcode selection; hosted images can change, so the task verifies the actual tools.
+
+Linux ARM can run the portable gate and resolve Java dependencies. Android's Linux build tools contain x86_64 executables, so the native build task fails explicitly on ARM. The Linux x86_64 CI job owns those executions. Neither native lane launches a simulator, emulator or device.
+
+## What the fixtures establish
+
+The JavaScript suite loads the production wrapper and browser proxy in isolated VM contexts. It checks preserved legacy arguments/callback overloads, exact binary/base64 bytes and padding, cancellation, duplicate settlement, malformed results, callback exceptions, arrays, limits, partial-resource rollback, ownership and page reset. The strict TypeScript fixture checks every method, callback form and cancellation union, including invalid calls using `@ts-expect-error`.
+
+Each integration lane packs the plugin, checks required files and excluded development artifacts, extracts the tarball with Python's safe data filter, and installs that extracted artifact. Cordova's plugin engine inspection expects a directory. Platform packages come from the frozen pnpm graph rather than fresh registry ranges. The browser lane exercises the registered Cordova bridge in Chromium, Firefox and WebKit: real input selection and FileReader bytes, metadata/copy paths avoiding reads, empty files, multiple selection, BUSY, limits, read failure, Blob release and navigation cleanup. Removing/reinstalling the plugin also exercises installation bookkeeping. Empty automated selections do not establish native cancel-dialog behavior, and Playwright WebKit is not a complete Safari/OS integration claim.
+
+Android fixtures compile the production sources in separate SDK 35/36 projects against Cordova framework 14/15. JUnit checks counted streams, limits, errors and cache ownership. Transaction fixtures check interruption, failed promotion/deletion, recovery, collisions, malformed journals and symlinks. Robolectric's API 28 provider double covers null/inaccurate metadata, sliced descriptors, cancellation, reset, restoration, concurrency and cleanup. Real `CordovaInterfaceImpl` regressions check reset while a picker is outstanding and restoration of an abandoned picker. Those tests establish dispatcher routing rather than merely calling plugin callbacks directly.
+
+Foundation fixtures compile the actual iOS helpers in Swift 5 mode. They check streams, budgets, cancellation, ownership, transactions/recovery and coordinator cancellation. Worker fixtures block an abandoned read, demonstrate independent progress by the next request, and check capacity retention and exactly-once release. Foundation does not import UIKit/Cordova; the separate packed-plugin Cordova builds check those imports and source registration. A successful build does not establish live picker/provider behavior.
+
+## Dependency maintenance
 
 ```sh
-npm run test:types
+just chainman config validate
+just chainman deps-check
+just chainman deps-coverage
+just chainman deps-policy-report
+just deps-update mode=dry-run targets=js
+just deps-update targets=js
 ```
 
-The usage fixture checks all methods, Promise/callback cancellation unions, metadata without data fields and invalid calls using `@ts-expect-error`. Generate and review a package lock with the chosen npm version when establishing a reproducible CI environment; use `npm ci` thereafter.
+Updates run in isolated checkouts and apply only declared outputs after the `verify` task succeeds. The portable gate includes the real-browser suite and requires a Linux execution environment; native acceptance is a separate CI requirement. Run the native lanes against the resulting branch before release. A portable update success alone is not a native compatibility claim.
 
-## Android host fixtures
+Project dependencies have a 30-day maturity window. Nix input updates precede toolchain version reconciliation and package resolution. The `nix` target group also reconciles pnpm/Node and the JavaScript/native locks. JavaScript platform aliases remain inside their declared major families. The two Gradle adapters retain their Cordova framework generations and share a version catalog for fixture tooling. Actions have immutable SHAs and their own update adapter. The Apple SDK contract is explicitly maintained because chainman cannot redistribute or install Xcode.
 
-Prerequisites: JDK 17, Gradle compatible with AGP 8.10.1 (8.14.2 is a suitable baseline), Android SDK platforms 35/36, corresponding build tools, and dependency access/cache.
+Gradle fixtures use strict dependency locks and SHA-256 verification metadata. Their adapters resolve the complete configurations and update those files; test commands must never regenerate them. Native dependency updates require the Android profile but not an Apple SDK. An initial missing/unqualified native lock or registry/provider outage must be resolved through the adapter before a native lane can pass. Do not weaken strict verification to obtain a green result.
 
-```sh
-gradle -p tests/android -PcordovaVersion=14.0.0 -PcompileSdk=35 testDebugUnitTest
-gradle -p tests/android -PcordovaVersion=15.0.0 -PcompileSdk=36 testDebugUnitTest
-```
+`just chainman deps-audit --targets js` checks published JavaScript vulnerability evidence, including development tools. Network auditing is separate from deterministic local tests; native ecosystem advisory coverage may be incomplete and must not be presented as a clean security scan. Runtime updates use `just chainman chainman-update`; normal setup/verification never advances `chainman.lock`.
 
-The library fixture compiles the production Java files. JUnit exercises exact streaming, shared byte budgets, zero/short reads, cancellation, I/O failure and cache ownership. Transaction fixtures inject promotion/deletion failures and model process exit before promotion, between promotions and after commit. They check journal recovery, retry after cleanup failure, collisions, malformed records and symlinks, including dangling journal links. Robolectric drives the production plugin against a synthetic ContentProvider and Cordova interface for null/unknown metadata, failed selection/read, duplicate callbacks, busy state, state restoration, queued reset/release, deduplicated count limits, restored aggregate limits, asset descriptor slices, release during a blocked query, launch failure and partial-file cleanup. The synthetic provider implements both typed and untyped descriptor entrypoints so the read-only resolver path preserves its slices and cancellation signal.
+The checked-in workflow runs these same commands with read-only repository permissions, pinned Actions, finite timeouts and unsigned iOS builds. It neither publishes packages nor deploys/signs applications. Dependency update dry-runs do not trigger Actions.
 
-The Robolectric fixture uses API 28 for host behavior, while the two lanes compile against the platform generations' SDKs. This does not emulate Android 14/15 devices or prove behavior on API 24/35/36. Add API-level host variants only after these fixtures compile and their framework assumptions are reviewed. Do not replace failing assertions with implementation-shaped assertions simply to obtain a green lane.
+## Provider and operating-system integration
 
-## iOS Foundation fixtures
+Use `tests/native-cases.json` and `tests/fixture-app/www` as scenario inputs in a disposable app. Manual checks remain for genuine cancel UI, cloud/download failures, revoked grants, rotation, process death, security-scoped access, swipe dismissal, orientation masks, filesystem exhaustion, OS eviction and browser back/forward-cache behavior. Include rapid reopen, blocking reads after reset, a second-file batch failure, partial writes and interruption around journal/promotion/commit. Hash source/copy bytes and inspect cache cleanup without using private user data as destructive fixtures.
 
-On a macOS host with Xcode command-line tools:
-
-```sh
-mkdir -p .verification
-xcrun swiftc -swift-version 5 src/ios/ChooserError.swift src/ios/ChooserBudget.swift src/ios/ChooserRequest.swift src/ios/ChooserFiles.swift src/ios/ChooserTransaction.swift tests/ios/main.swift -o .verification/chooser-foundation-fixtures
-.verification/chooser-foundation-fixtures
-```
-
-These fixtures compile the actual Foundation/Darwin helpers and exercise byte boundaries, unlimited/exact/exceeded aggregate budgets, stream closure, short/stalled writes, cancellation, missing input, output failure, ID validation, symlink/directory rejection and source preservation. Transaction fixtures inject rename/deletion failures, recover abandoned and partially promoted batches, preserve committed references, reject journal links and check request-owned coordinator cancellation and cleanup. They do not import UIKit or Cordova and therefore cannot prove picker delegation, security-scoped provider behavior, presentation or plugin reset delivery. Review the Foundation stream subclass and coordinator-double behavior against the macOS SDK used for this lane.
-
-## Cordova installation and native builds
-
-Create disposable applications outside the tracked source (for example under ignored `.verification/`). Record the exact Cordova CLI, platform patch versions, Node, Java, Gradle, Android SDK and Xcode/Swift versions. Use current patched releases within the selected 14.x/15.x and 7.x/8.x families when freezing release lanes; also exercise the minimum declared platform versions if retaining the current engine bounds.
-
-For each Android generation, perform ordinary Cordova create/platform-add/plugin-add/prepare/build steps, using this checkout as the plugin source. Example from the repository root:
-
-```sh
-CHOOSER_ROOT="$PWD"
-cordova create .verification/android14 com.cyph.chooser.fixture14 ChooserFixture
-cd .verification/android14
-cordova platform add android@14
-cordova plugin add "$CHOOSER_ROOT"
-cordova prepare android
-cordova build android --debug
-```
-
-Repeat in a separate application for `android@15`. Inspect the generated native project: all Java sources and the `Chooser` feature must be registered, no storage/media permissions or largeHeap edit must be introduced by this plugin, and remove/re-add must not leave stale source entries. Build with each platform's standard settings, including target SDK. These are build-only lanes; no emulator/device launch is required.
-
-On macOS, repeat with separate `ios@7` and `ios@8` applications. Cordova iOS 7 requires an SDK/toolchain capable of its iOS 11 deployment fallback; Cordova iOS 8 starts at iOS 13. See the [official platform requirements](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) and the [iOS 8 announcement](https://cordova.apache.org/announcements/2025/11/23/cordova-ios-8.0.0.html). Build a generic device target with signing disabled in the disposable project; do not provision signing accounts or deploy to a device. A typical Cordova command is:
-
-```sh
-cordova build ios --debug --device -- --buildFlag="CODE_SIGNING_ALLOWED=NO"
-```
-
-Record any required project-specific adjustment to that command. Check all Swift sources, the `@objc(Chooser)` registration, conditional Cordova imports, `.ok`/`.error` status names, iOS 14 availability guards, fallback UTIs and minimum deployment targets. Verify installation without the old Swift-support plugin. Do not count a Foundation-only build as this integration lane.
-
-Reference Cordova's versioned [7.1.1 headers](https://github.com/apache/cordova-ios/tree/7.1.1/CordovaLib/include/Cordova) and [8.0.0 headers](https://github.com/apache/cordova-ios/tree/8.0.0/CordovaLib/include/Cordova), plus [Android 14 interface definitions](https://github.com/apache/cordova-android/blob/14.0.0/framework/src/org/apache/cordova/CordovaInterface.java). Check Swift imports and availability against every declared minimum platform version.
-
-## Real-browser fixture
-
-In a disposable Cordova browser app, install this checkout and replace the app's `www` files with `tests/fixture-app/www`. Prepare and serve the app through the Cordova browser workflow. The fixture uses the actual registered plugin and native file input, not the mocked DOM suite.
-
-In current Chrome, Edge, Firefox and Safari, record observations for direct click activation, MIME hints, single/multiple selection, zero-byte files, native cancel events, repeated selection, concurrent requests, FileReader failure, Blob URL release, navigation and back/forward-cache return. Test metadata/copy modes with FileReader instrumentation to confirm that they do not invoke content reads. Browser Blob consumers should fail after release/navigation; a new selection should work afterward. Do not infer cross-browser behavior from one engine.
-
-## Native lifecycle/provider scenarios
-
-`tests/native-cases.json` is the shared scenario fixture; `tests/fixture-app/www` is the manual driver. The executable Android host tests and Foundation tests cover subsets, as described above. UIKit/file-provider, rotation, genuine process death, system cancellation UI, cloud access, filesystem exhaustion and OS eviction scenarios remain integration work. Real-device and emulator checks are separate from the host/build checks above.
-
-In an integration environment, adapt the scenarios to its provider/test doubles. Include inaccurate metadata size, delayed/offline providers, blocking reads returning after reset, duplicate display names, second-file batch failure, partial output writes, revoked security-scoped access, swipe dismissal, app-restricted orientation masks, rapid reopen and outstanding-picker activity restoration. Interrupt native copies before journal creation, between promotions and between commit and callback delivery; restart the app and check recovery without deleting earlier committed references. Exercise release while another provider is blocked, and verify that cancellation reaches cooperative providers while stale callbacks remain suppressed for uncooperative ones. Hash source/copy bytes and inspect the dedicated cache before/after each failure. Never use real private user files as destructive fixtures.
-
-## Packaging checks
-
-Inspect `npm pack --dry-run` output and install the produced package into the disposable apps. Confirm `main`, `types`, `plugin.xml`, all native helpers, browser proxy, documentation and notices are shipped. The package must not include test build products or research downloads.
-
-Preserve original PR ancestry during upstream integration. GitHub's [indirect merge behavior](https://docs.github.com/en/pull-requests/reference/pull-request-merges#indirect-merges) requires those commits to reach the appropriate upstream base/default branch.
-
-Record each lane as **not run**, **failed** (with evidence), or **passed** (with exact revision/environment). No build, test or release badge should imply verification until the corresponding lane actually succeeds.
+Report each lane as passed, failed or not run, with its exact commit/environment. Keep execution reports in CI or the handoff conversation rather than accumulating dated reports in source docs. Preserve accepted PR head ancestry during upstream integration: GitHub's [indirect merge recognition](https://docs.github.com/en/pull-requests/reference/pull-request-merges#indirect-merges) requires those commits to reach the appropriate upstream base/default branch.

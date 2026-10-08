@@ -238,3 +238,7 @@ Browsers require a direct user gesture. Call the method in the click handler bef
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution practices and [docs/VERIFICATION.md](docs/VERIFICATION.md) for development checks. Attribution is retained in Git history and [NOTICE](NOTICE).
 
 Apache-2.0; see [LICENSE](LICENSE).
+
+## Development
+
+Run `just setup`, then `just verify` for the shared JavaScript, typings, packaging and browser gate. Chainman owns the pinned environments and dependency updates. Android and iOS build lanes are separate commands and release requirements; see [verification and dependency maintenance](docs/VERIFICATION.md) and [contributor guidance](CONTRIBUTING.md).

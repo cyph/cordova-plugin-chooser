@@ -1,0 +1,122 @@
+schema = 3
+include = ["chainman/updates.toml"]
+
+[project]
+default_profile = "default"
+
+[profiles.default]
+flake = ".#default"
+inputs = ["chainman/tools.json"]
+allowed_modes = ["host-nix", "container-nix"]
+entry_setup = ["javascript"]
+
+[profiles.toolchain]
+flake = ".#default"
+inputs = ["chainman/tools.json"]
+allowed_modes = ["host-nix", "container-nix"]
+
+[profiles.browser]
+flake = ".#browser"
+inputs = ["chainman/tools.json"]
+allowed_modes = ["host-nix", "container-nix"]
+allowed_platforms = ["Linux"]
+entry_setup = ["javascript"]
+
+[profiles.android]
+flake = ".#android"
+inputs = ["chainman/tools.json"]
+allowed_modes = ["host-nix"]
+entry_setup = ["javascript"]
+
+[profiles.ios]
+flake = ".#ios"
+allowed_modes = ["host-nix"]
+allowed_platforms = ["Darwin"]
+inputs = ["chainman/apple.json", "chainman/tools.json"]
+entry_setup = ["javascript"]
+
+[setup.javascript]
+profile = "toolchain"
+pnpm = true
+inputs = ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"]
+artifacts = ["node_modules/.modules.yaml"]
+
+[tasks.verify-portable]
+profile = "default"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "portable"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.verify-browser]
+profile = "browser"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "browser"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.verify]
+depends_on = ["verify-portable", "verify-browser"]
+
+[tasks.verify-android]
+profile = "android"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "android"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.verify-ios]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "ios"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.verify-native]
+depends_on = ["verify-android", "verify-ios"]
+
+[tasks.doctor-project]
+profile = "toolchain"
+commands = [["node", "scripts/verify.mjs", "doctor"]]
+
+[tasks.clean-project]
+profile = "toolchain"
+commands = [["node", "scripts/verify.mjs", "clean"]]
+
+[recipes]
+verify = ["verify"]
+clean = ["clean-project"]
+doctor = ["doctor-project"]
+
+[hooks]
+enabled = true
+
+[formatters.json]
+paths = ["package.json", "chainman/*.json"]
+profile = "toolchain"
+write = ["prettier", "--write", "--"]
+check = ["prettier", "--check", "--"]
+
+[formatters.javascript]
+paths = ["scripts/*.mjs", "tests/browser/*.cjs", "tests/browser/www/*.js"]
+profile = "toolchain"
+write = ["prettier", "--write", "--"]
+check = ["prettier", "--check", "--"]
+
+[formatters.yaml]
+paths = [".github/workflows/*.yml", "pnpm-workspace.yaml"]
+profile = "toolchain"
+write = ["prettier", "--write", "--"]
+check = ["prettier", "--check", "--"]
+
+[formatters.toml]
+paths = ["chainman.toml", "chainman/*.toml", "tests/*/gradle/*.toml"]
+profile = "toolchain"
+write = ["taplo", "format", "--"]
+check = ["taplo", "format", "--check", "--"]
+
+[formatters.nix]
+paths = ["flake.nix"]
+profile = "toolchain"
+write = ["nixfmt", "--"]
+check = ["nixfmt", "--check", "--"]

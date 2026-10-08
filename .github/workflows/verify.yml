@@ -1,0 +1,59 @@
+name: Verify
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  portable:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Configuration and dependency ownership
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman config validate
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman deps-check
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman deps-coverage
+      - name: JavaScript, types, package and three browser engines
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Android 14/15 host fixtures and packed-plugin builds
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-android
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Foundation fixtures and unsigned Cordova iOS 7/8 builds
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-ios

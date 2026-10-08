@@ -11,6 +11,7 @@ Package/plugin versions remain at 1.3.2 until release preparation.
 - `getFileUri()` and `getFilesUri()` for managed native cache copies / browser Blob references, with MIME hints and optional per-file, file-count and aggregate byte limits.
 - Opaque-ID `releaseFile()` cleanup, complete TypeScript declarations, regression fixtures and an explicit verification guide.
 - Native copy staging and journal recovery for interrupted batches, preserving the existing reference IDs and cache paths.
+- Pinned chainman workflows, frozen pnpm dependencies, real-browser integration and separate Android/iOS build lanes in GitHub Actions.
 - Numeric size metadata (null when unknown), actual byte counts for contents/copies, remote-provider support in new Android methods and Android picker-state restoration.
 
 ### Fixed

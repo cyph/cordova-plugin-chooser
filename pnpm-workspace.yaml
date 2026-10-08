@@ -1,0 +1,9 @@
+packages:
+  - .
+minimumReleaseAge: 43200
+minimumReleaseAgeIgnoreMissingTime: false
+autoInstallPeers: false
+allowBuilds: {}
+# Cordova copies platform scripts into the application; they resolve dependencies
+# through its ancestors rather than from the original pnpm package directory.
+nodeLinker: hoisted

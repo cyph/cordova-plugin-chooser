@@ -1,0 +1,122 @@
+[updates]
+minimum_age_days = 30
+verify_task = "verify"
+outputs = [
+  "flake.lock",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "chainman/node.json",
+  "chainman/tools.json",
+  "tests/android/build.gradle.kts",
+  "tests/android/gradle/libs.versions.toml",
+  "tests/android/gradle.lockfile",
+  "tests/android/buildscript-gradle.lockfile",
+  "tests/android/settings-gradle.lockfile",
+  "tests/android/gradle/verification-metadata.xml",
+  "tests/android15/build.gradle.kts",
+  "tests/android15/gradle.lockfile",
+  "tests/android15/buildscript-gradle.lockfile",
+  "tests/android15/settings-gradle.lockfile",
+  "tests/android15/gradle/verification-metadata.xml",
+  ".github/workflows/verify.yml",
+]
+
+[updates.adapters.nix]
+adapter = "nix"
+profile = "toolchain"
+inputs = [
+  { directory = ".", input = "nixpkgs", repository = "NixOS/nixpkgs", branch = "nixos-unstable" },
+  { directory = ".", input = "nixpkgs-darwin", repository = "NixOS/nixpkgs", branch = "nixpkgs-26.05-darwin" },
+]
+
+[updates.adapters.toolchain]
+adapter = "toolchain"
+profile = "toolchain"
+tools = [
+  { provider = "npm", name = "pnpm", source_pin = { file = "chainman/tools.json", pointer = [
+    "pnpm",
+  ] }, command = [
+    "pnpm",
+    "--version",
+  ], version_pattern = '^(?P<version>\d+\.\d+\.\d+)$', pins = [
+    { file = "package.json", pointer = [
+      "packageManager",
+    ], value = "pnpm@{version}" },
+  ] },
+  { provider = "github", name = "nodejs/node", command = [
+    "node",
+    "--version",
+  ], version_pattern = '^v(?P<version>\d+\.\d+\.\d+)$', pins = [
+    { file = "chainman/node.json", value = "{major}.x", pointer = [
+      "version",
+    ] },
+  ] },
+]
+
+[updates.adapters.js]
+adapter = "javascript"
+profile = "toolchain"
+directory = "."
+mode = "compatible"
+reconcile_policy = true
+copy_inputs = [".npmrc"]
+
+# These are compatibility lanes, deliberately retained within each declared generation.
+[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-android14"]
+range = "npm:cordova-android@>=14.0.0 <15"
+reason = "Previous supported Android platform generation."
+[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-android15"]
+range = "npm:cordova-android@>=15.0.0 <16"
+reason = "Current supported Android platform generation."
+[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-ios7"]
+range = "npm:cordova-ios@>=7.0.0 <8"
+reason = "Previous supported iOS platform generation and deployment fallback."
+[updates.adapters.js.policy.javascript.package_constraints."package.json"."cordova-ios8"]
+range = "npm:cordova-ios@>=8.0.0 <9"
+reason = "Current supported iOS platform generation."
+
+[updates.adapters.android14]
+adapter = "gradle"
+profile = "android"
+directory = "tests/android"
+manifests = ["tests/android/build.gradle.kts"]
+catalogs = ["tests/android/gradle/libs.versions.toml"]
+mode = "compatible"
+maven_repositories = ["central", "google", "plugins"]
+pins = [
+  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = "[14.0.0,15.0.0)" },
+]
+
+[updates.adapters.android15]
+adapter = "gradle"
+profile = "android"
+directory = "tests/android15"
+manifests = ["tests/android15/build.gradle.kts"]
+mode = "compatible"
+maven_repositories = ["central", "google", "plugins"]
+pins = [
+  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android15/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = "[15.0.0,16.0.0)" },
+]
+
+[updates.adapters.github]
+adapter = "actions"
+profile = "toolchain"
+files = [".github/workflows/*.yml"]
+
+[[updates.steps]]
+resolve = "nix"
+[[updates.steps]]
+resolve = "toolchain"
+[[updates.steps]]
+resolve = "js"
+[[updates.steps]]
+resolve = "android14"
+[[updates.steps]]
+resolve = "android15"
+[[updates.steps]]
+resolve = "github"
+
+[updates.target_groups]
+nix = ["nix", "toolchain", "js", "android14", "android15"]
+android = ["android14", "android15"]
