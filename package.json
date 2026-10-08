@@ -47,7 +47,7 @@
 	},
 	"scripts": {
 		"test": "node --test tests/js/*.test.js",
-		"test:types": "tsc --noEmit --strict --lib ES2020,DOM tests/types/contracts.ts"
+		"test:types": "tsc --noEmit --strict --module node16 --moduleResolution node16 --lib ES2020,DOM tests/types/contracts.ts"
 	},
 	"devDependencies": {
 		"cordova": "^13.0.0",
