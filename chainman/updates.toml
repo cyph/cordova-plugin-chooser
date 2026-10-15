@@ -97,10 +97,11 @@ pins = [
     "versions",
     "junit",
   ], bound = ">=4.13.2,<5" },
+  # Upgrade Robolectric together with its frozen SDK identities/instrumentation.
   { provider = "maven", name = "org.robolectric:robolectric", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
     "robolectric",
-  ], bound = ">=4.16.1,<5" },
+  ], bound = "===4.16.1" },
   { provider = "maven", name = "org.mockito:mockito-core", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
     "mockito",
