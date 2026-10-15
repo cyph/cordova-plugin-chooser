@@ -2,11 +2,17 @@
 agp = "8.10.1"
 junit = "4.13.2"
 robolectric = "4.16.1"
+# DefaultSdkProvider: API 28 runtime, API 35 maximum compile SDK under JDK 17.
+# Keep the exact SDK artifacts coordinated with Robolectric and JDK updates.
+robolectric-runtime-sdk = "9-robolectric-4913185-2-i7"
+robolectric-compile-sdk = "15-robolectric-13954326-i7"
 mockito = "5.18.0"
 
 [libraries]
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+robolectric-sdk-runtime = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-runtime-sdk" }
+robolectric-sdk-compile = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-compile-sdk" }
 mockito = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 
 [plugins]

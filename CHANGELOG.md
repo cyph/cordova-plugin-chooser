@@ -21,6 +21,7 @@ Package/plugin versions remain at 1.3.2 until release preparation.
 - Native stream/cursor closure, background processing, null provider responses, counted copy limits, partial-batch rollback and generated cache filenames.
 - Explicit native request states, request-owned provider cancellation and an independent cache cleanup/release queue.
 - Recovery journal symlink checks, cancellation during batch promotion and malformed Android restoration state handling.
+- Android verification uses Nix-owned AAPT2 and separately locked, checksummed Robolectric SDKs with offline loading and ARM-compatible dependency preparation.
 - Android picker reservations now survive reset until Cordova drains the outstanding activity result; restored abandoned pickers cancel without reading.
 - Independent iOS request workers prevent abandoned reads from blocking a new selection, with a process-wide limit of two outstanding workers.
 - Metadata-only paths no longer materialize whole-file contents in the plugin.

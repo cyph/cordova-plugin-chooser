@@ -17,6 +17,7 @@ just verify
 | `just verify` | Linux, host Nix or Linux container Nix | JavaScript contracts, TypeScript declarations, package/source registration, packed artifact, Chromium/Firefox/WebKit integration |
 | `just chainman run verify-portable` | Linux/macOS, host or container Nix | JavaScript, typings, source checks and packaging without browser binaries |
 | `just verify-browser` | Linux, host/container Nix | Packed plugin installed in Cordova browser; three headless engines |
+| `just verify-android-dependencies` | Linux/macOS, including Linux ARM, host Nix | Strictly verifies and stages the locked Robolectric SDK JARs without running Android binaries |
 | `just verify-android` | Linux x86_64 or macOS, host Nix | Android 14/15 Robolectric/JUnit fixtures and disposable Cordova debug builds |
 | `just verify-ios` | macOS, host Nix plus approved Xcode | Foundation fixtures and unsigned device-target Cordova iOS 7/8 builds |
 | `just verify-native` | A host satisfying both native profiles | Both native lanes; fails preflight on an incompatible host |
@@ -29,6 +30,12 @@ Apple's licensed SDK is an external host prerequisite. `chainman/apple.json` is 
 Linux ARM can run the portable gate and resolve Java dependencies. Android's Linux build tools contain x86_64 executables, so the native build task fails explicitly on ARM. The Linux x86_64 CI job owns those executions. Neither native lane launches a simulator, emulator or device.
 
 ## What the fixtures establish
+
+Android fixture tests and packed Cordova builds use AAPT2 from the Nix-owned SDK: Build Tools 35.0.0 for Android 14 and 36.0.0 for Android 15. The runner validates each executable and passes `android.aapt2FromMavenOverride` explicitly. SDK tools follow the flake's integrity pin rather than a separate task-time Maven download.
+
+Robolectric's API 28 runtime SDK (`9-robolectric-4913185-2-i7`) and API 35 compile-time SDK (`15-robolectric-13954326-i7`) are explicit Gradle dependencies for the pinned JDK 17. Each role has its own resolvable configuration so Gradle cannot evict one version in favor of the other. Both fixture graphs lock and checksum their exact versions. `prepareRobolectricSdks` validates each resolved filename and stages the original filenames into each fixture's generated `build/robolectric-sdks` directory; every test task depends on it. Robolectric uses that directory with offline loading and preinstrumented JARs; missing staged SDKs fail instead of falling back to runtime downloads. Run `just verify-android-dependencies` to prepare these artifacts on Linux ARM. Shared download caches and generated fixture copies consume additional disk space; `just clean` removes the copies.
+
+Keep these SDK pins coordinated with Robolectric's SDK mapping, instrumentation version and selected JDK when upgrading. Robolectric selects its compile-time SDK from the maximum SDK supported by that JDK, independently of the fixture's Android `compileSdk`; the API 36 fixture therefore also uses API 35 for Robolectric on JDK 17. The explicit `android-sdks` update target refreshes both frozen SDK graphs without upgrading the fixture tooling. After deliberately changing SDK pins, change their exact bounds in `chainman/updates.toml`, preview `just deps-update mode=dry-run targets=android-sdks`, then apply with `just deps-update targets=android-sdks`. Normal Android adapters still audit the complete graphs.
 
 The JavaScript suite loads the production wrapper and browser proxy in isolated VM contexts. It checks preserved legacy arguments/callback overloads, exact binary/base64 bytes and padding, cancellation, duplicate settlement, malformed results, callback exceptions, arrays, limits, partial-resource rollback, ownership and page reset. The strict TypeScript fixture checks every method, callback form and cancellation union, including invalid calls using `@ts-expect-error`.
 
@@ -47,6 +54,7 @@ just chainman deps-coverage
 just chainman deps-policy-report
 just deps-update mode=dry-run targets=js
 just deps-update targets=js
+just deps-update mode=dry-run targets=android-sdks
 ```
 
 Updates run in isolated checkouts and apply only declared outputs after the `verify` task succeeds. The portable gate includes the real-browser suite and requires a Linux execution environment; native acceptance is a separate CI requirement. Run the native lanes against the resulting branch before release. A portable update success alone is not a native compatibility claim.

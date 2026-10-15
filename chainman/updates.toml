@@ -106,6 +106,29 @@ pins = [
   { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android15/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = ">=15.0.0,<16.0.0" },
 ]
 
+[updates.adapters.android-sdks]
+adapter = "gradle"
+profile = "android"
+directories = ["tests/android", "tests/android15"]
+manifests = [
+  "tests/android/build.gradle.kts",
+  "tests/android15/build.gradle.kts",
+]
+mode = "compatible"
+explicit_only = true
+maven_repositories = ["central", "google", "plugins"]
+# SDK identities are a coordinated Robolectric/JDK contract, refreshed explicitly.
+pins = [
+  { provider = "maven", name = "org.robolectric:android-all-instrumented", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "robolectric-runtime-sdk",
+  ], bound = "===9-robolectric-4913185-2-i7" },
+  { provider = "maven", name = "org.robolectric:android-all-instrumented", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "robolectric-compile-sdk",
+  ], bound = "===15-robolectric-13954326-i7" },
+]
+
 [updates.adapters.github]
 adapter = "actions"
 profile = "toolchain"
@@ -121,6 +144,8 @@ resolve = "js"
 resolve = "android14"
 [[updates.steps]]
 resolve = "android15"
+[[updates.steps]]
+resolve = "android-sdks"
 [[updates.steps]]
 resolve = "github"
 

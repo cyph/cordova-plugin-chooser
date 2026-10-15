@@ -65,6 +65,13 @@ commands = [["node", "scripts/verify.mjs", "android"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.verify-android-dependencies]
+profile = "android"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "android-dependencies"]]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.verify-ios]
 profile = "ios"
 setup = ["javascript"]

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+	accessSync,
+	constants,
 	cpSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
 	readdirSync,
 	rmSync,
+	statSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,41 +171,82 @@ function browser() {
 	cordova(["prepare", "browser"], destination);
 }
 
-function android() {
-	if (process.platform === "linux" && process.arch !== "x64")
-		throw new Error(
-			"Android build tools require Linux x86_64; use the CI Android lane.",
-		);
+const androidFixtures = [
+	["android", "cordova-android14", "35.0.0"],
+	["android15", "cordova-android15", "36.0.0"],
+];
+
+function androidEnvironment() {
 	assert(
 		process.env.ANDROID_HOME && existsSync(process.env.ANDROID_HOME),
 		"Missing Nix Android SDK",
 	);
 	assert.match(run("gradle", ["--version"], root, true), /Gradle 8\./);
+}
+
+function aapt2Path(buildTools) {
+	const path = join(
+		process.env.ANDROID_HOME,
+		"build-tools",
+		buildTools,
+		"aapt2",
+	);
+	assert(statSync(path).isFile(), "Missing Nix-owned AAPT2 executable");
+	accessSync(path, constants.R_OK | constants.X_OK);
+	return path;
+}
+
+function androidArguments(fixture, buildTools, task) {
+	assert(
+		existsSync(join(root, "tests", fixture, "gradle.lockfile")),
+		"Resolve and review the Gradle lock first through chainman.",
+	);
+	assert(
+		existsSync(
+			join(root, "tests", fixture, "gradle/verification-metadata.xml"),
+		),
+		"Missing Gradle checksum metadata.",
+	);
+	return [
+		"--no-daemon",
+		"--dependency-verification",
+		"strict",
+		"-p",
+		`tests/${fixture}`,
+		`-Pandroid.aapt2FromMavenOverride=${aapt2Path(buildTools)}`,
+		task,
+	];
+}
+
+function androidDependencies() {
+	androidEnvironment();
+	for (const [fixture, , buildTools] of androidFixtures)
+		run(
+			"gradle",
+			androidArguments(fixture, buildTools, "prepareRobolectricSdks"),
+		);
+}
+
+function android() {
+	if (process.platform === "linux" && process.arch !== "x64")
+		throw new Error(
+			"Android build tools require Linux x86_64; use the CI Android lane.",
+		);
+	androidEnvironment();
 	const archive = pack();
-	for (const [fixture, alias] of [
-		["android", "cordova-android14"],
-		["android15", "cordova-android15"],
-	]) {
-		assert(
-			existsSync(join(root, "tests", fixture, "gradle.lockfile")),
-			"Resolve and review the Gradle lock first through chainman.",
-		);
-		assert(
-			existsSync(
-				join(root, "tests", fixture, "gradle/verification-metadata.xml"),
-			),
-			"Missing Gradle checksum metadata.",
-		);
-		run("gradle", [
-			"--no-daemon",
-			"--dependency-verification",
-			"strict",
-			"-p",
-			`tests/${fixture}`,
-			"testDebugUnitTest",
-		]);
+	for (const [fixture, alias, buildTools] of androidFixtures) {
+		run("gradle", androidArguments(fixture, buildTools, "testDebugUnitTest"));
 		const destination = app("android", alias, archive);
-		cordova(["build", "android", "--debug"], destination);
+		cordova(
+			[
+				"build",
+				"android",
+				"--debug",
+				"--",
+				`--gradleArg=-Pandroid.aapt2FromMavenOverride=${aapt2Path(buildTools)}`,
+			],
+			destination,
+		);
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination);
 		cordova(["plugin", "add", archive, "--nosave"], destination);
 		cordova(["prepare", "android"], destination);
@@ -273,6 +317,7 @@ const lanes = {
 	portable,
 	browser,
 	android,
+	"android-dependencies": androidDependencies,
 	ios,
 	doctor() {
 		staticChecks();

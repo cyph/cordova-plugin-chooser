@@ -1,5 +1,6 @@
 plugins { alias(libs.plugins.android) }
 apply(from = "artifacts.gradle.kts")
+apply(from = "robolectric.gradle.kts")
 android {
     namespace = "com.cyph.cordova.fixtures"
     compileSdk = 35

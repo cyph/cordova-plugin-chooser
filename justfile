@@ -49,6 +49,11 @@ verify-android *args:
     exec {{quote(just_executable())}} chainman run verify-android "$@"
 
 [positional-arguments]
+verify-android-dependencies *args:
+    #!/bin/sh
+    exec {{quote(just_executable())}} chainman run verify-android-dependencies "$@"
+
+[positional-arguments]
 verify-ios *args:
     #!/bin/sh
     exec {{quote(just_executable())}} chainman run verify-ios "$@"
