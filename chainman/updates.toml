@@ -75,6 +75,7 @@ resolve = [
     "--no-daemon",
     "--refresh-dependencies",
     "dependencies",
+    "prepareRobolectricSdks",
     "--write-locks",
     "--write-verification-metadata",
     "sha256",
@@ -117,6 +118,7 @@ resolve = [
     "--no-daemon",
     "--refresh-dependencies",
     "dependencies",
+    "prepareRobolectricSdks",
     "--write-locks",
     "--write-verification-metadata",
     "sha256",
@@ -140,6 +142,7 @@ resolve = [
     "--no-daemon",
     "--refresh-dependencies",
     "dependencies",
+    "prepareRobolectricSdks",
     "--write-locks",
     "--write-verification-metadata",
     "sha256",
@@ -151,7 +154,8 @@ manifests = [
   "tests/android/build.gradle.kts",
   "tests/android15/build.gradle.kts",
 ]
-mode = "compatible"
+# The exact bounds below freeze both independently resolved SDK versions.
+mode = "aggressive"
 explicit_only = true
 maven_repositories = ["central", "google", "plugins"]
 # SDK identities are a coordinated Robolectric/JDK contract, refreshed explicitly.
