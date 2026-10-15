@@ -5,12 +5,14 @@ import {
 	constants,
 	cpSync,
 	existsSync,
+	mkdtempSync,
 	mkdirSync,
 	readFileSync,
 	readdirSync,
 	rmSync,
 	statSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,8 +64,22 @@ function staticChecks() {
 			run("node", ["--check", join(directory, name)]);
 		}
 	}
-	run("git", ["diff", "--check"]);
-	run("git", ["diff", "--cached", "--check"]);
+	// Git's whitespace check can refresh index bytes, even with optional locks off.
+	const index = run(
+		"git",
+		["rev-parse", "--path-format=absolute", "--git-path", "index"],
+		root,
+		true,
+	);
+	const temporary = mkdtempSync(join(tmpdir(), "chooser-index-"));
+	try {
+		const copy = join(temporary, "index");
+		cpSync(index, copy);
+		for (const args of [["--check"], ["--cached", "--check"]])
+			run("git", ["diff", ...args], root, false, { GIT_INDEX_FILE: copy });
+	} finally {
+		rmSync(temporary, { recursive: true, force: true });
+	}
 }
 
 function pack() {
