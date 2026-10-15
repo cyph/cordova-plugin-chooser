@@ -153,22 +153,15 @@ directories = ["tests/android", "tests/android15"]
 manifests = [
   "tests/android/build.gradle.kts",
   "tests/android15/build.gradle.kts",
+  "tests/android/gradle/libs.versions.toml",
 ]
-# The exact bounds below freeze both independently resolved SDK versions.
-mode = "aggressive"
+mode = "compatible"
 explicit_only = true
 maven_repositories = ["central", "google", "plugins"]
-# SDK identities are a coordinated Robolectric/JDK contract, refreshed explicitly.
-pins = [
-  { provider = "maven", name = "org.robolectric:android-all-instrumented", file = "tests/android/gradle/libs.versions.toml", pointer = [
-    "versions",
-    "robolectric-runtime-sdk",
-  ], bound = "===9-robolectric-4913185-2-i7" },
-  { provider = "maven", name = "org.robolectric:android-all-instrumented", file = "tests/android/gradle/libs.versions.toml", pointer = [
-    "versions",
-    "robolectric-compile-sdk",
-  ], bound = "===15-robolectric-13954326-i7" },
-]
+# Resolution only: the shared catalog owns the frozen Robolectric/JDK SDK mapping.
+# Empty selectors prevent registry version selection during this refresh.
+pins = []
+catalogs = []
 
 [updates.adapters.github]
 adapter = "actions"
