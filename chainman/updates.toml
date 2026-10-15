@@ -68,6 +68,18 @@ copy_inputs = [".npmrc"]
 
 [updates.adapters.android14]
 adapter = "gradle"
+# Record parent/BOM metadata even when Gradle has cached parsed descriptors.
+resolve = [
+  [
+    "gradle",
+    "--no-daemon",
+    "--refresh-dependencies",
+    "dependencies",
+    "--write-locks",
+    "--write-verification-metadata",
+    "sha256",
+  ],
+]
 profile = "android"
 directory = "tests/android"
 manifests = ["tests/android/build.gradle.kts"]
@@ -97,6 +109,18 @@ pins = [
 
 [updates.adapters.android15]
 adapter = "gradle"
+# Record parent/BOM metadata even when Gradle has cached parsed descriptors.
+resolve = [
+  [
+    "gradle",
+    "--no-daemon",
+    "--refresh-dependencies",
+    "dependencies",
+    "--write-locks",
+    "--write-verification-metadata",
+    "sha256",
+  ],
+]
 profile = "android"
 directory = "tests/android15"
 manifests = ["tests/android15/build.gradle.kts"]
@@ -108,6 +132,18 @@ pins = [
 
 [updates.adapters.android-sdks]
 adapter = "gradle"
+# Record parent/BOM metadata even when Gradle has cached parsed descriptors.
+resolve = [
+  [
+    "gradle",
+    "--no-daemon",
+    "--refresh-dependencies",
+    "dependencies",
+    "--write-locks",
+    "--write-verification-metadata",
+    "sha256",
+  ],
+]
 profile = "android"
 directories = ["tests/android", "tests/android15"]
 manifests = [
