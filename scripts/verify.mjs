@@ -162,7 +162,11 @@ function portable() {
 	staticChecks();
 	run("pnpm", ["test"]);
 	run("pnpm", ["test:types"]);
-	run("node", ["--test", "tests/tooling/platforms.test.cjs"]);
+	run("node", [
+		"--test",
+		"tests/tooling/platforms.test.cjs",
+		"tests/tooling/verification.test.cjs",
+	]);
 	pack();
 }
 
