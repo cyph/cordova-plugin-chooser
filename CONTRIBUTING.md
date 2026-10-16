@@ -1,6 +1,6 @@
 # Contributing
 
-Work from a repository checkout. Run `just setup`, then use `just verify` as the shared portable gate. Chainman owns the project toolchains, frozen installation, dependency updates and staged formatting hooks; use `just deps-update mode=dry-run targets=js` before applying a JavaScript update. Native updates currently require a chainman runtime fix described in the verification guide. Native lanes remain separate release requirements. Read the [API documentation](README.md) and [verification guide](docs/VERIFICATION.md) before changing bridge or native behavior.
+Work from a repository checkout. Run `just setup`, then use `just verify` as the shared portable gate. Chainman owns the project toolchains, frozen installation, dependency updates and staged formatting hooks; use `just deps-update mode=dry-run targets=js` before applying a JavaScript update. Native lanes remain separate release requirements. Read the [API documentation](README.md) and [verification guide](docs/VERIFICATION.md) before changing bridge or native behavior.
 
 Keep changes focused and explain the concrete behavior before/after. Preserve the Promise and callback overloads, single/array result shapes and cancellation resolving to `undefined`. New options should be additive. Keep TypeScript declarations and examples synchronized with the native and browser implementations.
 

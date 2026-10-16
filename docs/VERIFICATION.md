@@ -56,6 +56,7 @@ just chainman deps-coverage
 just chainman deps-policy-report
 just deps-update mode=dry-run targets=js
 just deps-update targets=js
+just deps-update mode=dry-run targets=android
 just deps-update mode=dry-run targets=android-sdks
 ```
 
@@ -64,8 +65,6 @@ Updates run in isolated checkouts and apply only declared outputs after the `ver
 Project dependencies have a 30-day maturity window. Nix input updates precede toolchain version reconciliation and package resolution. The `nix` target group also reconciles pnpm/Node and the JavaScript/native locks. JavaScript platform aliases remain inside their declared major families. The two Gradle adapters retain their Cordova framework generations and share a version catalog for fixture tooling. Actions have immutable SHAs and their own update adapter. The Apple SDK contract is explicitly maintained because chainman cannot redistribute or install Xcode.
 
 Gradle fixtures use strict dependency locks and SHA-256 verification metadata. Their adapters refresh repository metadata before resolving the complete configurations, so parent POMs and BOM modules are recorded even with a warm Gradle cache; test commands must never regenerate them. Native dependency updates require the Android profile but not an Apple SDK. An initial missing/unqualified native lock or registry/provider outage must be resolved through the adapter before a native lane can pass. Do not weaken strict verification to obtain a green result.
-
-The runtime selected by `chainman.lock` currently accepts only numeric Maven versions when reading Gradle locks and verification metadata. Real AGP/Robolectric graphs include qualified versions such as Guava's `33.4.8-jre`, Netty's `4.1.110.Final` and AGP's `8.10.1-12782657`. Consequently, the Android adapters stop with `Unsupported Gradle lock coordinates` before resolution. This also blocks all-target updates and the `nix` group, which includes those adapters. JavaScript updates and native verification tasks remain separate available paths. Native update automation needs a public chainman runtime fix that preserves qualified artifact identities and publication/checksum evidence; do not strip qualifiers, rewrite generated locks or bypass checks to work around the reader.
 
 `just chainman deps-audit --targets js` checks published JavaScript vulnerability evidence, including development tools. Security constraints and exact, expiring maturity exceptions live in `chainman/dependencies.toml`. Network auditing is separate from deterministic local tests; native ecosystem advisory coverage may be incomplete and must not be presented as a clean security scan. Runtime updates use `just chainman chainman-update`; normal setup/verification never advances `chainman.lock`.
 
