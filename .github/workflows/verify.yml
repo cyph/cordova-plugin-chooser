@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   portable:
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -32,6 +33,7 @@ jobs:
       - name: Development dependency advisories
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman deps-audit --targets js
   android:
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -46,6 +48,7 @@ jobs:
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
           nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-android
   ios:
+    if: ${{ !github.event.repository.private }}
     runs-on: macos-15
     timeout-minutes: 60
     env:
