@@ -33,6 +33,8 @@ Android Linux build tools are x86_64 executables, so full Android execution fail
 
 Apple's licensed SDK is an external prerequisite. `chainman/apple.json` owns the Xcode version/build, iPhoneOS SDK and developer directory. The iOS lane selects that directory or validates an explicit `DEVELOPER_DIR`; mismatches fail. The [macOS 15 runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md) lists available Xcode installations. When changing this contract, qualify both supported Cordova iOS generations.
 
+The verifier calls Apple's `/usr/bin/xcodebuild` and `/usr/bin/xcrun` launchers explicitly. It exposes the selected developer tools and standard macOS utilities to Cordova's subprocesses while retaining the Nix-owned language tools in their search path.
+
 ## Automated fixtures
 
 The JavaScript suite loads the production bridge/proxy in isolated VM contexts. It checks binary/base64 accuracy, callback forms, cancellation, duplicate settlement, limits, failed batches and resource ownership. TypeScript fixtures check public methods, result unions and invalid calls. Package checks verify source registration and install the packed artifact into disposable apps, using the frozen platform aliases.

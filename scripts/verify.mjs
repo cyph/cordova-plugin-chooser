@@ -276,15 +276,33 @@ function android() {
 function ios() {
 	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
 	const apple = readJSON(join(root, "chainman/apple.json"));
+	const developerDirectory =
+		process.env.DEVELOPER_DIR || apple.developerDirectory;
 	const env = {
-		DEVELOPER_DIR: process.env.DEVELOPER_DIR || apple.developerDirectory,
+		DEVELOPER_DIR: developerDirectory,
+		PATH: [
+			join(developerDirectory, "usr/bin"),
+			process.env.PATH,
+			"/usr/bin",
+			"/bin",
+			"/usr/sbin",
+			"/sbin",
+		]
+			.filter(Boolean)
+			.join(":"),
 	};
 	assert.equal(
-		run("xcodebuild", ["-version"], root, true, env),
+		run("/usr/bin/xcodebuild", ["-version"], root, true, env),
 		`Xcode ${apple.xcode}\nBuild version ${apple.build}`,
 	);
 	assert.equal(
-		run("xcrun", ["--sdk", "iphoneos", "--show-sdk-version"], root, true, env),
+		run(
+			"/usr/bin/xcrun",
+			["--sdk", "iphoneos", "--show-sdk-version"],
+			root,
+			true,
+			env,
+		),
 		apple.iphoneos,
 	);
 	mkdirSync(output, { recursive: true });
@@ -297,7 +315,7 @@ function ios() {
 		"ChooserTransaction",
 	].map((name) => `src/ios/${name}.swift`);
 	run(
-		"xcrun",
+		"/usr/bin/xcrun",
 		[
 			"swiftc",
 			"-swift-version",
