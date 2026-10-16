@@ -2,37 +2,36 @@
 
 ## Unreleased
 
-Package/plugin versions remain at 1.3.2 until release preparation.
+These changes are not included in npm `1.3.2`.
 
 ### Added
 
-- Browser platform support, incorporating original PR #52 and correcting its bridge and resource behavior.
-- Additive `getFiles()` and `getFilesMetadata()` methods; existing single-file methods remain available.
-- `getFileUri()` and `getFilesUri()` for managed native cache copies / browser Blob references, with MIME hints and optional per-file, file-count and aggregate byte limits.
-- Opaque-ID `releaseFile()` cleanup, complete TypeScript declarations, regression fixtures and an explicit verification guide.
-- Native copy staging and journal recovery for interrupted batches, preserving the existing reference IDs and cache paths.
-- Pinned chainman workflows, frozen pnpm dependencies, real-browser integration and separate Android/iOS build lanes in GitHub Actions.
-- Numeric size metadata (null when unknown), actual byte counts for contents/copies, remote-provider support in new Android methods and Android picker-state restoration.
+- Browser support, including file-input cancellation and Blob URL cleanup.
+- `getFiles()` and `getFilesMetadata()` for multiple selection.
+- `getFileUri()` and `getFilesUri()` for temporary native copies or browser references without transferring contents through the bridge.
+- Copy options for MIME filtering, per-file bytes, total bytes, file count and Android local-provider preference.
+- `releaseFile(id)` for managed-resource cleanup.
+- Complete TypeScript declarations for Promise/callback forms and cancellation.
+- Numeric size metadata, with `null` for unknown sizes and actual byte counts for data/copy results.
 
 ### Fixed
 
-- Exact base64 decoding and canonical padding without extra decoded bytes.
-- Callback overloads, detached callback rejections, concurrent request ownership, stale completions, cancellation, reset and failed launch recovery.
-- Native stream/cursor closure, background processing, null provider responses, counted copy limits, partial-batch rollback and generated cache filenames.
-- Explicit native request states, request-owned provider cancellation and an independent cache cleanup/release queue.
-- Recovery journal symlink checks, cancellation during batch promotion and malformed Android restoration state handling.
-- Android verification uses Nix-owned AAPT2 and separately locked, checksummed Robolectric SDKs with offline loading and ARM-compatible dependency preparation.
-- Android picker reservations now survive reset until Cordova drains the outstanding activity result; restored abandoned pickers cancel without reading.
-- Independent iOS request workers prevent abandoned reads from blocking a new selection, with a process-wide limit of two outstanding workers.
-- Metadata-only paths no longer materialize whole-file contents in the plugin.
-- iOS coordinated/security-scoped reads, dismissal handling, iPad presentation/orientation, modern type identifiers and older iWork aliases.
-- Removal of obsolete Swift-support dependency, current Cordova result enums, package entrypoint/types and platform/source registration.
+- Base64 decoding preserves exact bytes and canonical padding.
+- Cancellation, concurrent requests, duplicate callbacks and reset handling.
+- Null or incomplete provider metadata, stream cleanup and failed-batch cleanup.
+- Metadata requests avoid whole-file reads in plugin code.
+- Android picker restoration and iOS dismissal, orientation and document-type compatibility.
+- Swift integration, platform registration and package entrypoints.
 
 ### Compatibility
 
-- Support target: Cordova Android 14/15, Cordova iOS 7/8 and current browsers with file-input cancellation support. Earlier Cordova platform versions are outside this maintenance policy.
-- Existing `getFile()` / `getFileMetadata()` call forms, result fields, Promise/callback support and cancellation resolving to `undefined` are retained.
-- URI APIs are additive. Fork APIs that renamed existing methods/fields, removed data or made cancellation an error are not adopted wholesale.
-- New copy APIs use cache storage and require release/eviction-aware callers. Legacy data APIs retain their unavoidable whole-file memory cost.
+- Maintained families are Cordova Android 14/15, Cordova iOS 7/8 and current browsers supporting file-input cancellation.
+- Existing single-file method names, result fields, Promise/callback forms and cancellation behavior are preserved.
+- URI methods use temporary storage and require ownership-aware callers. Data methods still load complete contents into memory.
 
-See [NOTICE](NOTICE) and Git history for source attribution and earlier releases.
+### Development
+
+- Chainman owns toolchains, frozen dependencies, updates and verification commands.
+- GitHub Actions runs JavaScript, TypeScript, package and browser checks plus Android and iOS fixtures and packed-app builds.
+
+See [NOTICE](NOTICE) and Git history for attribution and earlier changes.

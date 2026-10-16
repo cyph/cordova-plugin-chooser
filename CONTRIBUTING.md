@@ -1,19 +1,38 @@
 # Contributing
 
-Work from a repository checkout. Run `just setup`, then use `just verify` as the shared portable gate. Chainman owns the project toolchains, frozen installation, dependency updates and staged formatting hooks; use `just deps-update mode=dry-run targets=js` before applying a JavaScript update. Native lanes remain separate release requirements. Read the [API documentation](README.md) and [verification guide](docs/VERIFICATION.md) before changing bridge or native behavior.
+## Development setup
 
-Keep changes focused and explain the concrete behavior before/after. Preserve the Promise and callback overloads, single/array result shapes and cancellation resolving to `undefined`. New options should be additive. Keep TypeScript declarations and examples synchronized with the native and browser implementations.
+Start with a checkout, Git, Nix with flakes enabled, and `just`. Chainman selects toolchains and installs frozen dependencies:
 
-Do not derive paths from provider names, grant arbitrary URI/path release, request broad storage permissions, or treat MIME/size metadata as validation. Keep metadata-only operations free of whole-file reads. Copy limits must use actual streamed bytes; errors and reset must release callback ownership and clean request-owned partial output. Document memory/storage costs and provider limitations.
+```sh
+just setup
+just doctor
+just verify
+```
 
-The native `Chooser` class owns Cordova and picker integration. `ChooserRequest` owns lifecycle transitions, cancellation and its transaction; its byte budget is confined to the sequential file worker. `ChooserFiles` handles bounded I/O and cache ownership, and `ChooserTransaction` stages, promotes and recovers copy batches. Keep provider I/O off the cache housekeeping queue. Recovery runs before the first transaction in a process and must never sweep active writers. Keep error categories internal unless deliberately designing a new public error contract.
+Do not install separate language tools or refresh locks with ad hoc package-manager commands. The immutable runtime comes from `chainman.lock`; a sibling checkout is unnecessary. See [verification and dependency maintenance](docs/VERIFICATION.md) for native prerequisites and update commands.
 
-Android picker ownership outlives JavaScript callback ownership after reset: keep the reservation until Cordova delivers the outstanding result. Test this through the real Cordova dispatcher as well as direct plugin calls. iOS worker leases belong to the process; cancellation releases an idle lease, while a started worker keeps its lease until I/O returns. Do not release capacity merely because a callback was invalidated.
+## Changes and tests
 
-Add regression cases at the contract or resource boundary. The current fixtures cover JavaScript, the browser proxy, native I/O helpers and Android provider/lifecycle behavior. UIKit, real browser gestures and genuine cloud/OS lifecycle behavior need their corresponding integration environments. State precisely which checks ran; do not report an authored test, a source inspection or a Foundation-only build as native platform verification.
+Keep changes focused on a concrete behavior. Explain the problem, resulting behavior and checks in the pull request. Add regression coverage at a public contract or resource boundary. Keep [API documentation](docs/API.md), TypeScript declarations and platform implementations synchronized.
 
-For imported contributions, preserve authorship with `git cherry-pick -x` when practical. For adapted ports, identify the contributor and original immutable commit URL in the commit body, and describe the adaptations. Retain copyright/license notices. Source attribution is separate from claiming a fork's entire implementation is sound.
+Preserve Promise/callback overloads, single/array result shapes and cancellation resolving to `undefined`. Prefer additive options. Error messages currently have no stable machine-readable schema.
 
-PR heads accepted for GitHub merge recognition must remain ancestors through genuine merge commits. Do not squash/rebase away accepted PR ancestry during upstream handoff. Unaccepted PRs need explicit dispositions rather than cosmetic merge commits.
+Run the portable gate for every change and relevant native lanes for native or dependency changes. A fixture test, source inspection and packed-app build establish different things; report checks accurately. Keep run-specific results in CI or the pull request. Project docs should explain usage and maintenance, without execution diaries, investigation dumps, machine-specific instructions or vulnerability reports.
 
-Version bumps, tagging, publication and upstream issue/PR updates belong to release preparation after verification.
+## Implementation boundaries
+
+- `Chooser` integrates the bridge and native picker. `ChooserRequest` owns request state and cancellation.
+- `ChooserFiles` handles bounded I/O and cache ownership; `ChooserBudget` counts actual bytes. `ChooserTransaction` stages, promotes and recovers native batches.
+- Keep provider I/O off the cache housekeeping queue. Recovery must not sweep active writers. Successful references belong to the caller until release or eviction.
+- Keep metadata operations free of whole-file reads. Treat names, types and reported sizes as untrusted metadata. Generated filenames and opaque IDs constrain release to plugin-owned cache files.
+- Android picker ownership can outlive callback ownership after reset; exercise the actual Cordova result dispatcher. iOS started workers retain their process-wide lease until I/O returns, even after callback invalidation.
+- Preserve the browser's direct user gesture, exactly-once completion, and Blob cleanup after failures and navigation.
+
+## Attribution and integration
+
+Preserve authorship when importing changes, using `git cherry-pick -x` where appropriate. For adapted contributions, name the contributor, link the original immutable commit in the commit body, and explain the adaptation. Retain license and copyright notices.
+
+When accepting a pull request through a local merge, preserve original commits and merge ancestry through upstream integration. Squashing or rebasing them away prevents GitHub from recognizing the indirect merge.
+
+Release preparation includes required verification lanes, synchronizing package/plugin versions, reviewing the changelog and inspecting the packed artifact. Version changes, tags and publication should be deliberate release operations.
