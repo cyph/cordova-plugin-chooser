@@ -1,6 +1,7 @@
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 // Robolectric's runtime resolver must consume the same verified Gradle artifacts.
 val sdkCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
@@ -29,6 +30,10 @@ val prepareRobolectricSdks = tasks.register<Sync>("prepareRobolectricSdks") {
     }
 }
 tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        exceptionFormat = TestExceptionFormat.FULL
+    }
     dependsOn(prepareRobolectricSdks)
     systemProperty("robolectric.offline", "true")
     systemProperty("robolectric.usePreinstrumentedJars", "true")
