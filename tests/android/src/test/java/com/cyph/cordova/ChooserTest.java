@@ -124,7 +124,7 @@ public class ChooserTest {
 		when(cordova.getThreadPool()).thenReturn(worker);
 		doAnswer(call -> { code = call.getArgument(2); return null; }).when(cordova).startActivityForResult(any(), any(), anyInt());
 		plugin = new Chooser();
-		plugin.initialize(cordova, mock(CordovaWebView.class));
+		plugin.privateInitialize("Chooser", cordova, mock(CordovaWebView.class), new CordovaPreferences());
 		provider = new FixtureProvider();
 		provider.source = File.createTempFile("chooser-source", ".bin", activity.getCacheDir());
 		Files.write(provider.source.toPath(), new byte[]{1, 2, 3});
