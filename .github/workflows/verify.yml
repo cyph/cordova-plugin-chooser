@@ -2,7 +2,7 @@ name: Verify
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [master, "candidate/**"]
   workflow_dispatch:
 permissions:
   contents: read
