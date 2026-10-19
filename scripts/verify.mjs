@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appleEnvironment } from "./apple.mjs";
+import { stageFrozenPackage } from "./fixture-packages.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, ".verification");
@@ -44,8 +45,17 @@ const cordova = (args, cwd = root, env = {}) =>
 		[join(root, "node_modules/cordova/bin/cordova"), ...args],
 		cwd,
 		false,
+		{ npm_config_ignore_scripts: "true", npm_config_offline: "true", ...env },
+	);
+
+function installPlugin(destination, archive, env = {}) {
+	const { name, version } = stageFrozenPackage(destination, archive);
+	cordova(
+		["plugin", "add", `${name}@${version}`, "--nosave"],
+		destination,
 		env,
 	);
+}
 
 function staticChecks() {
 	assert.equal(
@@ -149,12 +159,16 @@ function app(platform, alias, archive, env = {}) {
 		env,
 	);
 	// The platform comes from the frozen dependency graph, never a registry range.
+	const { version } = stageFrozenPackage(
+		destination,
+		join(root, "node_modules", alias),
+	);
 	cordova(
-		["platform", "add", join(root, "node_modules", alias), "--nosave"],
+		["platform", "add", `${platform}@${version}`, "--nosave"],
 		destination,
 		env,
 	);
-	cordova(["plugin", "add", archive, "--nosave"], destination, env);
+	installPlugin(destination, archive, env);
 	cordova(["prepare", platform], destination, env);
 	return destination;
 }
@@ -188,7 +202,11 @@ function browser() {
 		},
 	);
 	cordova(["plugin", "remove", pkg.name, "--nosave"], destination);
-	cordova(["plugin", "add", packed, "--nosave"], destination);
+	stageFrozenPackage(
+		destination,
+		join(root, "node_modules", "cordova-browser"),
+	);
+	installPlugin(destination, packed);
 	cordova(["prepare", "browser"], destination);
 }
 
@@ -269,7 +287,8 @@ function android() {
 			destination,
 		);
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination);
-		cordova(["plugin", "add", archive, "--nosave"], destination);
+		stageFrozenPackage(destination, join(root, "node_modules", alias));
+		installPlugin(destination, archive);
 		cordova(["prepare", "android"], destination);
 	}
 }
@@ -333,7 +352,8 @@ function ios() {
 			env,
 		);
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination, env);
-		cordova(["plugin", "add", archive, "--nosave"], destination, env);
+		stageFrozenPackage(destination, join(root, "node_modules", alias));
+		installPlugin(destination, archive, env);
 		cordova(["prepare", "ios"], destination, env);
 	}
 }

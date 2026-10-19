@@ -2,6 +2,68 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRequire } = require("node:module");
 const { spawnSync } = require("node:child_process");
+const {
+	mkdirSync,
+	mkdtempSync,
+	writeFileSync,
+	realpathSync,
+	rmSync,
+} = require("node:fs");
+const { tmpdir } = require("node:os");
+const { join, resolve } = require("node:path");
+
+test("Cordova resolves frozen platform packages without npm installation", async (t) => {
+	const { stageFrozenPackage } =
+		await import("../../scripts/fixture-packages.mjs");
+	const fetch = createRequire(require.resolve("cordova/package.json"))(
+		"cordova-fetch",
+	);
+	const root = resolve(__dirname, "../..");
+	const directory = mkdtempSync(join(tmpdir(), "chooser-frozen-platforms-"));
+	t.after(() => rmSync(directory, { recursive: true, force: true }));
+	const tools = join(directory, "tools");
+	mkdirSync(tools);
+	writeFileSync(join(tools, "npm"), "#!/bin/sh\nexit 98\n", { mode: 0o700 });
+	const originalPath = process.env.PATH;
+	process.env.PATH = `${tools}:${originalPath}`;
+	try {
+		for (const alias of [
+			"cordova-android14",
+			"cordova-android15",
+			"cordova-ios7",
+			"cordova-ios8",
+			"cordova-browser",
+		]) {
+			const source = join(root, "node_modules", alias);
+			const application = join(directory, alias);
+			const { name, version } = stageFrozenPackage(application, source);
+			assert.equal(
+				realpathSync(await fetch(`${name}@${version}`, application)),
+				realpathSync(source),
+			);
+			const appRequire = createRequire(join(application, "package.json"));
+			const sourceRequire = createRequire(join(source, "package.json"));
+			for (const dependency of Object.keys(
+				require(`${alias}/package.json`).dependencies || {},
+			)) {
+				assert.equal(
+					realpathSync(appRequire.resolve(dependency)),
+					realpathSync(sourceRequire.resolve(dependency)),
+				);
+			}
+		}
+		assert.throws(
+			() =>
+				stageFrozenPackage(
+					join(directory, "cordova-android14"),
+					join(root, "node_modules", "cordova-android15"),
+				),
+			/Unexpected fixture package/,
+		);
+	} finally {
+		process.env.PATH = originalPath;
+	}
+});
 
 test("Apple subprocesses use the pinned Xcode despite Nix SDK defaults", async () => {
 	const { appleEnvironment } = await import("../../scripts/apple.mjs");

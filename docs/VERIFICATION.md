@@ -41,6 +41,8 @@ Nix's macOS-only developer-directory default is replaced with the pinned Xcode d
 
 The JavaScript suite loads the production bridge/proxy in isolated VM contexts. It checks binary/base64 accuracy, callback forms, cancellation, duplicate settlement, limits, failed batches and resource ownership. TypeScript fixtures check public methods, result unions and invalid calls. Package checks verify source registration and install the packed artifact into disposable apps, using the frozen platform aliases.
 
+Disposable applications link the frozen platform packages and their declared dependencies under their canonical names. Cordova resolves those exact installed versions, including the extracted plugin package, without reinstalling platform sources or running their development-only prepare scripts. Removal/reinstallation remains part of each integration lane; npm subprocesses are offline and have lifecycle scripts disabled.
+
 Browser integration uses the actual registered bridge in Chromium, Firefox and WebKit. It exercises selection, bytes, metadata/copy paths without content reads, limits, failures, Blob release, navigation and remove/reinstall. Automated empty selections do not establish native cancel-dialog behavior. Playwright WebKit is not a complete Safari/OS integration claim.
 
 Android fixtures compile production sources against Cordova 14/15 and Android SDK 35/36. JUnit covers counted streaming and cache ownership; Robolectric API 28 provider doubles cover metadata, cancellation, restoration, reset and failure cases. Dispatcher regressions use the actual Cordova interface. Separate packed-app builds check installation and resource processing.
