@@ -91,16 +91,25 @@ try manager.createSymbolicLink(at: root, withDestinationURL: sandbox)
 try rejects("cache root symlink accepted") { _ = try ChooserFiles.create(in: sandbox) }
 
 // Short writes must preserve bytes, while a stalled output must fail rather than loop.
-final class ShortOutput: OutputStream {
+class FixtureOutput: OutputStream {
+	private var status: Stream.Status = .notOpen
+	override var streamStatus: Stream.Status { status }
+	override var streamError: Error? { nil }
+	override var hasSpaceAvailable: Bool { status == .open }
+	override func open() { status = .open }
+	override func close() { status = .closed }
+}
+final class ShortOutput: FixtureOutput {
 	var bytes = Data()
 	override func write(_ buffer: UnsafePointer<UInt8>, maxLength len: Int) -> Int {
+		guard hasSpaceAvailable else { return -1 }
 		let count = min(len, 7)
 		bytes.append(buffer, count: count)
 		return count
 	}
 }
-final class StalledOutput: OutputStream {
-	override func write(_ buffer: UnsafePointer<UInt8>, maxLength len: Int) -> Int { return 0 }
+final class StalledOutput: FixtureOutput {
+	override func write(_ buffer: UnsafePointer<UInt8>, maxLength len: Int) -> Int { return hasSpaceAvailable ? 0 : -1 }
 }
 let shortBytes = Data((0..<65539).map { UInt8($0 % 251) })
 let shortOutput = ShortOutput.toMemory()
