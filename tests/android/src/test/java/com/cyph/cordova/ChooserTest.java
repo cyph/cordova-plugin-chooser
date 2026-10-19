@@ -44,7 +44,6 @@ import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
-import org.robolectric.shadows.ShadowContentResolver;
 import static org.robolectric.Shadows.shadowOf;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -125,10 +124,9 @@ public class ChooserTest {
 		doAnswer(call -> { code = call.getArgument(2); return null; }).when(cordova).startActivityForResult(any(), any(), anyInt());
 		plugin = new Chooser();
 		plugin.privateInitialize("Chooser", cordova, mock(CordovaWebView.class), new CordovaPreferences());
-		provider = new FixtureProvider();
+		provider = Robolectric.buildContentProvider(FixtureProvider.class).create("chooser.fixture").get();
 		provider.source = File.createTempFile("chooser-source", ".bin", activity.getCacheDir());
 		Files.write(provider.source.toPath(), new byte[]{1, 2, 3});
-		ShadowContentResolver.registerProviderInternal("chooser.fixture", provider);
 	}
 
 	@After public void teardown() throws Exception {
@@ -185,7 +183,7 @@ public class ChooserTest {
 	}
 
 	private JSONObject object(Recorded callback) throws Exception {
-		assertEquals(PluginResult.Status.OK.ordinal(), callback.only().getStatus());
+		assertEquals(callback.only().getStrMessage(), PluginResult.Status.OK.ordinal(), callback.only().getStatus());
 		return new JSONObject(callback.only().getStrMessage());
 	}
 
