@@ -32,6 +32,10 @@ jobs:
           nix --extra-experimental-features 'nix-command flakes' run .#just -- verify
       - name: Development dependency advisories
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman deps-audit --targets js
+      - name: Verify tracked files are unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
   android:
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
@@ -47,6 +51,10 @@ jobs:
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
           nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-android
+      - name: Verify tracked files are unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
   ios:
     if: ${{ !github.event.repository.private }}
     runs-on: macos-15
@@ -62,3 +70,7 @@ jobs:
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
           nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-ios
+      - name: Verify tracked files are unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
