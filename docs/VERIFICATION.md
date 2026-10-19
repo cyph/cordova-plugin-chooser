@@ -35,6 +35,8 @@ Apple's licensed SDK is an external prerequisite. `chainman/apple.json` owns the
 
 The verifier calls Apple's `/usr/bin/xcodebuild` and `/usr/bin/xcrun` launchers explicitly. It exposes the selected developer tools and standard macOS utilities to Cordova's subprocesses while retaining the Nix-owned language tools in their search path.
 
+Nix's macOS-only developer-directory default is replaced with the pinned Xcode directory for this lane, and its inherited `SDKROOT` is cleared so Apple tools can select the requested SDK. Explicit host Xcode selections still undergo the same version/build and iPhoneOS SDK checks.
+
 ## Automated fixtures
 
 The JavaScript suite loads the production bridge/proxy in isolated VM contexts. It checks binary/base64 accuracy, callback forms, cancellation, duplicate settlement, limits, failed batches and resource ownership. TypeScript fixtures check public methods, result unions and invalid calls. Package checks verify source registration and install the packed artifact into disposable apps, using the frozen platform aliases.

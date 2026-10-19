@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appleEnvironment } from "./apple.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, ".verification");
@@ -276,21 +277,7 @@ function android() {
 function ios() {
 	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
 	const apple = readJSON(join(root, "chainman/apple.json"));
-	const developerDirectory =
-		process.env.DEVELOPER_DIR || apple.developerDirectory;
-	const env = {
-		DEVELOPER_DIR: developerDirectory,
-		PATH: [
-			join(developerDirectory, "usr/bin"),
-			process.env.PATH,
-			"/usr/bin",
-			"/bin",
-			"/usr/sbin",
-			"/sbin",
-		]
-			.filter(Boolean)
-			.join(":"),
-	};
+	const env = appleEnvironment(apple);
 	assert.equal(
 		run("/usr/bin/xcodebuild", ["-version"], root, true, env),
 		`Xcode ${apple.xcode}\nBuild version ${apple.build}`,
