@@ -9,8 +9,19 @@ export function appleEnvironment(apple, inherited = process.env) {
 			: apple.developerDirectory;
 	return {
 		DEVELOPER_DIR: directory,
-		// An undefined override removes the inherited SDKROOT from child processes.
+		// Undefined overrides let Xcode select its SDK and compiler toolchain.
 		SDKROOT: undefined,
+		CC: undefined,
+		CXX: undefined,
+		CPP: undefined,
+		LD: undefined,
+		AR: undefined,
+		AS: undefined,
+		NM: undefined,
+		RANLIB: undefined,
+		STRIP: undefined,
+		LIBTOOL: undefined,
+		SWIFT_EXEC: undefined,
 		PATH: [
 			join(directory, "usr/bin"),
 			inherited.PATH,

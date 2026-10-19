@@ -11,6 +11,7 @@ import {
 	readdirSync,
 	rmSync,
 	statSync,
+	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -339,14 +340,33 @@ function ios() {
 	const archive = pack();
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
 		const destination = app("ios", alias, archive, env);
+		const config = join(destination, "config.xml");
+		const contents = readFileSync(config, "utf8");
+		assert(contents.includes("</widget>"), "Missing application widget");
+		writeFileSync(
+			config,
+			contents.replace(
+				"</widget>",
+				'<preference name="SwiftVersion" value="5.0" />\n</widget>',
+			),
+		);
+		// Both platform generations accept buildFlag through buildConfig; iOS 7
+		// does not parse the CLI's forwarded platform-specific arguments.
+		const buildConfig = join(destination, "build.json");
+		writeFileSync(
+			buildConfig,
+			JSON.stringify({
+				ios: { debug: { buildFlag: ["CODE_SIGNING_ALLOWED=NO"] } },
+			}),
+		);
 		cordova(
 			[
 				"build",
 				"ios",
 				"--debug",
 				"--device",
-				"--",
-				"--buildFlag=CODE_SIGNING_ALLOWED=NO",
+				"--noSign",
+				`--buildConfig=${buildConfig}`,
 			],
 			destination,
 			env,

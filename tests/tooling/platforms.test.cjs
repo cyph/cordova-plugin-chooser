@@ -71,6 +71,10 @@ test("Apple subprocesses use the pinned Xcode despite Nix SDK defaults", async (
 	const inherited = {
 		DEVELOPER_DIR: "/nix/store/fixture-apple-sdk/Library/Developer",
 		SDKROOT: "/nix/store/fixture-apple-sdk/MacOSX.sdk",
+		CC: "/nix/store/fixture-clang/bin/clang",
+		CXX: "/nix/store/fixture-clang/bin/clang++",
+		LD: "/nix/store/fixture-linker/bin/ld",
+		SWIFT_EXEC: "/nix/store/fixture-swift/bin/swiftc",
 		PATH: "/nix/store/fixture-node/bin:/nix/store/fixture-pnpm/bin",
 	};
 	const original = { ...inherited };
@@ -89,6 +93,8 @@ test("Apple subprocesses use the pinned Xcode despite Nix SDK defaults", async (
 		!("SDKROOT" in actual),
 		"The host macOS SDK must not override iPhoneOS lookup",
 	);
+	for (const tool of ["CC", "CXX", "LD", "SWIFT_EXEC"])
+		assert(!(tool in actual), `Xcode must select its own ${tool}`);
 	const paths = actual.PATH.split(":");
 	assert.equal(paths[0], `${apple.developerDirectory}/usr/bin`);
 	assert(paths.includes("/nix/store/fixture-node/bin"));

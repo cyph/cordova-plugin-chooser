@@ -88,6 +88,12 @@ See Cordova's [Android requirements](https://cordova.apache.org/docs/en/latest/g
 
 The plugin adds no blanket storage/media permissions and needs no separate Swift-support plugin. On iOS it selects regular documents through Files; it does not provide a camera or Photos-library UI.
 
+For iOS, select a Swift language version in your application's `config.xml`. The supported platform fixtures use Swift 5 mode:
+
+```xml
+<preference name="SwiftVersion" value="5.0" />
+```
+
 ## Documentation
 
 - [API reference](docs/API.md): methods, callbacks, TypeScript, results and options.
