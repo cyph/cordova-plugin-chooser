@@ -138,7 +138,7 @@ try require(unlimitedCount == 4, "budget leaked across requests")
 
 func newCache() throws -> URL {
 	let cache = sandbox.appendingPathComponent(UUID().uuidString)
-	try manager.createDirectory(at: cache, withIntermediateDirectories: true)
+	try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
 	return cache
 }
 func staged(_ transaction: ChooserTransaction, _ value: UInt8) throws -> URL {
@@ -146,7 +146,7 @@ func staged(_ transaction: ChooserTransaction, _ value: UInt8) throws -> URL {
 	try Data([value]).write(to: file)
 	return file
 }
-func exists(_ file: URL) -> Bool { return manager.fileExists(atPath: file.path) }
+func exists(_ file: URL) -> Bool { return FileManager.default.fileExists(atPath: file.path) }
 
 // Recover committed bookkeeping without removing a reference that could have been delivered.
 do {
