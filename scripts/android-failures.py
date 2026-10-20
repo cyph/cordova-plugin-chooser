@@ -16,9 +16,10 @@ def fingerprint(root):
             for fixture in ["android", "android15"] for name in LOCKS}
 
 
-def verify_failure(result, patterns):
+def verify_failure(result, patterns, causes=()):
     assert result.returncode != 0, "Failure injection unexpectedly passed"
     assert all(pattern.lower() in result.stdout.lower() for pattern in patterns), result.stdout[-5000:]
+    assert not causes or any(cause.lower() in result.stdout.lower() for cause in causes), result.stdout[-5000:]
 
 
 def main():
@@ -49,6 +50,8 @@ def main():
             return result
 
         for fixture in ["android", "android15"]:
+            home = directory / f"{fixture}-gradle-home"
+            env = dict(os.environ, GRADLE_USER_HOME=str(home))
             cold = gradle(fixture, "resolve", "prepareRobolectricSdks")
             assert cold.returncode == 0, cold.stdout[-5000:]
             warm = gradle(fixture, "warm", "--offline", "prepareRobolectricSdks")
@@ -56,25 +59,37 @@ def main():
             sdk_files = sorted((home / "caches/modules-2/files-2.1/org.robolectric/android-all-instrumented").glob("9-*/**/*.jar"))
             assert len(sdk_files) == 1, f"Unexpected runtime SDK cache: {sdk_files}"
             jar = sdk_files[0]
-            original = directory / "original-sdk.jar"
-            shutil.copy2(jar, original)
+            modules = home / "caches/modules-2"
+            baseline = directory / "modules-baseline"
+            shutil.copytree(modules, baseline)
+
+            def restore_modules():
+                shutil.rmtree(modules)
+                shutil.copytree(baseline, modules)
+
+            # Each injection starts with identical artifact metadata, avoiding a
+            # previous missing-file result masking the checksum failure boundary.
             try:
-                jar.unlink()
-                verify_failure(gradle(fixture, "missing-cache", "--offline", "prepareRobolectricSdks"), ["offline", "android-all-instrumented"])
-                shutil.copy2(original, jar)
                 with jar.open("r+b") as artifact:
                     artifact.write(b"CORRUPTED-SDK")
-                verify_failure(gradle(fixture, "corrupt-cache", "--offline", "--refresh-dependencies", "prepareRobolectricSdks"), ["verification failed", "android-all-instrumented"])
+                verify_failure(gradle(fixture, "corrupt-cache", "--offline", "prepareRobolectricSdks", "--rerun-tasks"), ["verification failed", jar.name])
             finally:
-                shutil.copy2(original, jar)
+                restore_modules()
+            try:
+                jar.unlink()
+                verify_failure(gradle(fixture, "missing-cache", "--offline", "prepareRobolectricSdks"), ["offline", jar.name])
+            finally:
+                restore_modules()
+                shutil.rmtree(baseline)
             good = gradle(fixture, "compile-tests", "testApi28")
             assert good.returncode == 0, good.stdout[-5000:]
             staged = checkout / "tests" / fixture / "build/robolectric-sdks" / jar.name
             assert staged.is_file()
             staged.unlink()
-            verify_failure(gradle(fixture, "missing-staged", "--offline", "testMissingSdk", "--rerun-tasks"), ["android-all-instrumented", "does not exist"])
+            verify_failure(gradle(fixture, "missing-staged", "--offline", "testMissingSdk", "--rerun-tasks"), [jar.name], ["does not exist", "not a file"])
             assert not staged.exists(), "Missing SDK was silently repaired"
             print(f"{fixture}: frozen resolution, missing cache, checksum corruption and offline resolver checks passed", flush=True)
+            shutil.rmtree(home)
         assert fingerprint(ROOT) == primary, "Primary checkout metadata changed"
 
 

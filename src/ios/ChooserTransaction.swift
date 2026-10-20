@@ -4,13 +4,19 @@ import Darwin
 final class ChooserTransaction {
 	static let housekeeping = DispatchQueue(label: "com.cyph.cordova.chooser.cache", qos: .utility)
 	private static let initialization = NSLock()
+	// Every access is protected by initialization; NSLock supplies the isolation
+	// which Swift's actor checker cannot infer for this legacy synchronous API.
+	#if compiler(>=5.10)
+	nonisolated(unsafe) private static var initialized = Set<String>()
+	#else
 	private static var initialized = Set<String>()
+	#endif
 	struct Operations {
 		var move: (URL, URL) throws -> Void
 		var remove: (URL) throws -> Void
-		static let files = Operations(move: { from, to in
+		static var files: Operations { return Operations(move: { from, to in
 			try FileManager.default.moveItem(at: from, to: to)
-		}, remove: { try FileManager.default.removeItem(at: $0) })
+		}, remove: { try FileManager.default.removeItem(at: $0) }) }
 	}
 	private struct Entry {
 		let id: String

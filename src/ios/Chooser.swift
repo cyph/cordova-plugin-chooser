@@ -23,7 +23,7 @@ class Chooser: CDVPlugin {
 
 	private func onMain(_ action: @escaping () -> Void) {
 		if Thread.isMainThread { action() }
-		else { DispatchQueue.main.async(execute: action) }
+		else { ChooserWork.dispatch(on: .main, action) }
 	}
 
 	@objc(getFile:)
@@ -80,7 +80,7 @@ class Chooser: CDVPlugin {
 				return
 			}
 			let owner = self.generation
-			ChooserTransaction.housekeeping.async {
+			ChooserWork.dispatch(on: ChooserTransaction.housekeeping) {
 				let message: String
 				let status: CDVCommandStatus
 				do {
@@ -92,7 +92,7 @@ class Chooser: CDVPlugin {
 					message = error.localizedDescription
 					status = .error
 				}
-				DispatchQueue.main.async {
+				ChooserWork.dispatch(on: .main) {
 					if self.generation == owner { self.send(message, status, command.callbackId) }
 				}
 			}
@@ -245,7 +245,7 @@ class Chooser: CDVPlugin {
 				guard let message = String(data: json, encoding: .utf8) else {
 					throw ChooserFailure(code: .readFailed, detail: "Could not serialize file result.")
 				}
-				DispatchQueue.main.async {
+				ChooserWork.dispatch(on: .main) {
 					let delivered = self.complete(request, message: message, status: .ok)
 					request.finishResources(delivered: delivered)
 				}
@@ -253,7 +253,7 @@ class Chooser: CDVPlugin {
 			catch {
 				request.finishResources(delivered: false)
 				let message = error.localizedDescription
-				DispatchQueue.main.async { self.complete(request, message: message, status: .error) }
+				ChooserWork.dispatch(on: .main) { self.complete(request, message: message, status: .error) }
 			}
 		}
 	}
@@ -337,7 +337,7 @@ class Chooser: CDVPlugin {
 			self.picker = nil
 		}
 		if Thread.isMainThread { reset() }
-		else { DispatchQueue.main.async(execute: reset) }
+		else { ChooserWork.dispatch(on: .main, reset) }
 	}
 
 	override func dispose() {

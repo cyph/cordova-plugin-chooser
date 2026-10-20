@@ -69,7 +69,7 @@ final class ChooserRequest {
 		resource = nil
 		lock.unlock()
 		if let transaction = value {
-			ChooserTransaction.housekeeping.async { transaction.finish(delivered: delivered) }
+			ChooserWork.dispatch(on: ChooserTransaction.housekeeping) { transaction.finish(delivered: delivered) }
 		}
 	}
 	func coordinate(using value: NSFileCoordinator?) {

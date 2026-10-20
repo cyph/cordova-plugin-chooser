@@ -324,10 +324,16 @@ function android() {
 	androidEnvironment(true);
 	const archive = pack();
 	for (const [fixture, alias, buildTools] of androidFixtures) {
+		// Continue independent checks so one failure still yields the other
+		// SDK and lint diagnostics in the same qualification attempt.
+		run("gradle", [
+			...androidArguments(fixture, buildTools, "testApi28"),
+			"testApi35",
+			"lintDebug",
+			"lintRelease",
+			"--continue",
+		]);
 		for (const api of [28, 35]) {
-			run("gradle", [
-				...androidArguments(fixture, buildTools, `testApi${api}`),
-			]);
 			run("python3", [
 				join(root, "scripts/android_reports.py"),
 				"tests",
@@ -335,8 +341,6 @@ function android() {
 			]);
 			checked(`${fixture}:api${api}`);
 		}
-		run("gradle", androidArguments(fixture, buildTools, "lintDebug"));
-		run("gradle", androidArguments(fixture, buildTools, "lintRelease"));
 		run("python3", [
 			join(root, "scripts/android_reports.py"),
 			"lint",
@@ -418,6 +422,7 @@ function ios(modern = false) {
 			"-strict-concurrency=complete",
 			"-warn-concurrency",
 			"-warnings-as-errors",
+			"-whole-module-optimization",
 			...sources,
 			"tests/ios/main.swift",
 			"-o",

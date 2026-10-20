@@ -14,12 +14,18 @@ final class ChooserWork {
 	}
 	private init() {}
 
+	// Explicit GCD handoff for Swift 5 callbacks. Request/worker locks protect
+	// shared state; each request's file operations remain sequential.
+	static func dispatch(on queue: DispatchQueue, _ action: @escaping () -> Void) {
+		queue.async(execute: DispatchWorkItem(block: action))
+	}
+
 	func run(_ action: @escaping () -> Void) {
 		lock.lock()
 		guard !started, !released else { lock.unlock(); return }
 		started = true
 		lock.unlock()
-		queue.async {
+		Self.dispatch(on: queue) {
 			defer { self.release() }
 			action()
 		}

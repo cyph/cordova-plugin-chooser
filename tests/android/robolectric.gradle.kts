@@ -42,6 +42,8 @@ val prepareRobolectricSdks = tasks.register<Sync>("prepareRobolectricSdks") {
     }
 }
 tasks.withType<Test>().configureEach {
+    // API 35's Robolectric descriptor shadow reflects over JDK FileDescriptor.
+    jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
     testLogging {
         events("failed")
         exceptionFormat = TestExceptionFormat.FULL
