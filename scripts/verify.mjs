@@ -333,10 +333,6 @@ function android() {
 				"tests",
 				join(root, "tests", fixture, "build/test-results", `testApi${api}`),
 			]);
-			retain(
-				join(root, "tests", fixture, "build/test-results", `testApi${api}`),
-				`${fixture}-api${api}`,
-			);
 			checked(`${fixture}:api${api}`);
 		}
 		run("gradle", androidArguments(fixture, buildTools, "lintDebug"));
@@ -346,7 +342,6 @@ function android() {
 			"lint",
 			join(root, "tests", fixture, "build/reports"),
 		]);
-		retain(join(root, "tests", fixture, "build/reports"), `${fixture}-reports`);
 		checked(`${fixture}:lint`);
 		const destination = app("android", alias, archive);
 		for (const configuration of ["debug", "release"]) {
@@ -619,4 +614,12 @@ try {
 		saveReport();
 	}
 	throw error;
+} finally {
+	if (lane === "android")
+		for (const [fixture] of androidFixtures) {
+			for (const directory of ["reports", "test-results"]) {
+				const source = join(root, "tests", fixture, "build", directory);
+				if (existsSync(source)) retain(source, `${fixture}-${directory}`);
+			}
+		}
 }

@@ -41,6 +41,7 @@ jobs:
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
+          overwrite: true
           if-no-files-found: error
   android:
     if: ${{ !github.event.repository.private }}
@@ -69,6 +70,7 @@ jobs:
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
+          overwrite: true
           if-no-files-found: error
   android-failures:
     if: ${{ !github.event.repository.private }}
@@ -97,6 +99,7 @@ jobs:
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
+          overwrite: true
           if-no-files-found: error
   ios:
     if: ${{ !github.event.repository.private }}
@@ -125,6 +128,7 @@ jobs:
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
+          overwrite: true
           if-no-files-found: error
   ios-modern:
     if: ${{ !github.event.repository.private }}
@@ -153,6 +157,7 @@ jobs:
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
+          overwrite: true
           if-no-files-found: error
   qualification:
     if: ${{ always() && !github.event.repository.private }}
