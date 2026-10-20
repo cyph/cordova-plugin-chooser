@@ -77,3 +77,13 @@ deps-update *args:
 clean *args:
     #!/bin/sh
     exec {{quote(just_executable())}} chainman clean "$@"
+
+[positional-arguments]
+verify-ios-modern *args:
+    #!/bin/sh
+    exec {{quote(just_executable())}} chainman run verify-ios-modern "$@"
+
+[positional-arguments]
+verify-android-failures *args:
+    #!/bin/sh
+    exec {{quote(just_executable())}} chainman run verify-android-failures "$@"

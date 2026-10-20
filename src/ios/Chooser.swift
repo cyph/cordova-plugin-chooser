@@ -165,12 +165,10 @@ class Chooser: CDVPlugin {
 				if let type = UTType(mimeType: mime), !type.isDynamic { return type.identifier }
 				return "public.item"
 			}
+			else { return legacyIdentifier(for: mime) }
+			#else
+			return legacyIdentifier(for: mime)
 			#endif
-			if let identifier = UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, mime as CFString, nil)?.takeRetainedValue() as String?,
-				!identifier.hasPrefix("dyn.") {
-				return identifier
-			}
-			return "public.item"
 		}
 		// Compatibility aliases cover older iWork document registrations.
 		for (legacy, alternate) in [
@@ -182,12 +180,26 @@ class Chooser: CDVPlugin {
 		return identifiers
 	}
 
+	@available(iOS, introduced: 11.0, deprecated: 14.0)
+	private func legacyIdentifier(for mime: String) -> String {
+		if let identifier = UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, mime as CFString, nil)?.takeRetainedValue() as String?,
+			!identifier.hasPrefix("dyn.") { return identifier }
+		return "public.item"
+	}
+
 	private func mediaType(for url: URL) -> String {
 		#if canImport(UniformTypeIdentifiers)
 		if #available(iOS 14.0, *) {
 			return UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
 		}
+		else { return legacyMediaType(for: url) }
+		#else
+		return legacyMediaType(for: url)
 		#endif
+	}
+
+	@available(iOS, introduced: 11.0, deprecated: 14.0)
+	private func legacyMediaType(for url: URL) -> String {
 		if let uti = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, url.pathExtension as CFString, nil)?.takeRetainedValue(),
 			let type = UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType)?.takeRetainedValue() as String? {
 			return type

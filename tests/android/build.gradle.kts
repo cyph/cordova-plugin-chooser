@@ -11,6 +11,12 @@ android {
     }
     sourceSets.getByName("main").java.srcDirs("../../src/android")
     testOptions.unitTests.isIncludeAndroidResources = true
+    lint {
+        abortOnError = true
+        warningsAsErrors = true
+        htmlReport = true
+        xmlReport = true
+    }
 }
 androidComponents { beforeVariants { it.enableAndroidTest = false } }
 dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }

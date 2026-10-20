@@ -25,15 +25,17 @@ The flake owns Node's major family, JDK 17, Gradle, Android SDKs, CocoaPods and 
 | `just verify-browser` | Linux, host/container Nix | Packed plugin in Cordova browser; Chromium, Firefox and WebKit |
 | `just verify-android-dependencies` | Linux/macOS, including Linux ARM; host Nix | Strict resolution and staging of frozen Robolectric SDK JARs without running Android binaries |
 | `just verify-android` | Linux x86_64 or supported macOS; host Nix | Android 14/15 JUnit/Robolectric fixtures and packed-plugin Cordova debug builds |
-| `just verify-ios` | macOS, host Nix and selected Xcode | Foundation fixtures and unsigned Cordova iOS 7/8 device-target builds |
+| `just verify-ios` | macOS, host Nix and Xcode 26.3 | Foundation fixtures and unsigned debug/release Cordova iOS 7/8 archives |
+| `just verify-ios-modern` | Apple Silicon macOS, host Nix and Xcode 27.0 | Both Cordova iOS generations, concurrency diagnostics and Foundation address/thread sanitizers |
+| `just verify-android-failures` | Linux x86_64 or supported macOS; host Nix | Isolated cold/warm resolution, missing/corrupted SDKs and offline loading failures |
 | `just verify-native` | Host satisfying both native profiles | Both native lanes |
 | `just clean` | Project toolchain profile | Removes disposable applications and fixture output |
 
 Android Linux build tools are x86_64 executables, so full Android execution fails preflight on Linux ARM. Dependency preparation remains available there. Neither native lane launches an emulator, simulator or device.
 
-Apple's licensed SDK is an external prerequisite. `chainman/apple.json` owns the Xcode version/build, iPhoneOS SDK and developer directory. The iOS lane selects that directory or validates an explicit `DEVELOPER_DIR`; mismatches fail. The [macOS 15 runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md) lists available Xcode installations. When changing this contract, qualify both supported Cordova iOS generations.
+Apple's licensed SDK is an external prerequisite. `chainman/apple.json` and `chainman/apple-modern.json` own the baseline and modern Xcode versions/builds, iPhoneOS SDKs and developer directories. The iOS lane selects that directory or validates an explicit `DEVELOPER_DIR`; mismatches fail. The [macOS 15 runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md) lists available Xcode installations. When changing this contract, qualify both supported Cordova iOS generations.
 
-The selected toolchain is Xcode 26.3 (17C529) with iPhoneOS SDK 26.2. Generated applications use Swift 5 mode and an iOS 15.0 deployment target, within that Xcode version's supported range. Cordova's older OS-family floors and the plugin's retained source fallbacks do not establish qualification below this deployment target.
+The baseline toolchain is Xcode 26.3 (17C529) with iPhoneOS SDK 26.2. The modern lane uses Xcode 27.0 (27A266a) and iPhoneOS SDK 27.0 on the Apple Silicon `xcode-27` runner. Generated applications use Swift 5 mode and an iOS 15.0 deployment target, within that Xcode version's supported range. Cordova's older OS-family floors and the plugin's retained source fallbacks do not establish qualification below this deployment target.
 
 The verifier calls Apple's `/usr/bin/xcodebuild` and `/usr/bin/xcrun` launchers explicitly. It exposes the selected developer tools and standard macOS utilities to Cordova's subprocesses while retaining the Nix-owned language tools in their search path.
 
@@ -49,9 +51,13 @@ Package checks validate the iOS privacy declaration and recursively require all 
 
 Browser integration uses the actual registered bridge in Chromium, Firefox and WebKit. It exercises selection, bytes, metadata/copy paths without content reads, limits, failures, Blob release, navigation and remove/reinstall. Automated empty selections do not establish native cancel-dialog behavior. Playwright WebKit is not a complete Safari/OS integration claim.
 
-Android fixtures compile production sources against Cordova 14/15 and Android SDK 35/36. JUnit covers counted streaming and cache ownership; Robolectric API 28 provider doubles cover metadata, cancellation, restoration, reset and failure cases. Dispatcher regressions use the actual Cordova interface. Separate packed-app builds check installation and resource processing.
+Android fixtures compile production sources against Cordova 14/15 and Android SDK 35/36. JUnit covers counted streaming and cache ownership; Robolectric API 28 and 35 provider doubles cover metadata, cancellation, restoration, reset and failure cases. Dispatcher regressions use the actual Cordova interface. Separate packed-app debug and unsigned release builds check installation and resource processing. Release APK checks require the Chooser registration and DEX entrypoint. Android Lint runs for debug and release fixtures; untriaged warnings fail qualification.
 
 Foundation fixtures compile production iOS helpers in Swift 5 mode and exercise streams, limits, partial writes, cancellation, ownership, batch recovery and worker capacity. They do not import UIKit/Cordova. Packed-app builds select the same language mode through the application's `SwiftVersion` preference, set `deployment-target` to `15.0`, and separately check those imports and source registration. Their generated build configuration disables signing, and Cordova's `noSign` option skips signed IPA export; no development team or provisioning profile is needed. Live picker/provider behavior requires integration checks.
+
+Both Apple lanes enable complete concurrency diagnostics in Swift 5 mode. The modern lane additionally compiles and executes separate AddressSanitizer and ThreadSanitizer versions of the Foundation fixtures, with failures stopping qualification. Debug archives are checked before removal and after reinstallation; a fresh unsigned release archive is checked afterward. Signing and store acceptance require separate qualification.
+
+The current Android host matrix executes APIs 28 and 35 and compiles against APIs 35/36. Android 17/API 37 guidance was assessed for document access, lifecycle and adaptive UI: the plugin uses content URIs and delegates selection to the system picker, declares no broad storage permission, and does not constrain activity orientation. Keep the supported Cordova SDK defaults; newer Android OS execution still requires integration testing. [Android 17 guidance](https://developer.android.com/about/versions/17/) describes behavior changes for applications running on and targeting that release.
 
 ### Android dependency ownership
 
@@ -70,7 +76,7 @@ Robolectric selects its compile-time SDK from the maximum supported by the JDK, 
 
 ### Dependency failure checks
 
-Qualify Android lock updates with both fresh and warm Gradle caches. In disposable copies:
+Run `just verify-android-failures` to qualify the frozen SDK dependencies using disposable fixture copies and an isolated Gradle home. It exercises these boundaries and compares lock/checksum fingerprints after each command:
 
 1. Resolve and stage both SDK roles with strict lock/checksum verification.
 2. Remove a cached SDK JAR and require offline Gradle resolution to fail.
@@ -103,9 +109,11 @@ Run `just chainman deps-audit --targets js` for published dependency advisories.
 
 ## GitHub Actions
 
-[Verify](../.github/workflows/verify.yml) runs on pull requests and pushes to `master` or `candidate/**`, with manual dispatch available. Standard Ubuntu runners execute the portable and Android jobs; macOS executes iOS. All call the same chainman tasks, with read-only repository permissions, immutable Action pins and finite timeouts. No signing accounts, package publication or deployment are required.
+[Verify](../.github/workflows/verify.yml) runs on pull requests and pushes to `master` or `candidate/**`, with manual dispatch available. Standard Ubuntu runners execute the portable, Android and dependency-failure jobs; separate baseline and modern macOS jobs execute iOS. All call the same chainman tasks, with read-only repository permissions, immutable Action pins and finite timeouts. No signing accounts, package publication or deployment are required.
 
-Require the portable, Android and iOS jobs to pass for the same candidate revision before release. Inspect failures and rerun affected lanes after fixes. Keep exact revisions, environment details and execution results in CI or the pull request, rather than accumulating dated reports here.
+Require every qualification job to pass for the same candidate revision before release. The final qualification job checks successful job results, complete per-lane reports and identical package integrity across hosts. Skipped lanes and missing reports fail this gate.
+
+Each lane writes a machine-readable report and command logs under `.verification/reports/`. Reports record the commit, toolchains, executed checks and package integrity. Actions retains scoped reports, JUnit and lint output for 14 days, including on failure; dependency caches and environment dumps are excluded. Use `just chainman run qualify` with `CHOOSER_REPORTS_ROOT`, `GITHUB_SHA` and `CHOOSER_JOB_RESULTS` to validate downloaded CI evidence locally. Inspect failures and rerun affected lanes after fixes. Keep exact revisions, environment details and execution results in CI or the pull request, rather than accumulating dated reports here.
 
 ## Provider and OS integration
 

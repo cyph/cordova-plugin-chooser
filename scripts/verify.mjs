@@ -16,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { aggregateReports, requiredChecks } from "./qualification.mjs";
 import { appleEnvironment } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
@@ -24,16 +25,56 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, ".verification");
 const readJSON = (path) => JSON.parse(readFileSync(path, "utf8"));
 const pkg = readJSON(join(root, "package.json"));
+const lane = process.argv[2];
+const reportDirectory = join(output, "reports", lane || "unknown");
+const report = {
+	schema: 1,
+	lane,
+	commit: spawnSync("git", ["rev-parse", "HEAD"], {
+		cwd: root,
+		encoding: "utf8",
+	}).stdout?.trim(),
+	status: "running",
+	platform: `${process.platform}/${process.arch}`,
+	toolchain: { node: process.versions.node },
+	checks: [],
+	commands: [],
+};
+const checked = (name) => {
+	report.checks.push(name);
+};
+function saveReport() {
+	mkdirSync(reportDirectory, { recursive: true });
+	writeFileSync(
+		join(reportDirectory, "qualification.json"),
+		JSON.stringify(report, null, 2) + "\n",
+	);
+}
+function retain(source, name) {
+	assert(existsSync(source), `Missing qualification output: ${source}`);
+	cpSync(source, join(reportDirectory, name), { recursive: true });
+}
 const run = (command, args, cwd = root, capture = false, env = {}) => {
 	console.log(`> ${command} ${args.join(" ")}`);
 	const result = spawnSync(command, args, {
 		cwd,
 		env: { ...process.env, ...env },
-		stdio: capture ? "pipe" : "inherit",
+		stdio: "pipe",
 		encoding: "utf8",
 		timeout: 20 * 60 * 1000,
-		maxBuffer: 16 * 1024 * 1024,
+		maxBuffer: 64 * 1024 * 1024,
 	});
+	mkdirSync(reportDirectory, { recursive: true });
+	const log = `command-${String(report.commands.length + 1).padStart(3, "0")}.log`;
+	writeFileSync(
+		join(reportDirectory, log),
+		`${result.stdout || ""}${result.stderr || ""}`,
+	);
+	report.commands.push({ command, args, status: result.status, log });
+	if (!capture) {
+		process.stdout.write(result.stdout || "");
+		process.stderr.write(result.stderr || "");
+	}
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
 		if (capture) process.stderr.write(`${result.stdout}${result.stderr}`);
@@ -107,6 +148,8 @@ function pack() {
 			true,
 		),
 	);
+	report.package = { version: pkg.version, integrity: info.integrity };
+	checked("package");
 	const files = new Set(info.files.map((file) => file.path));
 	checkPackedFiles(root, pkg, files);
 	const archive = join(directory, info.filename);
@@ -133,7 +176,7 @@ function pack() {
 }
 
 function app(platform, alias, archive, env = {}, beforePlugin = () => {}) {
-	const destination = join(output, alias);
+	const destination = join(output, platform === "ios" ? lane : "", alias);
 	rmSync(destination, { recursive: true, force: true });
 	cordova(
 		[
@@ -164,13 +207,17 @@ function app(platform, alias, archive, env = {}, beforePlugin = () => {}) {
 function portable() {
 	staticChecks();
 	run("pnpm", ["test"]);
+	checked("contracts");
 	run("pnpm", ["test:types"]);
+	checked("types");
 	run("node", [
 		"--test",
 		"tests/tooling/platforms.test.cjs",
 		"tests/tooling/verification.test.cjs",
 		"tests/tooling/package.test.cjs",
+		"tests/tooling/qualification.test.cjs",
 	]);
+	checked("tooling");
 	run("python3", [
 		"-m",
 		"unittest",
@@ -180,6 +227,7 @@ function portable() {
 		"-p",
 		"*_test.py",
 	]);
+	checked("privacy");
 	pack();
 }
 
@@ -199,6 +247,7 @@ function browser() {
 			CHOOSER_BROWSER_ROOT: join(destination, "platforms/browser/www"),
 		},
 	);
+	checked("browsers");
 	cordova(["plugin", "remove", pkg.name, "--nosave"], destination);
 	stageFrozenPackage(
 		destination,
@@ -206,6 +255,7 @@ function browser() {
 	);
 	installPlugin(destination, packed);
 	cordova(["prepare", "browser"], destination);
+	checked("reinstall");
 }
 
 const androidFixtures = [
@@ -213,12 +263,18 @@ const androidFixtures = [
 	["android15", "cordova-android15", "36.0.0"],
 ];
 
-function androidEnvironment() {
+function androidEnvironment(execute = false) {
+	if (execute && process.platform === "linux" && process.arch !== "x64")
+		throw new Error(
+			"Android build tools require Linux x86_64; use the CI Android lane.",
+		);
 	assert(
 		process.env.ANDROID_HOME && existsSync(process.env.ANDROID_HOME),
 		"Missing Nix Android SDK",
 	);
-	assert.match(run("gradle", ["--version"], root, true), /Gradle 8\./);
+	report.toolchain.androidRuntimeApis = [28, 35];
+	report.toolchain.gradle = run("gradle", ["--version"], root, true);
+	assert.match(report.toolchain.gradle, /Gradle 8\./);
 }
 
 function aapt2Path(buildTools) {
@@ -265,36 +321,76 @@ function androidDependencies() {
 }
 
 function android() {
-	if (process.platform === "linux" && process.arch !== "x64")
-		throw new Error(
-			"Android build tools require Linux x86_64; use the CI Android lane.",
-		);
-	androidEnvironment();
+	androidEnvironment(true);
 	const archive = pack();
 	for (const [fixture, alias, buildTools] of androidFixtures) {
-		run("gradle", androidArguments(fixture, buildTools, "testDebugUnitTest"));
+		for (const api of [28, 35]) {
+			run("gradle", [
+				...androidArguments(fixture, buildTools, `testApi${api}`),
+			]);
+			run("python3", [
+				join(root, "scripts/android_reports.py"),
+				"tests",
+				join(root, "tests", fixture, "build/test-results", `testApi${api}`),
+			]);
+			retain(
+				join(root, "tests", fixture, "build/test-results", `testApi${api}`),
+				`${fixture}-api${api}`,
+			);
+			checked(`${fixture}:api${api}`);
+		}
+		run("gradle", androidArguments(fixture, buildTools, "lintDebug"));
+		run("gradle", androidArguments(fixture, buildTools, "lintRelease"));
+		run("python3", [
+			join(root, "scripts/android_reports.py"),
+			"lint",
+			join(root, "tests", fixture, "build/reports"),
+		]);
+		retain(join(root, "tests", fixture, "build/reports"), `${fixture}-reports`);
+		checked(`${fixture}:lint`);
 		const destination = app("android", alias, archive);
-		cordova(
-			[
-				"build",
-				"android",
-				"--debug",
-				"--",
-				`--gradleArg=-Pandroid.aapt2FromMavenOverride=${aapt2Path(buildTools)}`,
-			],
-			destination,
-		);
+		for (const configuration of ["debug", "release"]) {
+			cordova(
+				[
+					"build",
+					"android",
+					`--${configuration}`,
+					"--",
+					"--packageType=apk",
+					`--gradleArg=-Pandroid.aapt2FromMavenOverride=${aapt2Path(buildTools)}`,
+				],
+				destination,
+			);
+			if (configuration === "release")
+				run("python3", [
+					join(root, "scripts/android_reports.py"),
+					"apk",
+					join(destination, "platforms/android/app/build/outputs/apk/release"),
+				]);
+			checked(`${fixture}:${configuration}`);
+		}
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination);
 		stageFrozenPackage(destination, join(root, "node_modules", alias));
 		installPlugin(destination, archive);
 		cordova(["prepare", "android"], destination);
+		checked(`${fixture}:reinstall`);
 	}
 }
 
-function ios() {
+function ios(modern = false) {
 	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
-	const apple = readJSON(join(root, "chainman/apple.json"));
+	const apple = readJSON(
+		join(root, modern ? "chainman/apple-modern.json" : "chainman/apple.json"),
+	);
+	report.toolchain.apple = apple;
 	const env = appleEnvironment(apple);
+	report.toolchain.swift = run(
+		"/usr/bin/xcrun",
+		["swiftc", "--version"],
+		root,
+		true,
+		env,
+	);
 	assert.equal(
 		run("/usr/bin/xcodebuild", ["-version"], root, true, env),
 		`Xcode ${apple.xcode}\nBuild version ${apple.build}`,
@@ -324,6 +420,9 @@ function ios() {
 			"swiftc",
 			"-swift-version",
 			"5",
+			"-strict-concurrency=complete",
+			"-warn-concurrency",
+			"-warnings-as-errors",
 			...sources,
 			"tests/ios/main.swift",
 			"-o",
@@ -334,6 +433,35 @@ function ios() {
 		env,
 	);
 	run(join(output, "foundation"), [], root, false, env);
+	checked("foundation");
+	if (modern)
+		for (const sanitizer of ["address", "thread"]) {
+			const binary = join(output, `foundation-${sanitizer}`);
+			run(
+				"/usr/bin/xcrun",
+				[
+					"swiftc",
+					"-swift-version",
+					"5",
+					"-sanitize=" + sanitizer,
+					"-g",
+					"-Onone",
+					...sources,
+					"tests/ios/main.swift",
+					"-o",
+					binary,
+				],
+				root,
+				false,
+				env,
+			);
+			run(binary, [], root, false, {
+				...env,
+				ASAN_OPTIONS: "halt_on_error=1",
+				TSAN_OPTIONS: "halt_on_error=1",
+			});
+			checked(`${sanitizer}-sanitizer`);
+		}
 	const archive = pack();
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
 		const projectName = alias === "cordova-ios7" ? "ChooserFixture" : "App";
@@ -372,10 +500,21 @@ function ios() {
 		writeFileSync(
 			buildConfig,
 			JSON.stringify({
-				ios: { debug: { buildFlag: ["CODE_SIGNING_ALLOWED=NO"] } },
+				ios: Object.fromEntries(
+					["debug", "release"].map((configuration) => [
+						configuration,
+						{
+							buildFlag: [
+								"CODE_SIGNING_ALLOWED=NO",
+								"SWIFT_STRICT_CONCURRENCY=complete",
+								"SWIFT_TREAT_WARNINGS_AS_ERRORS=YES",
+							],
+						},
+					]),
+				),
 			}),
 		);
-		const build = () => {
+		const build = (configuration = "debug") => {
 			// Require a fresh archive after reinstallation, never an earlier output.
 			rmSync(join(destination, "platforms/ios", `${projectName}.xcarchive`), {
 				recursive: true,
@@ -385,7 +524,7 @@ function ios() {
 				[
 					"build",
 					"ios",
-					"--debug",
+					`--${configuration}`,
 					"--device",
 					"--noSign",
 					`--buildConfig=${buildConfig}`,
@@ -396,6 +535,7 @@ function ios() {
 			privacy("archive", destination);
 		};
 		build();
+		checked(`${alias}:debug`);
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination, env);
 		privacy("removed", destination);
 		stageFrozenPackage(destination, join(root, "node_modules", alias));
@@ -405,6 +545,9 @@ function ios() {
 		cordova(["prepare", "ios"], destination, env);
 		privacy("installed", destination);
 		build();
+		checked(`${alias}:reinstall`);
+		build("release");
+		checked(`${alias}:release`);
 	}
 }
 
@@ -414,6 +557,26 @@ const lanes = {
 	android,
 	"android-dependencies": androidDependencies,
 	ios,
+	"ios-modern": () => ios(true),
+	"android-failures"() {
+		androidEnvironment(true);
+		pack();
+		run("python3", [join(root, "scripts/android-failures.py")]);
+		checked("dependency-failures");
+	},
+	qualification() {
+		console.log(
+			JSON.stringify(
+				aggregateReports(
+					process.env.CHOOSER_REPORTS_ROOT || join(output, "downloaded"),
+					process.env.GITHUB_SHA || report.commit,
+					JSON.parse(process.env.CHOOSER_JOB_RESULTS || "{}"),
+				),
+				null,
+				2,
+			),
+		);
+	},
 	doctor() {
 		staticChecks();
 		console.log(
@@ -434,4 +597,26 @@ assert(
 	Object.hasOwn(lanes, process.argv[2]),
 	"Select a declared verification lane.",
 );
-lanes[process.argv[2]]();
+try {
+	if (Object.hasOwn(requiredChecks, lane)) {
+		rmSync(reportDirectory, { recursive: true, force: true });
+		saveReport();
+	}
+	lanes[lane]();
+	if (Object.hasOwn(requiredChecks, lane)) {
+		for (const check of requiredChecks[lane])
+			assert(
+				report.checks.includes(check),
+				`Missing qualification check: ${check}`,
+			);
+		report.status = "passed";
+		saveReport();
+	}
+} catch (error) {
+	if (Object.hasOwn(requiredChecks, lane)) {
+		report.status = "failed";
+		report.failure = error.message;
+		saveReport();
+	}
+	throw error;
+}

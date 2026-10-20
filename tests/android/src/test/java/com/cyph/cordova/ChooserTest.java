@@ -50,7 +50,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 28, manifest = Config.NONE)
+@Config(sdk = {28, 35}, manifest = Config.NONE)
 public class ChooserTest {
 	private Chooser plugin;
 	private AppCompatActivity activity;
@@ -115,6 +115,7 @@ public class ChooserTest {
 	}
 
 	@Before public void setup() throws Exception {
+		assertEquals("Robolectric must execute the requested API", Integer.getInteger("chooser.fixture.sdk", android.os.Build.VERSION.SDK_INT).intValue(), android.os.Build.VERSION.SDK_INT);
 		activity = Robolectric.buildActivity(AppCompatActivity.class).get();
 		worker = Executors.newSingleThreadExecutor();
 		cordova = mock(CordovaInterface.class);
