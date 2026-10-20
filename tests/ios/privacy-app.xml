@@ -1,0 +1,23 @@
+<platform name="ios">
+	<preference name="SwiftVersion" value="5.0" />
+	<preference name="deployment-target" value="15.0" />
+	<privacy-manifest>
+		<key>NSPrivacyTracking</key>
+		<false/>
+		<key>NSPrivacyTrackingDomains</key>
+		<array/>
+		<key>NSPrivacyCollectedDataTypes</key>
+		<array/>
+		<key>NSPrivacyAccessedAPITypes</key>
+		<array>
+			<dict>
+				<key>NSPrivacyAccessedAPIType</key>
+				<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+				<key>NSPrivacyAccessedAPITypeReasons</key>
+				<array>
+					<string>CA92.1</string>
+				</array>
+			</dict>
+		</array>
+	</privacy-manifest>
+</platform>

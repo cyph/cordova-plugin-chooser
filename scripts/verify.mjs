@@ -348,25 +348,24 @@ function ios() {
 				),
 				join(destination, "privacy-snapshot.json"),
 			]);
-		const destination = app("ios", alias, archive, env, (destination) =>
-			privacy("snapshot", destination),
-		);
+		const destination = app("ios", alias, archive, env, (destination) => {
+			const config = join(destination, "config.xml");
+			const contents = readFileSync(config, "utf8");
+			assert(contents.includes("</widget>"), "Missing application widget");
+			writeFileSync(
+				config,
+				contents.replace(
+					"</widget>",
+					`${readFileSync(join(root, "tests/ios/privacy-app.xml"), "utf8")}</widget>`,
+				),
+			);
+			installPlugin(destination, join(root, "tests/ios/privacy-plugin"), env);
+			cordova(["prepare", "ios"], destination, env);
+			privacy("snapshot", destination);
+		});
 		privacy("installed", destination);
 		cordova(["prepare", "ios"], destination, env);
 		privacy("installed", destination);
-		const config = join(destination, "config.xml");
-		const contents = readFileSync(config, "utf8");
-		assert(contents.includes("</widget>"), "Missing application widget");
-		writeFileSync(
-			config,
-			contents.replace(
-				"</widget>",
-				'<platform name="ios">\n' +
-					'<preference name="SwiftVersion" value="5.0" />\n' +
-					'<preference name="deployment-target" value="15.0" />\n' +
-					"</platform>\n</widget>",
-			),
-		);
 		// Both platform generations accept buildFlag through buildConfig; iOS 7
 		// does not parse the CLI's forwarded platform-specific arguments.
 		const buildConfig = join(destination, "build.json");
@@ -376,25 +375,36 @@ function ios() {
 				ios: { debug: { buildFlag: ["CODE_SIGNING_ALLOWED=NO"] } },
 			}),
 		);
-		cordova(
-			[
-				"build",
-				"ios",
-				"--debug",
-				"--device",
-				"--noSign",
-				`--buildConfig=${buildConfig}`,
-			],
-			destination,
-			env,
-		);
-		privacy("archive", destination);
+		const build = () => {
+			// Require a fresh archive after reinstallation, never an earlier output.
+			rmSync(join(destination, "platforms/ios", `${projectName}.xcarchive`), {
+				recursive: true,
+				force: true,
+			});
+			cordova(
+				[
+					"build",
+					"ios",
+					"--debug",
+					"--device",
+					"--noSign",
+					`--buildConfig=${buildConfig}`,
+				],
+				destination,
+				env,
+			);
+			privacy("archive", destination);
+		};
+		build();
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination, env);
 		privacy("removed", destination);
 		stageFrozenPackage(destination, join(root, "node_modules", alias));
+		cordova(["prepare", "ios"], destination, env);
+		privacy("removed", destination);
 		installPlugin(destination, archive, env);
 		cordova(["prepare", "ios"], destination, env);
 		privacy("installed", destination);
+		build();
 	}
 }
 

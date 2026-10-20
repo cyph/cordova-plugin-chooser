@@ -8,10 +8,32 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from privacy import BUNDLE, EXPECTED, MANIFEST, check_archive, check_project
+from privacy import (
+    BUNDLE, EXPECTED, INDEPENDENT_BUNDLE, MANIFEST, check_archive,
+    check_project, fixture_declarations, snapshot_project,
+)
+
+
+class FixturePrivacyTests(unittest.TestCase):
+    def test_fixture_stays_local_and_dependency_free(self):
+        fixture = ROOT / "tests/ios/privacy-plugin"
+        package = json.loads((fixture / "package.json").read_text())
+        self.assertIs(package["private"], True)
+        for key in [
+            "dependencies", "devDependencies", "optionalDependencies",
+            "peerDependencies", "bundledDependencies", "bundleDependencies", "scripts",
+        ]:
+            self.assertFalse(package.get(key), f"Declare chainman ownership before adding {key}")
+        plugin = ET.parse(fixture / "plugin.xml").getroot()
+        self.assertEqual(plugin.attrib["id"], package["name"])
+        self.assertEqual(plugin.attrib["version"], package["version"])
+        self.assertFalse(plugin.findall(".//{*}dependency"))
+        self.assertFalse(plugin.findall(".//{*}framework"))
+        self.assertFalse(plugin.findall(".//{*}hook"))
 
 
 class PackagePrivacyTests(unittest.TestCase):
@@ -81,55 +103,141 @@ class InstalledPrivacyTests(unittest.TestCase):
         self.platform = Path(temporary.name)
         self.project = self.platform / "App"
         self.bundle = self.project / "Resources" / BUNDLE
-        self.bundle.mkdir(parents=True)
-        (self.bundle / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
-        # An independent app declaration must survive plugin lifecycle operations.
-        self.app_manifest = dict(EXPECTED, NSPrivacyAccessedAPITypes=[{
-            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"],
-        }])
+        self.independent = self.project / "Resources" / INDEPENDENT_BUNDLE
+        declarations = fixture_declarations()
+        self.app_manifest = declarations["app"]
+        self.independent_manifest = declarations["independent"]
+        self.independent.mkdir(parents=True)
+        (self.independent / MANIFEST).write_bytes(plistlib.dumps(self.independent_manifest))
         (self.project / MANIFEST).write_bytes(plistlib.dumps(self.app_manifest))
         self.snapshot = self.platform / "privacy-snapshot.json"
-        self.snapshot.write_text(json.dumps(self.app_manifest))
         self.pbx = self.platform / "App.xcodeproj/project.pbxproj"
         self.pbx.parent.mkdir()
-        self.pbx.write_text("/* ChooserPrivacy.bundle in Resources */\n" * 2)
+        self.registration(chooser=0)
+        snapshot_project(self.project, self.snapshot)
+        self.install()
+
+    def registration(self, chooser=2, independent=2):
+        self.pbx.write_text(
+            f"/* {BUNDLE} in Resources */\n" * chooser
+            + f"/* {INDEPENDENT_BUNDLE} in Resources */\n" * independent
+        )
+
+    def install(self):
+        self.bundle.mkdir()
+        (self.bundle / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
+        self.registration()
+
+    def remove(self):
+        shutil.rmtree(self.bundle)
+        self.registration(chooser=0)
 
     def test_install_remove_and_reinstall(self):
         check_project(self.project, self.snapshot, True)
-        shutil.rmtree(self.bundle)
-        self.pbx.write_text("")
+        self.remove()
         check_project(self.project, self.snapshot, False)
-        self.bundle.mkdir()
-        (self.bundle / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
-        self.pbx.write_text("/* ChooserPrivacy.bundle in Resources */\n" * 2)
+        self.install()
         check_project(self.project, self.snapshot, True)
 
     def test_duplicate_and_missing_build_resources(self):
-        for count in [0, 1, 3, 4]:
-            self.pbx.write_text("/* ChooserPrivacy.bundle in Resources */\n" * count)
+        for resource in ["chooser", "independent"]:
+            for count in [0, 1, 3, 4]:
+                with self.subTest(resource=resource, count=count):
+                    self.registration(**{resource: count})
+                    with self.assertRaises(AssertionError):
+                        check_project(self.project, self.snapshot, True)
+
+    def test_snapshot_rejects_empty_or_overwritten_app(self):
+        self.remove()
+        for declaration in [dict(self.app_manifest, NSPrivacyAccessedAPITypes=[]), EXPECTED]:
+            (self.project / MANIFEST).write_bytes(plistlib.dumps(declaration))
+            with self.assertRaises(AssertionError):
+                snapshot_project(self.project, self.snapshot)
+
+    def test_snapshot_rejects_missing_or_overwritten_independent_plugin(self):
+        self.remove()
+        (self.independent / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
+        with self.assertRaises(AssertionError):
+            snapshot_project(self.project, self.snapshot)
+        shutil.rmtree(self.independent)
+        with self.assertRaises(AssertionError):
+            snapshot_project(self.project, self.snapshot)
+
+    def test_app_manifest_overwrite(self):
+        for declaration in [EXPECTED, dict(self.app_manifest, NSPrivacyAccessedAPITypes=[])]:
+            (self.project / MANIFEST).write_bytes(plistlib.dumps(declaration))
             with self.assertRaises(AssertionError):
                 check_project(self.project, self.snapshot, True)
 
-    def test_app_manifest_overwrite(self):
-        (self.project / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
+    def test_independent_manifest_overwrite(self):
+        (self.independent / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
         with self.assertRaises(AssertionError):
             check_project(self.project, self.snapshot, True)
 
-    def test_archive_requires_plugin_and_app_manifests(self):
-        app = self.platform / "App.xcarchive/Products/Applications/Fixture.app"
-        bundle = app / BUNDLE
-        bundle.mkdir(parents=True)
-        (bundle / MANIFEST).write_bytes(plistlib.dumps(EXPECTED, fmt=plistlib.FMT_BINARY))
-        (app / MANIFEST).write_bytes(plistlib.dumps(self.app_manifest, fmt=plistlib.FMT_BINARY))
-        check_archive(self.platform, self.snapshot)
-        (bundle / MANIFEST).unlink()
-        with self.assertRaises(FileNotFoundError):
-            check_archive(self.platform, self.snapshot)
-        (bundle / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
-        (app / MANIFEST).write_bytes(plistlib.dumps(EXPECTED))
+    def test_plugin_removal_must_preserve_independent_resources(self):
+        self.remove()
+        self.registration(chooser=0, independent=0)
         with self.assertRaises(AssertionError):
-            check_archive(self.platform, self.snapshot)
+            check_project(self.project, self.snapshot, False)
+        self.registration(chooser=0)
+        shutil.rmtree(self.independent)
+        with self.assertRaises(AssertionError):
+            check_project(self.project, self.snapshot, False)
+
+    def test_plugin_removal_must_remove_stale_registration(self):
+        self.remove()
+        self.pbx.write_text(self.pbx.read_text() + f"/* {BUNDLE} */")
+        with self.assertRaises(AssertionError):
+            check_project(self.project, self.snapshot, False)
+
+    def test_tracking_must_remain_boolean(self):
+        for path, declaration in [
+            (self.project / MANIFEST, self.app_manifest),
+            (self.bundle / MANIFEST, EXPECTED),
+            (self.independent / MANIFEST, self.independent_manifest),
+        ]:
+            path.write_bytes(plistlib.dumps(dict(declaration, NSPrivacyTracking=0)))
+            with self.assertRaises(AssertionError):
+                check_project(self.project, self.snapshot, True)
+            path.write_bytes(plistlib.dumps(declaration))
+
+    def archive(self):
+        app = self.platform / "App.xcarchive/Products/Applications/Fixture.app"
+        for name, declaration in [(BUNDLE, EXPECTED), (INDEPENDENT_BUNDLE, self.independent_manifest)]:
+            bundle = app / name
+            bundle.mkdir(parents=True)
+            (bundle / MANIFEST).write_bytes(plistlib.dumps(declaration, fmt=plistlib.FMT_BINARY))
+        (app / MANIFEST).write_bytes(plistlib.dumps(self.app_manifest, fmt=plistlib.FMT_BINARY))
+        return app
+
+    def test_archive_requires_all_manifests_unchanged(self):
+        app = self.archive()
+        check_archive(self.platform, self.snapshot)
+        for directory in [app, app / BUNDLE, app / INDEPENDENT_BUNDLE]:
+            path = directory / MANIFEST
+            original = path.read_bytes()
+            with self.subTest(directory=directory):
+                path.unlink()
+                with self.assertRaises(FileNotFoundError):
+                    check_archive(self.platform, self.snapshot)
+                path.write_bytes(plistlib.dumps(dict(EXPECTED, NSPrivacyAccessedAPITypes=[])))
+                with self.assertRaises(AssertionError):
+                    check_archive(self.platform, self.snapshot)
+                path.write_bytes(original)
+
+    def test_archive_rejects_missing_or_nested_bundles(self):
+        app = self.archive()
+        for name in [BUNDLE, INDEPENDENT_BUNDLE]:
+            with self.subTest(bundle=name):
+                nested = app / "Nested"
+                nested.mkdir(exist_ok=True)
+                (app / name).rename(self.platform / name)
+                with self.assertRaises(AssertionError):
+                    check_archive(self.platform, self.snapshot)
+                (self.platform / name).rename(nested / name)
+                with self.assertRaises(AssertionError):
+                    check_archive(self.platform, self.snapshot)
+                (nested / name).rename(app / name)
 
 
 if __name__ == "__main__":

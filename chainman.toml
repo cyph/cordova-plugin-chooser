@@ -98,6 +98,10 @@ doctor = ["doctor-project"]
 [hooks]
 enabled = true
 
+[[dependencies.exclusions]]
+pattern = "tests/ios/privacy-plugin/package.json"
+reason = "Dependency-free, private fixture installed from this checkout. Portable tests prohibit dependencies and install scripts; adding either requires dependency ownership."
+
 [[audits.exceptions.js]]
 id = "1240992"
 package = "braces"
@@ -105,7 +109,11 @@ reason = "GHSA-vfj7-8cjw-p6xm has no published fix. This development-only parser
 review_after = "2026-11-01"
 
 [formatters.json]
-paths = ["package.json", "chainman/*.json"]
+paths = [
+  "package.json",
+  "chainman/*.json",
+  "tests/ios/privacy-plugin/package.json",
+]
 profile = "toolchain"
 write = ["prettier", "--write", "--"]
 check = ["prettier", "--check", "--"]

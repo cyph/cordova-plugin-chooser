@@ -1,0 +1,13 @@
+{
+	"name": "cordova-plugin-chooser-privacy-fixture",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Independent privacy resource for chooser integration tests",
+	"license": "Apache-2.0",
+	"cordova": {
+		"id": "cordova-plugin-chooser-privacy-fixture",
+		"platforms": [
+			"ios"
+		]
+	}
+}
