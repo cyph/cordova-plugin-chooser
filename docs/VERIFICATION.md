@@ -28,7 +28,7 @@ The flake owns Node's major family, JDK 17, Gradle, Android SDKs, CocoaPods and 
 | `just verify-ios` | macOS, host Nix and Xcode 26.3 | Foundation fixtures and unsigned debug/release Cordova iOS 7/8 archives |
 | `just verify-ios-modern` | Apple Silicon macOS, host Nix and Xcode 27.0 | Both Cordova iOS generations, concurrency diagnostics and Foundation address/thread sanitizers |
 | `just verify-android-failures` | Linux x86_64 or supported macOS; host Nix | Isolated cold/warm resolution, missing/corrupted SDKs and offline loading failures |
-| `just verify-native` | Host satisfying both native profiles | Both native lanes |
+| `just verify-native` | Host satisfying Android and baseline Apple profiles | Android and baseline iOS; modern Xcode and dependency-failure checks use their separate tasks |
 | `just clean` | Project toolchain profile | Removes disposable applications and fixture output |
 
 Android Linux build tools are x86_64 executables, so full Android execution fails preflight on Linux ARM. Dependency preparation remains available there. Neither native lane launches an emulator, simulator or device.
