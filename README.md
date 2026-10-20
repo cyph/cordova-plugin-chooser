@@ -2,7 +2,7 @@
 
 Choose files from Android's document picker, iOS Files, or a browser file input. Read file contents, inspect metadata, or use temporary references for larger files.
 
-**This checkout documents unreleased APIs.** npm `1.3.2` does not include the new multiple-selection and managed-reference methods. For that release, use its [versioned documentation](https://github.com/cyph/cordova-plugin-chooser/blob/12863c700b2ff29c51e6755ff92b11a61e568f9b/README.md).
+**This checkout prepares `2.0.0-rc.1`; it is not published to npm.** npm `1.3.2` does not include the new multiple-selection and managed-reference methods. For that release, use its [versioned documentation](https://github.com/cyph/cordova-plugin-chooser/blob/12863c700b2ff29c51e6755ff92b11a61e568f9b/README.md). Upgrading applications should read the [migration guide](docs/MIGRATION.md).
 
 ## Install
 
@@ -12,11 +12,13 @@ For the published release, run this in your Cordova application:
 cordova plugin add cordova-plugin-chooser
 ```
 
-To use the APIs documented here, check out the source revision you intend to use, then install that directory into your app:
+To try the candidate APIs documented here, install the public candidate branch:
 
 ```sh
-cordova plugin add /path/to/cordova-plugin-chooser
+cordova plugin add https://github.com/cyph/cordova-plugin-chooser.git#candidate/2.0.0
 ```
+
+The candidate branch can move. For reproducible evaluation, replace `candidate/2.0.0` with the full commit SHA you reviewed, or install a local checkout of that revision. Installing a Git candidate does not require an npm prerelease to exist.
 
 The plugin exposes the global `chooser` after `deviceready`. TypeScript declarations are included. The package is a Cordova bridge, not a standalone Node.js picker. Applications do not need chainman to use it.
 
@@ -104,9 +106,10 @@ The iOS package includes `ChooserPrivacy.bundle/PrivacyInfo.xcprivacy`. It decla
 ## Documentation
 
 - [API reference](docs/API.md): methods, callbacks, TypeScript, results and options.
+- [Migration from 1.3.2](docs/MIGRATION.md): platform requirements and new resource ownership.
 - [File handling and troubleshooting](docs/FILE-HANDLING.md): large files, cleanup, cloud providers and lifecycle behavior.
 - [Contributing](CONTRIBUTING.md): setup and implementation conventions.
 - [Verification and dependency maintenance](docs/VERIFICATION.md): chainman commands and CI coverage.
-- [Changelog](CHANGELOG.md): unreleased changes.
+- [Changelog](CHANGELOG.md): release candidate changes.
 
 Apache-2.0 licensed. See [LICENSE](LICENSE), [NOTICE](NOTICE) and Git history for contributor attribution.

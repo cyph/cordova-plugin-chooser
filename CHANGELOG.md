@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.0.0-rc.1 (unpublished)
 
-These changes are not included in npm `1.3.2`.
+Prepared for candidate testing from source. No npm prerelease or release tag has been published. These changes are not included in npm `1.3.2`; see the [migration guide](docs/MIGRATION.md).
 
 ### Added
 
@@ -13,6 +13,7 @@ These changes are not included in npm `1.3.2`.
 - `releaseFile(id)` for managed-resource cleanup.
 - Complete TypeScript declarations for Promise/callback forms and cancellation.
 - Numeric size metadata, with `null` for unknown sizes and actual byte counts for data/copy results.
+- An independent iOS privacy bundle declaring app-private file-timestamp API use.
 
 ### Fixed
 
@@ -26,6 +27,7 @@ These changes are not included in npm `1.3.2`.
 ### Compatibility
 
 - Maintained families are Cordova Android 14/15, Cordova iOS 7/8 and current browsers supporting file-input cancellation.
+- The Apple build lane uses Xcode 26.3, iOS SDK 26.2, Swift 5 mode and an iOS 15.0 deployment target.
 - Existing single-file method names, result fields, Promise/callback forms and cancellation behavior are preserved.
 - URI methods use temporary storage and require ownership-aware callers. Data methods still load complete contents into memory.
 
