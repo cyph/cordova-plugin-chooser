@@ -94,6 +94,8 @@ For iOS, select a Swift language version in your application's `config.xml`. The
 <preference name="SwiftVersion" value="5.0" />
 ```
 
+The iOS package includes `ChooserPrivacy.bundle/PrivacyInfo.xcprivacy`. It declares file-timestamp API use with reason `C617.1` for inspection of the plugin's app-private cache. The plugin does not track users or collect data off-device. Its resource bundle leaves your app's privacy manifest intact; your app remains responsible for declarations covering its own data handling and other dependencies. See Apple's [required-reason API guidance](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api).
+
 ## Documentation
 
 - [API reference](docs/API.md): methods, callbacks, TypeScript, results and options.

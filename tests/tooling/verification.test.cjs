@@ -40,8 +40,9 @@ function fixture(t) {
 		},
 	);
 	assert.equal(clone.status, 0, clone.stderr);
-	// Include working-tree edits to the verifier under test.
-	cpSync(join(source, "scripts"), join(root, "scripts"), { recursive: true });
+	// Include the verifier and package resources under test, including new files.
+	for (const name of ["scripts", "src", "plugin.xml", "package.json"])
+		cpSync(join(source, name), join(root, name), { recursive: true });
 	const readme = join(root, "README.md");
 	const index = join(root, ".git/index");
 	const verify = () =>

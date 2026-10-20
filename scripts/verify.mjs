@@ -18,6 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appleEnvironment } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
+import { checkPackedFiles } from "./package.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, ".verification");
@@ -107,26 +108,7 @@ function pack() {
 		),
 	);
 	const files = new Set(info.files.map((file) => file.path));
-	for (const name of [
-		"package.json",
-		"plugin.xml",
-		pkg.main,
-		pkg.types,
-		"LICENSE",
-		"NOTICE",
-	])
-		assert(files.has(name), `Missing packed ${name}`);
-	for (const directory of ["src/android", "src/ios", "src/browser"]) {
-		for (const name of readdirSync(join(root, directory)))
-			assert(files.has(`${directory}/${name}`), `Missing packed ${name}`);
-	}
-	for (const name of files)
-		assert(
-			!/^(tests|scripts|node_modules|\.verification|\.chainman|\.github)\//.test(
-				name,
-			),
-			`Unexpected packed ${name}`,
-		);
+	checkPackedFiles(root, pkg, files);
 	const archive = join(directory, info.filename);
 	console.log(
 		`Package: ${info.filename}, ${files.size} files, integrity ${info.integrity}`,
@@ -143,10 +125,14 @@ function pack() {
 		"--filter",
 		"data",
 	]);
+	run("python3", [
+		join(root, "scripts/check-package.py"),
+		join(extracted, "package"),
+	]);
 	return join(extracted, "package");
 }
 
-function app(platform, alias, archive, env = {}) {
+function app(platform, alias, archive, env = {}, beforePlugin = () => {}) {
 	const destination = join(output, alias);
 	rmSync(destination, { recursive: true, force: true });
 	cordova(
@@ -169,6 +155,7 @@ function app(platform, alias, archive, env = {}) {
 		destination,
 		env,
 	);
+	beforePlugin(destination);
 	installPlugin(destination, archive, env);
 	cordova(["prepare", platform], destination, env);
 	return destination;
@@ -182,6 +169,16 @@ function portable() {
 		"--test",
 		"tests/tooling/platforms.test.cjs",
 		"tests/tooling/verification.test.cjs",
+		"tests/tooling/package.test.cjs",
+	]);
+	run("python3", [
+		"-m",
+		"unittest",
+		"discover",
+		"-s",
+		"tests/tooling",
+		"-p",
+		"*_test.py",
 	]);
 	pack();
 }
@@ -339,7 +336,24 @@ function ios() {
 	run(join(output, "foundation"), [], root, false, env);
 	const archive = pack();
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
-		const destination = app("ios", alias, archive, env);
+		const projectName = alias === "cordova-ios7" ? "ChooserFixture" : "App";
+		const privacy = (operation, destination) =>
+			run("python3", [
+				join(root, "scripts/privacy.py"),
+				operation,
+				join(
+					destination,
+					"platforms/ios",
+					operation === "archive" ? "" : projectName,
+				),
+				join(destination, "privacy-snapshot.json"),
+			]);
+		const destination = app("ios", alias, archive, env, (destination) =>
+			privacy("snapshot", destination),
+		);
+		privacy("installed", destination);
+		cordova(["prepare", "ios"], destination, env);
+		privacy("installed", destination);
 		const config = join(destination, "config.xml");
 		const contents = readFileSync(config, "utf8");
 		assert(contents.includes("</widget>"), "Missing application widget");
@@ -371,10 +385,13 @@ function ios() {
 			destination,
 			env,
 		);
+		privacy("archive", destination);
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination, env);
+		privacy("removed", destination);
 		stageFrozenPackage(destination, join(root, "node_modules", alias));
 		installPlugin(destination, archive, env);
 		cordova(["prepare", "ios"], destination, env);
+		privacy("installed", destination);
 	}
 }
 

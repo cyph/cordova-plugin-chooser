@@ -41,6 +41,7 @@
 		<source-file src="src/ios/ChooserRequest.swift" />
 		<source-file src="src/ios/ChooserWork.swift" />
 		<source-file src="src/ios/ChooserError.swift" />
+		<resource-file src="src/ios/ChooserPrivacy.bundle" target="ChooserPrivacy.bundle" />
 
 		<config-file target="config.xml" parent="/*">
 			<feature name="Chooser">
