@@ -1,6 +1,6 @@
 {
-	"xcode": "16.4",
-	"build": "16F6",
-	"iphoneos": "18.5",
-	"developerDirectory": "/Applications/Xcode_16.4.app/Contents/Developer"
+	"xcode": "26.3",
+	"build": "17C529",
+	"iphoneos": "26.2",
+	"developerDirectory": "/Applications/Xcode_26.3.app/Contents/Developer"
 }

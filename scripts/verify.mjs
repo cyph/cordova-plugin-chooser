@@ -361,7 +361,10 @@ function ios() {
 			config,
 			contents.replace(
 				"</widget>",
-				'<preference name="SwiftVersion" value="5.0" />\n</widget>',
+				'<platform name="ios">\n' +
+					'<preference name="SwiftVersion" value="5.0" />\n' +
+					'<preference name="deployment-target" value="15.0" />\n' +
+					"</platform>\n</widget>",
 			),
 		);
 		// Both platform generations accept buildFlag through buildConfig; iOS 7

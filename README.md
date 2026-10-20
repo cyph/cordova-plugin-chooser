@@ -75,7 +75,7 @@ MIME filters are picker hints. Validate content before relying on its type. A fi
 
 ## Compatibility
 
-The maintained platform families and their OS floors are:
+The maintained platform families and their platform-defined OS floors are:
 
 | Cordova platform | OS requirement |
 | --- | --- |
@@ -86,12 +86,17 @@ The maintained platform families and their OS floors are:
 
 See Cordova's [Android requirements](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) and [iOS requirements](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) for application build prerequisites. The [verification guide](docs/VERIFICATION.md) describes automated coverage and checks that need a device or provider. A successful build does not establish every OS/provider combination.
 
+The current Apple build lane uses Xcode 26.3, iOS SDK 26.2 and an iOS 15.0 deployment target. That target follows the [selected Xcode's supported deployment range](https://developer.apple.com/xcode/system-requirements) and is higher than Cordova's historical OS floors above. Source fallbacks for older OS versions remain, but this lane does not qualify builds targeting iOS 11–14.
+
 The plugin adds no blanket storage/media permissions and needs no separate Swift-support plugin. On iOS it selects regular documents through Files; it does not provide a camera or Photos-library UI.
 
-For iOS, select a Swift language version in your application's `config.xml`. The supported platform fixtures use Swift 5 mode:
+For iOS, set these preferences in your application's `config.xml` to match the current build lane:
 
 ```xml
-<preference name="SwiftVersion" value="5.0" />
+<platform name="ios">
+  <preference name="SwiftVersion" value="5.0" />
+  <preference name="deployment-target" value="15.0" />
+</platform>
 ```
 
 The iOS package includes `ChooserPrivacy.bundle/PrivacyInfo.xcprivacy`. It declares file-timestamp API use with reason `C617.1` for inspection of the plugin's app-private cache. The plugin does not track users or collect data off-device. Its resource bundle leaves your app's privacy manifest intact; your app remains responsible for declarations covering its own data handling and other dependencies. See Apple's [required-reason API guidance](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api).

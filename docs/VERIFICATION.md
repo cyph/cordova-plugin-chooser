@@ -33,6 +33,8 @@ Android Linux build tools are x86_64 executables, so full Android execution fail
 
 Apple's licensed SDK is an external prerequisite. `chainman/apple.json` owns the Xcode version/build, iPhoneOS SDK and developer directory. The iOS lane selects that directory or validates an explicit `DEVELOPER_DIR`; mismatches fail. The [macOS 15 runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md) lists available Xcode installations. When changing this contract, qualify both supported Cordova iOS generations.
 
+The selected toolchain is Xcode 26.3 (17C529) with iPhoneOS SDK 26.2. Generated applications use Swift 5 mode and an iOS 15.0 deployment target, within that Xcode version's supported range. Cordova's older OS-family floors and the plugin's retained source fallbacks do not establish qualification below this deployment target.
+
 The verifier calls Apple's `/usr/bin/xcodebuild` and `/usr/bin/xcrun` launchers explicitly. It exposes the selected developer tools and standard macOS utilities to Cordova's subprocesses while retaining the Nix-owned language tools in their search path.
 
 Nix's macOS-only developer-directory default is replaced with the pinned Xcode directory for this lane. Inherited SDK and compiler overrides are cleared so Xcode selects the requested Apple SDK and toolchain. Explicit host Xcode selections still undergo the same version/build and iPhoneOS SDK checks.
@@ -49,7 +51,7 @@ Browser integration uses the actual registered bridge in Chromium, Firefox and W
 
 Android fixtures compile production sources against Cordova 14/15 and Android SDK 35/36. JUnit covers counted streaming and cache ownership; Robolectric API 28 provider doubles cover metadata, cancellation, restoration, reset and failure cases. Dispatcher regressions use the actual Cordova interface. Separate packed-app builds check installation and resource processing.
 
-Foundation fixtures compile production iOS helpers in Swift 5 mode and exercise streams, limits, partial writes, cancellation, ownership, batch recovery and worker capacity. They do not import UIKit/Cordova. Packed-app builds select the same language mode through the application's `SwiftVersion` preference and separately check those imports and source registration. Their generated build configuration disables signing, and Cordova's `noSign` option skips signed IPA export; no development team or provisioning profile is needed. Live picker/provider behavior requires integration checks.
+Foundation fixtures compile production iOS helpers in Swift 5 mode and exercise streams, limits, partial writes, cancellation, ownership, batch recovery and worker capacity. They do not import UIKit/Cordova. Packed-app builds select the same language mode through the application's `SwiftVersion` preference, set `deployment-target` to `15.0`, and separately check those imports and source registration. Their generated build configuration disables signing, and Cordova's `noSign` option skips signed IPA export; no development team or provisioning profile is needed. Live picker/provider behavior requires integration checks.
 
 ### Android dependency ownership
 
