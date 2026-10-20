@@ -23,7 +23,7 @@ android {
 androidComponents { beforeVariants { it.enableAndroidTest = false } }
 dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
 dependencies {
-    implementation("org.apache.cordova:framework:15.0.0")
+    implementation(libs.cordova15)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.mockito)

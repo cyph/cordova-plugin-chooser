@@ -178,6 +178,7 @@ function pack() {
 function app(platform, alias, archive, env = {}, beforePlugin = () => {}) {
 	const destination = join(output, platform === "ios" ? lane : "", alias);
 	rmSync(destination, { recursive: true, force: true });
+	mkdirSync(dirname(destination), { recursive: true });
 	cordova(
 		[
 			"create",

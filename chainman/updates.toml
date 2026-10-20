@@ -84,11 +84,18 @@ resolve = [
 ]
 profile = "android"
 directory = "tests/android"
-manifests = ["tests/android/build.gradle.kts"]
+manifests = [
+  "tests/android/build.gradle.kts",
+  "tests/android/gradle/libs.versions.toml",
+]
 mode = "compatible"
+catalogs = []
 maven_repositories = ["central", "google", "plugins"]
 pins = [
-  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = ">=14.0.0,<15.0.0" },
+  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "cordova14",
+  ], bound = ">=14.0.0,<15.0.0" },
   # AGP 8 supports the selected Gradle 8 / JDK 17 toolchain.
   { provider = "maven", name = "com.android.library:com.android.library.gradle.plugin", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
@@ -128,11 +135,18 @@ resolve = [
 ]
 profile = "android"
 directory = "tests/android15"
-manifests = ["tests/android15/build.gradle.kts"]
+manifests = [
+  "tests/android15/build.gradle.kts",
+  "tests/android/gradle/libs.versions.toml",
+]
 mode = "compatible"
+catalogs = []
 maven_repositories = ["central", "google", "plugins"]
 pins = [
-  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android15/build.gradle.kts", format = "regex", pattern = 'org\.apache\.cordova:framework:(?P<value>[^"\n]+)', bound = ">=15.0.0,<16.0.0" },
+  { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "cordova15",
+  ], bound = ">=15.0.0,<16.0.0" },
 ]
 
 [updates.adapters.android-sdks]
