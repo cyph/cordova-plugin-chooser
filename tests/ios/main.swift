@@ -11,6 +11,38 @@ func rejects(_ message: String, _ action: () throws -> Void) throws {
 	throw FixtureError.failed(message)
 }
 
+// The worker must form its callback outside any main-actor lexical context.
+func scheduleMainProbe(_ completion: DispatchGroup) {
+	ChooserWork.dispatch(on: .global()) {
+		ChooserMain.run {
+			precondition(Thread.isMainThread, "background callback escaped the main queue")
+			completion.leave()
+		}
+	}
+}
+
+// Reset and nested main-thread calls must finish before the caller continues.
+do {
+	var order: [Int] = []
+	ChooserMain.run {
+		order.append(1)
+		ChooserMain.run { order.append(2) }
+		order.append(3)
+	}
+	order.append(4)
+	try require(order == [1, 2, 3, 4], "main dispatch lost synchronous reset ordering")
+	ChooserMain.invokeLegacy { order.append(5) }
+	try require(order == [1, 2, 3, 4, 5], "legacy actor bridge changed callback ordering")
+	let completion = DispatchGroup()
+	completion.enter()
+	scheduleMainProbe(completion)
+	let deadline = Date().addingTimeInterval(5)
+	while completion.wait(timeout: .now()) != .success && Date() < deadline {
+		RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+	}
+	try require(completion.wait(timeout: .now()) == .success, "background callback never reached main")
+}
+
 let manager = FileManager.default
 let sandbox = manager.temporaryDirectory.appendingPathComponent("chooser-fixtures-" + UUID().uuidString)
 try manager.createDirectory(at: sandbox, withIntermediateDirectories: true)

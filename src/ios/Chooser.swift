@@ -17,18 +17,22 @@ private final class ChooserDocumentPicker: UIDocumentPickerViewController {
 
 @objc(Chooser)
 class Chooser: CDVPlugin {
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	private var active: ChooserRequest?
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	private var picker: ChooserDocumentPicker?
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	private var generation: UInt64 = 0 // Main-thread only, including release completions.
-
-	private func onMain(_ action: @escaping () -> Void) {
-		if Thread.isMainThread { action() }
-		else { ChooserWork.dispatch(on: .main, action) }
-	}
 
 	@objc(getFile:)
 	func getFile(command: CDVInvokedUrlCommand) {
-		onMain {
+		ChooserMain.run {
 			guard command.arguments.count >= 2,
 				let accept = command.arguments[0] as? String,
 				let includeData = command.arguments[1] as? Bool else {
@@ -41,7 +45,7 @@ class Chooser: CDVPlugin {
 
 	@objc(pick:)
 	func pick(command: CDVInvokedUrlCommand) {
-		onMain {
+		ChooserMain.run {
 			guard let options = command.arguments.first as? [String: Any],
 				let accept = options["accept"] as? String,
 				let modeName = options["mode"] as? String,
@@ -74,27 +78,32 @@ class Chooser: CDVPlugin {
 
 	@objc(releaseFile:)
 	func releaseFile(command: CDVInvokedUrlCommand) {
-		onMain {
+		ChooserMain.run {
 			guard let id = command.arguments.first as? String else {
 				self.send(ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.").message, .error, command.callbackId)
 				return
 			}
 			let owner = self.generation
-			ChooserWork.dispatch(on: ChooserTransaction.housekeeping) {
-				let message: String
-				let status: CDVCommandStatus
-				do {
-					try ChooserFiles.release(in: self.cacheDirectory(), id: id)
-					message = ""
-					status = .ok
-				}
-				catch {
-					message = error.localizedDescription
-					status = .error
-				}
-				ChooserWork.dispatch(on: .main) {
-					if self.generation == owner { self.send(message, status, command.callbackId) }
-				}
+			self.release(id: id, owner: owner, callback: command.callbackId)
+		}
+	}
+
+	// Form file-worker closures outside the UI actor's lexical context.
+	private func release(id: String, owner: UInt64, callback: String) {
+		ChooserWork.dispatch(on: ChooserTransaction.housekeeping) {
+			let message: String
+			let status: CDVCommandStatus
+			do {
+				try ChooserFiles.release(in: self.cacheDirectory(), id: id)
+				message = ""
+				status = .ok
+			}
+			catch {
+				message = error.localizedDescription
+				status = .error
+			}
+			ChooserMain.run {
+				if self.generation == owner { self.send(message, status, callback) }
 			}
 		}
 	}
@@ -106,6 +115,9 @@ class Chooser: CDVPlugin {
 		return cache
 	}
 
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	private func begin(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0) {
 		guard active == nil else {
 			send(ChooserFailure(code: .busy, detail: "A file picker is already active.").message, .error, callback)
@@ -207,6 +219,9 @@ class Chooser: CDVPlugin {
 		return "application/octet-stream"
 	}
 
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	private func selected(_ controller: UIDocumentPickerViewController, urls: [URL]) {
 		guard let request = (controller as? ChooserDocumentPicker)?.request, active === request,
 			request.process() else { return }
@@ -224,9 +239,12 @@ class Chooser: CDVPlugin {
 			complete(request, message: ChooserFailure(code: .tooManyFiles, detail: "Selection exceeds the file count limit.").message, status: .error)
 			return
 		}
-		let selection = unique
+		process(selection: unique, request: request)
+	}
+
+	private func process(selection: [URL], request: ChooserRequest) {
 		guard let worker = request.worker else {
-			complete(request, message: ChooserFailure(code: .readFailed, detail: "Missing request worker.").message, status: .error)
+			ChooserMain.run { self.complete(request, message: ChooserFailure(code: .readFailed, detail: "Missing request worker.").message, status: .error) }
 			return
 		}
 		worker.run {
@@ -245,7 +263,7 @@ class Chooser: CDVPlugin {
 				guard let message = String(data: json, encoding: .utf8) else {
 					throw ChooserFailure(code: .readFailed, detail: "Could not serialize file result.")
 				}
-				ChooserWork.dispatch(on: .main) {
+				ChooserMain.run {
 					let delivered = self.complete(request, message: message, status: .ok)
 					request.finishResources(delivered: delivered)
 				}
@@ -253,7 +271,7 @@ class Chooser: CDVPlugin {
 			catch {
 				request.finishResources(delivered: false)
 				let message = error.localizedDescription
-				ChooserWork.dispatch(on: .main) { self.complete(request, message: message, status: .error) }
+				ChooserMain.run { self.complete(request, message: message, status: .error) }
 			}
 		}
 	}
@@ -313,6 +331,9 @@ class Chooser: CDVPlugin {
 		return file
 	}
 
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	@discardableResult
 	private func complete(_ request: ChooserRequest, message: String, status: CDVCommandStatus) -> Bool {
 		guard active === request, request.complete() else { return false }
@@ -324,20 +345,21 @@ class Chooser: CDVPlugin {
 		return true
 	}
 
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
 	private func send(_ message: String, _ status: CDVCommandStatus, _ callback: String) {
 		commandDelegate?.send(CDVPluginResult(status: status, messageAs: message), callbackId: callback)
 	}
 
 	override func onReset() {
-		let reset = {
+		ChooserMain.run {
 			self.generation &+= 1
 			self.active?.cancel()
 			self.active = nil
 			self.picker?.dismiss(animated: false, completion: nil)
 			self.picker = nil
 		}
-		if Thread.isMainThread { reset() }
-		else { ChooserWork.dispatch(on: .main, reset) }
 	}
 
 	override func dispose() {
@@ -346,6 +368,9 @@ class Chooser: CDVPlugin {
 	}
 }
 
+#if compiler(>=5.9)
+@MainActor
+#endif
 extension Chooser: UIDocumentPickerDelegate {
 	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
 		selected(controller, urls: urls)
@@ -361,6 +386,9 @@ extension Chooser: UIDocumentPickerDelegate {
 	}
 }
 
+#if compiler(>=5.9)
+@MainActor
+#endif
 extension Chooser: UIAdaptivePresentationControllerDelegate {
 	@available(iOS 13.0, *)
 	func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {

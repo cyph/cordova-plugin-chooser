@@ -1,5 +1,44 @@
 import Foundation
 
+#if compiler(>=5.9)
+typealias ChooserMainAction = @MainActor () -> Void
+#else
+typealias ChooserMainAction = () -> Void
+#endif
+
+/** Synchronous when already on main, including Cordova's reset callback. */
+enum ChooserMain {
+	static func run(_ action: @escaping ChooserMainAction) {
+		if Thread.isMainThread { invoke(action) }
+		else { ChooserWork.dispatch(on: .main) { invoke(action) } }
+	}
+
+	private static func invoke(_ action: ChooserMainAction) {
+		dispatchPrecondition(condition: .onQueue(.main))
+		#if compiler(>=5.9)
+		if #available(iOS 17.0, macOS 14.0, *) {
+			MainActor.assumeIsolated { action() }
+			return
+		}
+		#endif
+		invokeLegacy(action)
+	}
+
+	// Back-deploy the checked synchronous actor bridge without raising the OS
+	// floor. Erase only the closure annotation, after asserting its executor.
+	static func invokeLegacy(_ action: ChooserMainAction) {
+		dispatchPrecondition(condition: .onQueue(.main))
+		#if compiler(>=5.9)
+		withoutActuallyEscaping(action) { callback in
+			let unisolated = unsafeBitCast(callback, to: (() -> Void).self)
+			unisolated()
+		}
+		#else
+		action()
+		#endif
+	}
+}
+
 /** A lease survives reset until its actual file worker returns. */
 final class ChooserWork {
 	private static let capacity = DispatchSemaphore(value: 2)
