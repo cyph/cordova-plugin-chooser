@@ -32,35 +32,39 @@ class Chooser: CDVPlugin {
 
 	@objc(getFile:)
 	func getFile(command: CDVInvokedUrlCommand) {
+		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
+			let (plugin, command) = reference.value
 			guard command.arguments.count >= 2,
 				let accept = command.arguments[0] as? String,
 				let includeData = command.arguments[1] as? Bool else {
-				self.send(ChooserFailure(code: .invalidArgument, detail: "Expected a MIME filter and includeData boolean.").message, .error, command.callbackId)
+				plugin.send(ChooserFailure(code: .invalidArgument, detail: "Expected a MIME filter and includeData boolean.").message, .error, command.callbackId)
 				return
 			}
-			self.begin(callback: command.callbackId, accept: accept, mode: includeData ? .data : .metadata, multiple: false, limit: 0)
+			plugin.begin(callback: command.callbackId, accept: accept, mode: includeData ? .data : .metadata, multiple: false, limit: 0)
 		}
 	}
 
 	@objc(pick:)
 	func pick(command: CDVInvokedUrlCommand) {
+		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
+			let (plugin, command) = reference.value
 			guard let options = command.arguments.first as? [String: Any],
 				let accept = options["accept"] as? String,
 				let modeName = options["mode"] as? String,
 				let mode = ChooserReadMode(rawValue: modeName),
 				let multiple = options["multiple"] as? Bool else {
-				self.send(ChooserFailure(code: .invalidArgument, detail: "Invalid picker options.").message, .error, command.callbackId)
+				plugin.send(ChooserFailure(code: .invalidArgument, detail: "Invalid picker options.").message, .error, command.callbackId)
 				return
 			}
 			do {
-				let limit = try self.limitOption(options, name: "maxFileSize")
-				let maxFiles = try self.limitOption(options, name: "maxFiles")
-				let maxTotalSize = try self.limitOption(options, name: "maxTotalSize")
-				self.begin(callback: command.callbackId, accept: accept, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize)
+				let limit = try plugin.limitOption(options, name: "maxFileSize")
+				let maxFiles = try plugin.limitOption(options, name: "maxFiles")
+				let maxTotalSize = try plugin.limitOption(options, name: "maxTotalSize")
+				plugin.begin(callback: command.callbackId, accept: accept, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize)
 			}
-			catch { self.send(error.localizedDescription, .error, command.callbackId) }
+			catch { plugin.send(error.localizedDescription, .error, command.callbackId) }
 		}
 	}
 
@@ -78,13 +82,15 @@ class Chooser: CDVPlugin {
 
 	@objc(releaseFile:)
 	func releaseFile(command: CDVInvokedUrlCommand) {
+		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
+			let (plugin, command) = reference.value
 			guard let id = command.arguments.first as? String else {
-				self.send(ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.").message, .error, command.callbackId)
+				plugin.send(ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.").message, .error, command.callbackId)
 				return
 			}
-			let owner = self.generation
-			self.release(id: id, owner: owner, callback: command.callbackId)
+			let owner = plugin.generation
+			plugin.release(id: id, owner: owner, callback: command.callbackId)
 		}
 	}
 
@@ -102,8 +108,10 @@ class Chooser: CDVPlugin {
 				message = error.localizedDescription
 				status = .error
 			}
+			let reference = ChooserMainReference(self)
 			ChooserMain.run {
-				if self.generation == owner { self.send(message, status, callback) }
+				let plugin = reference.value
+				if plugin.generation == owner { plugin.send(message, status, callback) }
 			}
 		}
 	}
@@ -244,7 +252,11 @@ class Chooser: CDVPlugin {
 
 	private func process(selection: [URL], request: ChooserRequest) {
 		guard let worker = request.worker else {
-			ChooserMain.run { self.complete(request, message: ChooserFailure(code: .readFailed, detail: "Missing request worker.").message, status: .error) }
+			let reference = ChooserMainReference((self, request))
+			ChooserMain.run {
+				let (plugin, request) = reference.value
+				plugin.complete(request, message: ChooserFailure(code: .readFailed, detail: "Missing request worker.").message, status: .error)
+			}
 			return
 		}
 		worker.run {
@@ -263,15 +275,21 @@ class Chooser: CDVPlugin {
 				guard let message = String(data: json, encoding: .utf8) else {
 					throw ChooserFailure(code: .readFailed, detail: "Could not serialize file result.")
 				}
+				let reference = ChooserMainReference((self, request))
 				ChooserMain.run {
-					let delivered = self.complete(request, message: message, status: .ok)
+					let (plugin, request) = reference.value
+					let delivered = plugin.complete(request, message: message, status: .ok)
 					request.finishResources(delivered: delivered)
 				}
 			}
 			catch {
 				request.finishResources(delivered: false)
 				let message = error.localizedDescription
-				ChooserMain.run { self.complete(request, message: message, status: .error) }
+				let reference = ChooserMainReference((self, request))
+				ChooserMain.run {
+					let (plugin, request) = reference.value
+					plugin.complete(request, message: message, status: .error)
+				}
 			}
 		}
 	}
@@ -353,12 +371,14 @@ class Chooser: CDVPlugin {
 	}
 
 	override func onReset() {
+		let reference = ChooserMainReference(self)
 		ChooserMain.run {
-			self.generation &+= 1
-			self.active?.cancel()
-			self.active = nil
-			self.picker?.dismiss(animated: false, completion: nil)
-			self.picker = nil
+			let plugin = reference.value
+			plugin.generation &+= 1
+			plugin.active?.cancel()
+			plugin.active = nil
+			plugin.picker?.dismiss(animated: false, completion: nil)
+			plugin.picker = nil
 		}
 	}
 

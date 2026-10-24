@@ -6,6 +6,28 @@ typealias ChooserMainAction = @MainActor () -> Void
 typealias ChooserMainAction = () -> Void
 #endif
 
+/**
+ Legacy reference handoff. The payload must be immutable, internally locked,
+ or have main-actor-isolated mutable state. Access remains main-only; this
+ adapter does not make Cordova commands, plugin objects or requests Sendable.
+ */
+final class ChooserMainReference<Value> {
+	private let stored: Value
+	init(_ value: Value) { stored = value }
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
+	var value: Value {
+		dispatchPrecondition(condition: .onQueue(.main))
+		return stored
+	}
+}
+
+#if compiler(>=5.9)
+// Only the opaque handoff is transferable; its getter enforces the executor.
+extension ChooserMainReference: @unchecked Sendable {}
+#endif
+
 /** Synchronous when already on main, including Cordova's reset callback. */
 enum ChooserMain {
 	static func run(_ action: @escaping ChooserMainAction) {

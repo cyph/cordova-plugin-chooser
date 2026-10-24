@@ -11,11 +11,19 @@ func rejects(_ message: String, _ action: () throws -> Void) throws {
 	throw FixtureError.failed(message)
 }
 
-// The worker must form its callback outside any main-actor lexical context.
-func scheduleMainProbe(_ completion: DispatchGroup) {
+final class MainReferenceFixture {
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
+	var deliveries = 0
+}
+
+// Exercise the same opaque handoff used by legacy plugin/worker callbacks.
+func scheduleMainProbe(_ completion: DispatchGroup, reference: ChooserMainReference<MainReferenceFixture>) {
 	ChooserWork.dispatch(on: .global()) {
 		ChooserMain.run {
 			precondition(Thread.isMainThread, "background callback escaped the main queue")
+			reference.value.deliveries += 1
 			completion.leave()
 		}
 	}
@@ -35,12 +43,15 @@ do {
 	try require(order == [1, 2, 3, 4, 5], "legacy actor bridge changed callback ordering")
 	let completion = DispatchGroup()
 	completion.enter()
-	scheduleMainProbe(completion)
+	let probe = MainReferenceFixture()
+	scheduleMainProbe(completion, reference: ChooserMainReference(probe))
 	let deadline = Date().addingTimeInterval(5)
 	while completion.wait(timeout: .now()) != .success && Date() < deadline {
 		RunLoop.current.run(until: Date().addingTimeInterval(0.01))
 	}
 	try require(completion.wait(timeout: .now()) == .success, "background callback never reached main")
+	let deliveries = probe.deliveries
+	try require(deliveries == 1, "legacy reference handoff lost or repeated its callback")
 }
 
 let manager = FileManager.default
