@@ -43,15 +43,16 @@ do {
 	try require(order == [1, 2, 3, 4, 5], "legacy actor bridge changed callback ordering")
 	let completion = DispatchGroup()
 	completion.enter()
-	let probe = MainReferenceFixture()
-	scheduleMainProbe(completion, reference: ChooserMainReference(probe))
+	let reference = ChooserMainReference(MainReferenceFixture())
+	scheduleMainProbe(completion, reference: reference)
 	let deadline = Date().addingTimeInterval(5)
 	while completion.wait(timeout: .now()) != .success && Date() < deadline {
 		RunLoop.current.run(until: Date().addingTimeInterval(0.01))
 	}
 	try require(completion.wait(timeout: .now()) == .success, "background callback never reached main")
-	let deliveries = probe.deliveries
-	try require(deliveries == 1, "legacy reference handoff lost or repeated its callback")
+	ChooserMain.run {
+		precondition(reference.value.deliveries == 1, "legacy reference handoff lost or repeated its callback")
+	}
 }
 
 let manager = FileManager.default

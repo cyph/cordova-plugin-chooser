@@ -533,6 +533,7 @@ function ios(modern = false) {
 								"CODE_SIGNING_ALLOWED=NO",
 								"IPHONEOS_DEPLOYMENT_TARGET=15.0",
 								"SWIFT_STRICT_CONCURRENCY=complete",
+								"SWIFT_SUPPRESS_WARNINGS=NO",
 								"SWIFT_TREAT_WARNINGS_AS_ERRORS=YES",
 							],
 						},
