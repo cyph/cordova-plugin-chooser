@@ -17,7 +17,7 @@ enum ChooserMain {
 		dispatchPrecondition(condition: .onQueue(.main))
 		#if compiler(>=5.9)
 		if #available(iOS 17.0, macOS 14.0, *) {
-			MainActor.assumeIsolated { action() }
+			MainActor.assumeIsolated(action)
 			return
 		}
 		#endif
