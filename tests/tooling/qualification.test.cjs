@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require("node:fs");
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
+const { version } = require("../../package.json");
 
 test("qualification requires every successful job, complete reports and the same package", async (t) => {
 	const { aggregateReports, requiredChecks } =
@@ -21,7 +22,7 @@ test("qualification requires every successful job, complete reports and the same
 		commit: sha,
 		status: "passed",
 		checks,
-		package: { version: "2.0.0-rc.1", integrity: "sha512-YWJjZA==" },
+		package: { version, integrity: "sha512-YWJjZA==" },
 		commands: [{ status: 0 }],
 	}));
 	const save = (report) => {
@@ -40,12 +41,20 @@ test("qualification requires every successful job, complete reports and the same
 		);
 	}
 	const original = reports[0];
+	save({
+		...original,
+		package: { ...original.package, version: `${version}-unexpected` },
+	});
+	assert.throws(
+		() => aggregateReports(directory, sha, jobs),
+		/Unexpected candidate version/,
+	);
 	for (const patch of [
 		{ status: "running" },
 		{ commit: "b".repeat(40) },
 		{ checks: [] },
 		{ commands: [{ status: 1 }] },
-		{ package: { version: "2.0.0-rc.1", integrity: "sha512-ZGVmZw==" } },
+		{ package: { version, integrity: "sha512-ZGVmZw==" } },
 	]) {
 		save({ ...original, ...patch });
 		assert.throws(() => aggregateReports(directory, sha, jobs));
