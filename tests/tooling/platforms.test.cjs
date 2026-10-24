@@ -6,6 +6,7 @@ const {
 	mkdirSync,
 	mkdtempSync,
 	writeFileSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
 } = require("node:fs");
@@ -122,6 +123,41 @@ test("frozen platform aliases retain each compatibility generation", () => {
 		assert.equal(pkg.name, name);
 		assert.equal(Number(pkg.version.split(".")[0]), major);
 	}
+});
+
+test("legacy Cordova header warnings stay scoped to the umbrella import", async (t) => {
+	const { prepareBridgingHeader } = await import("../../scripts/apple.mjs");
+	const directory = mkdtempSync(join(tmpdir(), "chooser-bridging-header-"));
+	t.after(() => rmSync(directory, { recursive: true, force: true }));
+	const header = join(directory, "Bridging-Header.h");
+	for (const [alias, project] of [
+		["cordova-ios7", "__PROJECT_NAME__"],
+		["cordova-ios8", "App"],
+	]) {
+		const template = join(
+			__dirname,
+			"../../node_modules",
+			alias,
+			"templates/project",
+			project,
+			"Bridging-Header.h",
+		);
+		writeFileSync(header, readFileSync(template));
+		prepareBridgingHeader(header);
+		const prepared = readFileSync(header, "utf8");
+		assert.match(
+			prepared,
+			/#pragma clang diagnostic push\n#pragma clang diagnostic ignored "-Wdeprecated-declarations"\n#import <Cordova\/Cordova.h>\n#pragma clang diagnostic pop/,
+		);
+		assert(!prepared.includes("-Wno-everything"));
+		prepareBridgingHeader(header);
+		assert.equal(readFileSync(header, "utf8"), prepared);
+	}
+	writeFileSync(header, '#import "AppDelegate.h"\n');
+	assert.throws(
+		() => prepareBridgingHeader(header),
+		/Expected one Cordova umbrella import/,
+	);
 });
 
 test("both iOS project generators retain the CommonJS UUID contract", () => {

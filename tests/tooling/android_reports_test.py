@@ -35,14 +35,22 @@ class AndroidReportsTests(unittest.TestCase):
             check_lint(self.directory)
 
     def test_release_apk_requires_registration_and_entrypoint(self):
-        def apk(config, dex):
+        def apk(config, dex, path="res/xml/config.xml"):
             with zipfile.ZipFile(self.directory / "app-release.apk", "w") as archive:
-                archive.writestr("res/xml/config.xml", config)
+                archive.writestr(path, config)
                 archive.writestr("classes.dex", dex)
-        for encoding in ["utf-8", "utf-16le"]:
-            apk("com.cyph.cordova.Chooser".encode(encoding), b"Lcom/cyph/cordova/Chooser;")
-            check_apk(self.directory)
+        def resources(path):
+            return f"resource 0x7f010001 xml/config\n  () (file) {path} type=XML\n"
+        for path in ["res/xml/config.xml", "res/a.xml"]:
+            for encoding in ["utf-8", "utf-16le"]:
+                apk("com.cyph.cordova.Chooser".encode(encoding), b"Lcom/cyph/cordova/Chooser;", path)
+                check_apk(self.directory, resources(path))
+                check_apk(self.directory, resources(path).replace("xml/config", "com.fixture:xml/config", 1))
         for config, dex in [(b"", b"Lcom/cyph/cordova/Chooser;"), (b"com.cyph.cordova.Chooser", b"")]:
             apk(config, dex)
             with self.assertRaises(AssertionError):
-                check_apk(self.directory)
+                check_apk(self.directory, resources("res/xml/config.xml"))
+        apk(b"com.cyph.cordova.Chooser", b"Lcom/cyph/cordova/Chooser;", "res/a.xml")
+        for mapping in ["", resources("res/missing.xml"), resources("res/a.xml").replace("xml/config", "xml/other")]:
+            with self.assertRaises(AssertionError):
+                check_apk(self.directory, mapping)

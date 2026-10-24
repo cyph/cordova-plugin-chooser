@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { aggregateReports, requiredChecks } from "./qualification.mjs";
-import { appleEnvironment } from "./apple.mjs";
+import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
 
@@ -361,12 +361,36 @@ function android() {
 				],
 				destination,
 			);
-			if (configuration === "release")
+			if (configuration === "release") {
+				const directory = join(
+					destination,
+					"platforms/android/app/build/outputs/apk/release",
+				);
+				const apks = readdirSync(directory).filter((name) =>
+					name.endsWith(".apk"),
+				);
+				assert.equal(apks.length, 1, "Expected one release APK");
+				const resources = join(
+					reportDirectory,
+					`${fixture}-release-resources.txt`,
+				);
+				writeFileSync(
+					resources,
+					run(
+						aapt2Path(buildTools),
+						["dump", "resources", join(directory, apks[0])],
+						root,
+						true,
+					),
+				);
 				run("python3", [
 					join(root, "scripts/android_reports.py"),
 					"apk",
-					join(destination, "platforms/android/app/build/outputs/apk/release"),
+					directory,
+					"--resources",
+					resources,
 				]);
+			}
 			checked(`${fixture}:${configuration}`);
 		}
 		cordova(["plugin", "remove", pkg.name, "--nosave"], destination);
@@ -507,6 +531,7 @@ function ios(modern = false) {
 						{
 							buildFlag: [
 								"CODE_SIGNING_ALLOWED=NO",
+								"IPHONEOS_DEPLOYMENT_TARGET=15.0",
 								"SWIFT_STRICT_CONCURRENCY=complete",
 								"SWIFT_TREAT_WARNINGS_AS_ERRORS=YES",
 							],
@@ -516,6 +541,10 @@ function ios(modern = false) {
 			}),
 		);
 		const build = (configuration = "debug") => {
+			if (alias === "cordova-ios7")
+				prepareBridgingHeader(
+					join(destination, "platforms/ios", projectName, "Bridging-Header.h"),
+				);
 			// Require a fresh archive after reinstallation, never an earlier output.
 			rmSync(join(destination, "platforms/ios", `${projectName}.xcarchive`), {
 				recursive: true,
