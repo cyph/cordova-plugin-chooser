@@ -192,6 +192,10 @@ resolve = "toolchain"
 [[updates.steps]]
 resolve = "js"
 [[updates.steps]]
+targets = ["js"]
+profile = "toolchain"
+commands = [["prettier", "--write", "package.json", "pnpm-workspace.yaml"]]
+[[updates.steps]]
 resolve = "android14"
 [[updates.steps]]
 resolve = "android15"
