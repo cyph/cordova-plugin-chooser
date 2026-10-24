@@ -127,12 +127,6 @@ enabled = true
 pattern = "tests/ios/privacy-plugin/package.json"
 reason = "Dependency-free, private fixture installed from this checkout. Portable tests prohibit dependencies and install scripts; adding either requires dependency ownership."
 
-[[audits.exceptions.js]]
-id = "1240992"
-package = "braces"
-reason = "GHSA-vfj7-8cjw-p6xm has no published fix. This development-only parser processes checked-in Cordova/fixture glob patterns; selected user files never enter it. Keep the CLI restricted to trusted projects and plugins. Remove this acceptance when a compatible fix is published."
-review_after = "2026-11-01"
-
 [formatters.json]
 paths = [
   "package.json",
