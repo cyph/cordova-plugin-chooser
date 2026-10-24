@@ -33,6 +33,15 @@ reason = "xcode's uuid.v4 call retains CommonJS support with the advisory fix."
 [javascript.override_constraints.qs]
 range = "^6.16.0"
 reason = "Use the advisory fix even when Express retains an older minor bound."
+[javascript.override_constraints.ip-address]
+range = "^10.7.4"
+reason = "Keep the patched address parser throughout the Cordova tooling graph."
+[javascript.override_constraints."body-parser@<2"]
+range = "^1.20.9"
+reason = "Patch Express 4's exact transitive parser pin within the same API family."
+[javascript.override_constraints."undici@<7"]
+range = "^6.29.1"
+reason = "Keep node-gyp's client on patched Undici 6 without a major API substitution."
 [javascript.override_constraints."brace-expansion@<2"]
 range = "^1.1.21"
 reason = "Patch minimatch's legacy callable export without changing its major API."
