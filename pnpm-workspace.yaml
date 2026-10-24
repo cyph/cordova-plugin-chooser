@@ -1,5 +1,5 @@
 packages:
-  - .
+- .
 minimumReleaseAge: 43200
 minimumReleaseAgeIgnoreMissingTime: false
 autoInstallPeers: false
@@ -12,10 +12,11 @@ overrides:
   "qs": "^6.16.0"
   "brace-expansion@<2": "^1.1.21"
   "brace-expansion@>=4": "^5.0.12"
+  ip-address: ^10.7.4
+  body-parser@<2: ^1.20.9
+  undici@<7: ^6.29.1
 minimumReleaseAgeExclude:
-  - "ip-address@10.7.2"
-  - "brace-expansion@1.1.21"
-  - "brace-expansion@5.0.12"
-  - "http-cache-semantics@4.3.0"
-  - "proxy-addr@2.0.8"
-  - "compression@1.8.2"
+- body-parser@1.20.9
+- http-cache-semantics@4.3.0
+- ip-address@10.7.4
+- undici@6.29.1

@@ -56,7 +56,7 @@
 		"cordova-browser": "^7.0.0",
 		"cordova-ios7": "npm:cordova-ios@>=7.0.0 <8",
 		"cordova-ios8": "npm:cordova-ios@>=8.0.0 <9",
-		"typescript": "5.9.3"
+		"typescript": "7.0.2"
 	},
 	"packageManager": "pnpm@11.25.0"
 }
