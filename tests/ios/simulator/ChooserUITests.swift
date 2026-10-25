@@ -64,11 +64,11 @@ final class ChooserUITests: XCTestCase {
                 format: "label == %@ OR label == %@", filename, stem)).firstMatch
             XCTAssertTrue(item.waitForExistence(timeout: 20), "Missing local fixture \(filename)")
             XCTAssertTrue(item.isEnabled)
-            // Target the thumbnail's screen position: Files' remote image
-            // is not itself an accessibility hit target.
-            let thumbnail = item.images.firstMatch
-            XCTAssertTrue(thumbnail.waitForExistence(timeout: 10))
-            XCTAssertFalse(thumbnail.frame.isEmpty)
+            let interactive = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                item.exists && item.isHittable
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [interactive], timeout: 20), .completed,
+                "Local fixture is not interactive: \(filename)")
             let outcome = app.staticTexts["Outcome"]
             let settled = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "selected:\(filename)", "error:")
             // The remote Files view can expose an item before accepting its
@@ -77,7 +77,7 @@ final class ChooserUITests: XCTestCase {
             for _ in 0..<3 {
                 if settled.evaluate(with: outcome) { break }
                 guard item.exists else { break }
-                thumbnail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                item.tap()
                 let open = app.buttons["Open"].firstMatch
                 if open.waitForExistence(timeout: 2) { open.tap() }
                 let completion = XCTNSPredicateExpectation(predicate: settled, object: outcome)
