@@ -64,12 +64,12 @@ final class ChooserUITests: XCTestCase {
                 format: "label == %@ OR label == %@", filename, stem)).firstMatch
             XCTAssertTrue(item.waitForExistence(timeout: 20), "Missing local fixture \(filename)")
             XCTAssertTrue(item.isEnabled)
-            // Files exposes the filename as a separate text interaction.
-            // Activate the document thumbnail within its enclosing cell.
+            // Target the thumbnail's screen position: Files' remote image
+            // is not itself an accessibility hit target.
             let thumbnail = item.images.firstMatch
             XCTAssertTrue(thumbnail.waitForExistence(timeout: 10))
-            XCTAssertTrue(thumbnail.isHittable)
-            thumbnail.tap()
+            XCTAssertFalse(thumbnail.frame.isEmpty)
+            thumbnail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             let open = app.buttons["Open"].firstMatch
             if open.waitForExistence(timeout: 2) { open.tap() }
             expect(app, "selected:\(filename)")
