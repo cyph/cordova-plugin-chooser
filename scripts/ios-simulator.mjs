@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
 	cpSync,
+	existsSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
@@ -229,32 +230,64 @@ export function verifyIosSimulator({
 			try {
 				simctl(["boot", udid]);
 				simctl(["bootstatus", udid, "-b"]);
-				run(
-					"/usr/bin/xcodebuild",
-					[
-						"test",
-						"-project",
-						"ChooserSimulator.xcodeproj",
-						"-scheme",
-						"Chooser",
-						"-destination",
-						`platform=iOS Simulator,id=${udid}`,
-						"-destination-timeout",
-						"120",
-						"-parallel-testing-enabled",
-						"NO",
-						"-resultBundlePath",
-						result,
-						"-derivedDataPath",
-						join(directory, "derived"),
-						"CODE_SIGNING_ALLOWED=NO",
-						"AppleLanguages=(en)",
-						"AppleLocale=en_US",
-					],
-					directory,
-					false,
-					env,
-				);
+				try {
+					run(
+						"/usr/bin/xcodebuild",
+						[
+							"test",
+							"-project",
+							"ChooserSimulator.xcodeproj",
+							"-scheme",
+							"Chooser",
+							"-destination",
+							`platform=iOS Simulator,id=${udid}`,
+							"-destination-timeout",
+							"120",
+							"-parallel-testing-enabled",
+							"NO",
+							"-resultBundlePath",
+							result,
+							"-derivedDataPath",
+							join(directory, "derived"),
+							"CODE_SIGNING_ALLOWED=NO",
+							"AppleLanguages=(en)",
+							"AppleLocale=en_US",
+						],
+						directory,
+						false,
+						env,
+					);
+				} catch (error) {
+					if (existsSync(result)) {
+						const attachments = join(
+							reportDirectory,
+							`${alias}-${kind}-attachments`,
+						);
+						mkdirSync(attachments, { recursive: true });
+						try {
+							run(
+								"/usr/bin/xcrun",
+								[
+									"xcresulttool",
+									"export",
+									"attachments",
+									"--path",
+									result,
+									"--output-path",
+									attachments,
+								],
+								root,
+								true,
+								env,
+							);
+						} catch {
+							console.error(
+								"Could not export simulator failure attachments; the xcresult bundle is retained.",
+							);
+						}
+					}
+					throw error;
+				}
 				const summary = JSON.parse(
 					run(
 						"/usr/bin/xcrun",

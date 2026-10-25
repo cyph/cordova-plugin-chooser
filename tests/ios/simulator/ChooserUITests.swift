@@ -1,6 +1,18 @@
 import XCTest
 
 final class ChooserUITests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+    override func tearDown() {
+        if let run = testRun, run.failureCount > 0 {
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+        super.tearDown()
+    }
     private func launch(sheet: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["CHOOSER_TEST_SHEET"] = sheet ? "1" : "0"

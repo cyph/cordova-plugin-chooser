@@ -27,8 +27,18 @@ final class FixtureScene: UIResponder, UIWindowSceneDelegate {
     }
 }
 
-final class FixtureController: CDVViewController, WKScriptMessageHandler {
+@MainActor
+private final class FixtureMessages: NSObject, WKScriptMessageHandler {
+    weak var owner: FixtureController?
+    init(owner: FixtureController) { self.owner = owner }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "fixture" { owner?.outcome.text = message.body as? String }
+    }
+}
+
+final class FixtureController: CDVViewController {
     let outcome = UILabel()
+    private var messages: FixtureMessages?
     static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
@@ -43,7 +53,11 @@ final class FixtureController: CDVViewController, WKScriptMessageHandler {
         }
         let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6zAAAAABJRU5ErkJggg==")!
         try! png.write(to: Self.documents.appendingPathComponent("fixture-image.png"))
-        (webView as! WKWebView).configuration.userContentController.add(self, name: "fixture")
+        // Conforming the controller itself would opt into Cordova's bridge
+        // override hook. Keep this test-only channel on a separate handler.
+        let messages = FixtureMessages(owner: self)
+        self.messages = messages
+        (webView as! WKWebView).configuration.userContentController.add(messages, name: "fixture")
         let controls = UIStackView()
         controls.axis = .vertical
         controls.backgroundColor = .systemBackground
@@ -68,9 +82,6 @@ final class FixtureController: CDVViewController, WKScriptMessageHandler {
             controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             controls.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
-    }
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        outcome.text = message.body as? String
     }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
         if let picker = controller as? UIDocumentPickerViewController {
