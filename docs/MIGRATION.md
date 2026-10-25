@@ -1,6 +1,6 @@
 # Migrating from 1.3.2 to 2.0
 
-Version 2.0 adds multiple selection, managed temporary references, browser support, and bundled TypeScript declarations. Existing single-file calls retain their names, Promise/callback forms, and `undefined` cancellation result. This guide covers **2.0.0-rc.1**.
+Version 2.0 adds multiple selection, managed temporary references, browser support, and bundled TypeScript declarations. Existing single-file calls retain their names, Promise/callback forms, and `undefined` cancellation result. This guide covers **2.0.0-rc.1** and the [unreleased validation changes](../CHANGELOG.md#unreleased).
 
 ## Update the installation
 

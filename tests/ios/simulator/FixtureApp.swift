@@ -4,13 +4,24 @@ import Cordova
 
 @main
 final class FixtureApp: UIResponder, UIApplicationDelegate {
+    // Keep the conventional delegate window available to older Cordova code.
     var window: UIWindow?
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
+    func application(_ application: UIApplication, configurationForConnecting session: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: "ChooserFixture", sessionRole: session.role)
+        configuration.delegateClass = FixtureScene.self
+        return configuration
+    }
+}
+
+final class FixtureScene: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+        guard let scene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: scene)
         window.rootViewController = FixtureController()
         window.makeKeyAndVisible()
         self.window = window
-        return true
+        (UIApplication.shared.delegate as? FixtureApp)?.window = window
     }
 }
 

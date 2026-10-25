@@ -20,6 +20,13 @@ allprojects {
         lockMode = LockMode.STRICT
         lockFile = rootProject.file("locks/${project.name}.lockfile")
     }
+    // AGP lazily uses maybeCreate("androidApis") for Nix-owned SDK files.
+    // Register it before resolution so its empty Maven lock state is frozen too.
+    for (id in ['com.android.application', 'com.android.library']) {
+        plugins.withId(id) {
+            configurations.maybeCreate('androidApis').canBeConsumed = false
+        }
+    }
     tasks.register('resolveVerificationDependencies') {
         doLast {
             configurations.findAll { it.canBeResolved }.each { configuration ->

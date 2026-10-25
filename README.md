@@ -6,7 +6,7 @@ Chooser supports single and multiple selection, Promises and callbacks, and Type
 
 ## Installation
 
-This documentation covers **2.0.0-rc.1**. Install the release candidate explicitly from your Cordova application:
+The published candidate is **2.0.0-rc.1**; this checkout also documents [unreleased changes](CHANGELOG.md#unreleased). Install the published candidate explicitly from your Cordova application:
 
 ```sh
 cordova plugin add cordova-plugin-chooser@2.0.0-rc.1

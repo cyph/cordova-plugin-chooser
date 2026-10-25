@@ -93,6 +93,10 @@ export function verifyIosSimulator({
 					SWIFT_VERSION: "5.0",
 					CODE_SIGNING_ALLOWED: "NO",
 					TARGETED_DEVICE_FAMILY: "1,2",
+					// Cordova 7's old umbrella import needs its scoped pragma;
+					// standalone explicit PCM generation bypasses that header.
+					SWIFT_ENABLE_EXPLICIT_MODULES:
+						alias === "cordova-ios7" ? "NO" : "YES",
 				},
 			},
 			projectReferences: {
@@ -129,6 +133,9 @@ export function verifyIosSimulator({
 							CFBundleDisplayName: "Chooser fixture",
 							UILaunchScreen: {},
 							UIFileSharingEnabled: true,
+							UIApplicationSceneManifest: {
+								UIApplicationSupportsMultipleScenes: false,
+							},
 							LSSupportsOpeningDocumentsInPlace: true,
 							UISupportedInterfaceOrientations: [
 								"UIInterfaceOrientationPortrait",
