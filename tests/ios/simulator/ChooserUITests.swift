@@ -54,6 +54,12 @@ final class ChooserUITests: XCTestCase {
     }
     func testLocalFilesAndVideoWildcard() throws {
         let app = launch()
+        app.buttons["Seed"].tap()
+        let save = app.buttons.matching(NSPredicate(format: "label IN %@", ["Save", "Copy", "Export", "Move"])).firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 20))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        expect(app, "seeded")
         let identifiers = try XCTUnwrap(app.staticTexts["Outcome"].value as? String)
         XCTAssertFalse(identifiers.isEmpty)
         app.terminate()

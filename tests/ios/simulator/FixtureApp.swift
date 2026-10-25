@@ -36,43 +36,52 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     }
 }
 
+@MainActor
+private final class FixtureExport: NSObject, UIDocumentPickerDelegate {
+    weak var owner: FixtureController?
+    init(owner: FixtureController) { self.owner = owner }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        owner?.didExportFixtures()
+    }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        owner?.outcome.text = "seed-cancelled"
+    }
+}
+
 final class FixtureController: CDVViewController {
     let outcome = UILabel()
     private var messages: FixtureMessages?
+    private var exporter: FixtureExport?
     static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
-    override func viewDidLoad() {
-        startPage = "index.html"
-        super.viewDidLoad()
-        let assets = Bundle.main.url(forResource: "Assets", withExtension: nil)!
+    private var assets: [URL] {
+        let directory = Bundle.main.url(forResource: "Assets", withExtension: nil)!
+        return (try! FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil))
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+    @discardableResult
+    private func updateIdentifiers() -> Bool {
         let manager = FileManager.default
-        let sources = try! manager.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil)
+        let sources = assets
         var identifiers: [String] = []
-        for source in sources.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+        for source in sources {
             let destination = Self.documents.appendingPathComponent(source.lastPathComponent)
-            // Preserve indexed documents across launches; replacing them
-            // invalidates the local provider's cached item identifiers.
-            if !manager.fileExists(atPath: destination.path) {
-                let contents = try! Data(contentsOf: source)
-                var coordinationError: NSError?
-                var writeError: Error?
-                // These Documents are exposed through Files. Coordinate the
-                // initial creation instead of cloning bundle file metadata.
-                NSFileCoordinator().coordinate(writingItemAt: destination, options: [], error: &coordinationError) { url in
-                    do { try contents.write(to: url, options: .withoutOverwriting) }
-                    catch { writeError = error }
-                }
-                precondition(coordinationError == nil,
-                    "Could not coordinate fixture creation: \(String(describing: coordinationError))")
-                precondition(writeError == nil,
-                    "Could not write fixture contents: \(String(describing: writeError))")
-            }
+            guard manager.fileExists(atPath: destination.path) else { continue }
             let attributes = try! manager.attributesOfItem(atPath: destination.path)
             let identifier = attributes[.systemFileNumber] as! NSNumber
             identifiers.append("\(source.lastPathComponent):\(identifier.uint64Value)")
         }
         outcome.accessibilityValue = identifiers.joined(separator: ",")
+        return identifiers.count == sources.count
+    }
+    func didExportFixtures() {
+        outcome.text = updateIdentifiers() ? "seeded" : "seed-error:unexpected-directory"
+    }
+    override func viewDidLoad() {
+        startPage = "index.html"
+        super.viewDidLoad()
+        updateIdentifiers()
         // Conforming the controller itself would opt into Cordova's bridge
         // override hook. Keep this test-only channel on a separate handler.
         let messages = FixtureMessages(owner: self)
@@ -81,6 +90,17 @@ final class FixtureController: CDVViewController {
         let controls = UIStackView()
         controls.axis = .vertical
         controls.backgroundColor = .systemBackground
+        exporter = FixtureExport(owner: self)
+        let seed = UIButton(type: .system)
+        seed.setTitle("Seed", for: .normal)
+        seed.accessibilityIdentifier = "Seed"
+        seed.addAction(UIAction { [weak self] _ in
+            guard let self = self else { return }
+            let picker = UIDocumentPickerViewController(forExporting: self.assets, asCopy: true)
+            picker.delegate = self.exporter
+            self.present(picker, animated: true)
+        }, for: .touchUpInside)
+        controls.addArrangedSubview(seed)
         for (title, filter) in [("Choose", "*/*"), ("JSON", "application/json"), ("CSV", "text/csv"),
                                 ("PDF", "application/pdf"), ("Image", "image/*"), ("Video", "video/*")] {
             let button = UIButton(type: .system)
