@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import UniformTypeIdentifiers
 #if canImport(Cordova)
 import Cordova
 #endif
@@ -36,7 +37,7 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     }
 }
 
-final class FixtureController: CDVViewController {
+final class FixtureController: CDVViewController, UIDocumentPickerDelegate {
     let outcome = UILabel()
     private var messages: FixtureMessages?
     override func viewDidLoad() {
@@ -56,6 +57,10 @@ final class FixtureController: CDVViewController {
             button.setTitle(title, for: .normal)
             button.accessibilityIdentifier = title
             button.addAction(UIAction { [weak self] _ in
+                if ProcessInfo.processInfo.environment["CHOOSER_NATIVE_CONTROL"] == "1" {
+                    self?.pickNative(filter)
+                    return
+                }
                 let argument = String(data: try! JSONSerialization.data(withJSONObject: [filter]), encoding: .utf8)!
                 (self?.webView as? WKWebView)?.evaluateJavaScript("window.pick(\(argument)[0])", completionHandler: nil)
             }, for: .touchUpInside)
@@ -71,6 +76,22 @@ final class FixtureController: CDVViewController {
             controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             controls.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
+    }
+    private func pickNative(_ filter: String) {
+        let types: [String: UTType] = [
+            "application/json": .json, "text/csv": .commaSeparatedText,
+            "application/pdf": .pdf, "image/*": .image, "video/*": .movie
+        ]
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [types[filter] ?? .item], asCopy: true)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else {
+            outcome.text = "error:empty native selection"
+            return
+        }
+        outcome.text = "selected:\(url.lastPathComponent)"
     }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
         if let picker = controller as? UIDocumentPickerViewController {

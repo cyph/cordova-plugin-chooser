@@ -124,6 +124,7 @@ export function verifyIosSimulator({
 		env,
 	);
 	report.toolchain.simulators = [];
+	const failures = [];
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
 		const generated = app("ios", alias, packed, env);
 		const directory = join(output, "simulator-tests", alias);
@@ -336,6 +337,10 @@ export function verifyIosSimulator({
 			assert.match(udid, /^[0-9A-F-]{36}$/i);
 			report.toolchain.simulators.push({ alias, deviceName, runtime, udid });
 			const result = join(reportDirectory, `${alias}-${kind}.xcresult`);
+			const controlResult = join(
+				reportDirectory,
+				`${alias}-${kind}-control.xcresult`,
+			);
 			try {
 				simctl(["boot", udid]);
 				simctl(["bootstatus", udid, "-b"]);
@@ -380,7 +385,7 @@ export function verifyIosSimulator({
 						"python3",
 						[
 							"-c",
-							"import pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+30\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.read_text()=='ready', 'Fixture source did not become ready'",
+							"import pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.read_text()=='ready', 'Fixture source did not become ready'",
 							join(container, "Library/Caches/chooser-fixture-ready"),
 						],
 						root,
@@ -398,7 +403,7 @@ export function verifyIosSimulator({
 						join(reportDirectory, `${alias}-${kind}-sources.json`),
 						JSON.stringify({ before }, null, 2),
 					);
-					try {
+					const test = (bundle, selection = []) =>
 						run(
 							"/usr/bin/xcodebuild",
 							[
@@ -414,10 +419,11 @@ export function verifyIosSimulator({
 								"-parallel-testing-enabled",
 								"NO",
 								"-resultBundlePath",
-								result,
+								bundle,
 								"-derivedDataPath",
 								join(directory, "derived"),
 								...signing,
+								...selection,
 								"AppleLanguages=(en)",
 								"AppleLocale=en_US",
 							],
@@ -425,6 +431,44 @@ export function verifyIosSimulator({
 							false,
 							env,
 						);
+					try {
+						try {
+							test(controlResult, [
+								"-only-testing:ChooserUITests/ChooserUITests/testNativeUIKitControl",
+							]);
+							const control = JSON.parse(
+								run(
+									"/usr/bin/xcrun",
+									[
+										"xcresulttool",
+										"get",
+										"test-results",
+										"summary",
+										"--path",
+										controlResult,
+									],
+									root,
+									true,
+									env,
+								),
+							);
+							writeFileSync(
+								join(reportDirectory, `${alias}-${kind}-control-summary.json`),
+								JSON.stringify(control, null, 2),
+							);
+							assert.equal(control.totalTestCount, 1, "Missing UIKit control");
+							assert.equal(control.passedTests, 1, "UIKit control failed");
+							assert.equal(control.failedTests, 0);
+							assert.equal(control.skippedTests, 0);
+							checked(`${alias}:${kind}:native-control`);
+						} catch (error) {
+							failures.push(
+								new Error(`${alias}/${kind} UIKit control failed`, {
+									cause: error,
+								}),
+							);
+						}
+						test(result);
 					} finally {
 						const after = sourceFingerprint(sources);
 						writeFileSync(
@@ -460,7 +504,8 @@ export function verifyIosSimulator({
 					} catch {
 						console.error("Could not collect simulator provider logs.");
 					}
-					if (existsSync(result)) {
+					const failedResult = existsSync(result) ? result : controlResult;
+					if (existsSync(failedResult)) {
 						const attachments = join(
 							reportDirectory,
 							`${alias}-${kind}-attachments`,
@@ -474,7 +519,7 @@ export function verifyIosSimulator({
 									"export",
 									"attachments",
 									"--path",
-									result,
+									failedResult,
 									"--output-path",
 									attachments,
 								],
@@ -525,14 +570,24 @@ export function verifyIosSimulator({
 				);
 				checkSimulatorResults(summary, tests);
 				checked(`${alias}:${kind}`);
+			} catch (error) {
+				failures.push(
+					new Error(`${alias}/${kind} qualification failed`, { cause: error }),
+				);
 			} finally {
 				// Operate only on the simulator allocated by this invocation.
-				try {
-					simctl(["shutdown", udid]);
-				} finally {
-					simctl(["delete", udid]);
+				for (const action of ["shutdown", "delete"]) {
+					try {
+						simctl([action, udid]);
+					} catch (error) {
+						failures.push(
+							new Error(`${alias}/${kind} ${action} failed`, { cause: error }),
+						);
+					}
 				}
 			}
 		}
 	}
+	if (failures.length)
+		throw new AggregateError(failures, "Simulator qualification failed");
 }

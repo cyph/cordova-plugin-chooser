@@ -13,9 +13,10 @@ final class ChooserUITests: XCTestCase {
         }
         super.tearDown()
     }
-    private func launch(sheet: Bool = false) -> XCUIApplication {
+    private func launch(sheet: Bool = false, native: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["CHOOSER_TEST_SHEET"] = sheet ? "1" : "0"
+        app.launchEnvironment["CHOOSER_NATIVE_CONTROL"] = native ? "1" : "0"
         app.launch()
         XCTAssertTrue(app.staticTexts["Outcome"].waitForExistence(timeout: 20))
         expect(app, "ready")
@@ -79,9 +80,17 @@ final class ChooserUITests: XCTestCase {
         app.terminate()
         app.launch()
         expect(app, "ready")
-        for (button, filename) in [("JSON", "fixture-json.json"), ("CSV", "fixture-csv.csv"),
+        selectFormats(app)
+    }
+    func testNativeUIKitControl() {
+        selectFormats(launch(native: true), csvFirst: true)
+    }
+    private func selectFormats(_ app: XCUIApplication, csvFirst: Bool = false) {
+        var formats = [("JSON", "fixture-json.json"), ("CSV", "fixture-csv.csv"),
                                     ("PDF", "fixture-pdf.pdf"), ("Image", "fixture-image.png"),
-                                    ("Video", "fixture-mp4.mp4"), ("Video", "fixture-mov.mov")] {
+                                    ("Video", "fixture-mp4.mp4"), ("Video", "fixture-mov.mov")]
+        if csvFirst { formats.swapAt(0, 1) }
+        for (button, filename) in formats {
             app.buttons[button].tap()
             browseFixtures(app)
             // The real Files UI may display extensions or hide registered ones.

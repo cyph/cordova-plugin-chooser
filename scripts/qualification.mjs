@@ -30,7 +30,10 @@ export const requiredChecks = {
 	"ios-simulator": [
 		"package",
 		...["cordova-ios7", "cordova-ios8"].flatMap((alias) =>
-			["iphone", "ipad"].map((device) => `${alias}:${device}`),
+			["iphone", "ipad"].flatMap((device) => [
+				`${alias}:${device}:native-control`,
+				`${alias}:${device}`,
+			]),
 		),
 	],
 	ios: [

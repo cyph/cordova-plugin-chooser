@@ -9,15 +9,15 @@ test("simulator evidence requires every case, with no failures or skips", async 
 	const { checkSimulatorResults, simulatorCases } =
 		await import("../../scripts/simulator-results.mjs");
 	const summary = {
-		totalTestCount: 6,
-		passedTests: 6,
+		totalTestCount: 7,
+		passedTests: 7,
 		failedTests: 0,
 		skippedTests: 0,
 	};
 	checkSimulatorResults(summary, simulatorCases);
 	for (const patch of [
 		{ totalTestCount: 0 },
-		{ passedTests: 5 },
+		{ passedTests: 6 },
 		{ failedTests: 1 },
 		{ skippedTests: 1 },
 	])

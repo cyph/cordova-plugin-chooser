@@ -7,6 +7,7 @@ export const simulatorCases = [
 	"testCancelAndImmediateReopen",
 	"testSwipeSheetSettlesOnceAndReopens",
 	"testLocalFilesAndVideoWildcard",
+	"testNativeUIKitControl",
 ];
 
 export function checkSimulatorResults(summary, tests) {
