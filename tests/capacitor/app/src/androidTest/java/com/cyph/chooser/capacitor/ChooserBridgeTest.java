@@ -118,4 +118,31 @@ public final class ChooserBridgeTest {
             } finally { Intents.release(); }
         }
     }
+    @Test public void unknownLengthPdfPipesPreserveBytes() throws Exception {
+        android.content.Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        byte[] pdf = new byte[]{37, 80, 68, 70, 45, 49, 46, 52, 10, 0, (byte)255};
+        File source = FixtureProvider.source(context);
+        try (FileOutputStream output = new FileOutputStream(source)) { output.write(pdf); }
+        FixtureProvider.pipe = true;
+        FixtureProvider.reportedSize = -1;
+        try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            scenario = activity;
+            awaitValue("window.chooser && window.fixtureReady ? 'ready' : null");
+            Intents.init();
+            try {
+                select();
+                JSONObject data = result("chooser.getFile('application/pdf').then(file => ({bytes:Array.from(file.data),dataURI:file.dataURI}))");
+                assertTrue(data.toString(), data.getBoolean("ok"));
+                org.json.JSONArray bytes = data.getJSONObject("value").getJSONArray("bytes");
+                assertEquals(pdf.length, bytes.length());
+                for (int i = 0; i < pdf.length; i++) assertEquals(pdf[i] & 255, bytes.getInt(i));
+                JSONObject copied = result("chooser.getFileUri({maxFileSize:11})");
+                assertTrue(copied.toString(), copied.getBoolean("ok"));
+                JSONObject reference = copied.getJSONObject("value");
+                assertEquals(pdf.length, reference.getLong("size"));
+                assertArrayEquals(hash(source), hash(new File(Uri.parse(reference.getString("uri")).getPath())));
+                assertTrue(result("chooser.releaseFile(" + JSONObject.quote(reference.getString("id")) + ")").getBoolean("ok"));
+            } finally { Intents.release(); }
+        } finally { FixtureProvider.pipe = false; source.delete(); }
+    }
 }

@@ -36,12 +36,12 @@ class AndroidReportsTests(unittest.TestCase):
 
     def test_bridge_instrumentation_requires_both_cases_and_no_skips(self):
         report = self.directory / "TEST-fixture.xml"
-        cases = ['realBridgeCopiesLargeFilesAndEnforcesLimits', 'cancellationSettlesOnceAndCanImmediatelyReopen']
+        cases = ['realBridgeCopiesLargeFilesAndEnforcesLimits', 'cancellationSettlesOnceAndCanImmediatelyReopen', 'unknownLengthPdfPipesPreserveBytes']
         content = ''.join(f'<testcase classname="ChooserBridgeTest" name="{name}"/>' for name in cases)
-        report.write_text(f'<testsuite tests="2">{content}</testsuite>')
+        report.write_text(f'<testsuite tests="3">{content}</testsuite>')
         check_instrumentation(self.directory)
         for bad in [content.replace(cases[0], 'unrelated'), content.replace('/>', '><skipped/></testcase>', 1)]:
-            report.write_text(f'<testsuite tests="2">{bad}</testsuite>')
+            report.write_text(f'<testsuite tests="3">{bad}</testsuite>')
             with self.assertRaises(AssertionError):
                 check_instrumentation(self.directory)
 

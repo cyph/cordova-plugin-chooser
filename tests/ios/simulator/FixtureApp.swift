@@ -22,14 +22,14 @@ final class FixtureController: CDVViewController, WKScriptMessageHandler {
     override func viewDidLoad() {
         startPage = "index.html"
         super.viewDidLoad()
-        let files = ["sample.json": "{\"fixture\":true}", "sample.csv": "a,b\n1,2\n",
-                     "sample.pdf": "%PDF-1.4\n%%EOF", "sample.mp4": "synthetic movie type fixture",
-                     "sample.mov": "synthetic movie type fixture"]
+        let files = ["fixture-json.json": "{\"fixture\":true}", "fixture-csv.csv": "a,b\n1,2\n",
+                     "fixture-pdf.pdf": "%PDF-1.4\n%%EOF", "fixture-mp4.mp4": "synthetic movie type fixture",
+                     "fixture-mov.mov": "synthetic movie type fixture"]
         for (name, contents) in files {
             try! Data(contents.utf8).write(to: Self.documents.appendingPathComponent(name))
         }
         let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6zAAAAABJRU5ErkJggg==")!
-        try! png.write(to: Self.documents.appendingPathComponent("sample.png"))
+        try! png.write(to: Self.documents.appendingPathComponent("fixture-image.png"))
         (webView as! WKWebView).configuration.userContentController.add(self, name: "fixture")
         let controls = UIStackView()
         controls.axis = .vertical

@@ -10,6 +10,7 @@ import {
 	mkdirSync,
 	openSync,
 	readFileSync,
+	readdirSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -141,8 +142,18 @@ export function verifyCapacitorAndroid(context) {
 	};
 	const avd = "chooser-api33";
 	// avdmanager's custom-device prompt is answered by its default (EOF).
+	const versions = readdirSync(join(sdk, "cmdline-tools")).filter((version) =>
+		existsSync(join(sdk, "cmdline-tools", version, "bin/avdmanager")),
+	);
+	assert.equal(
+		versions.length,
+		1,
+		"Expected one pinned Android command-line tools version",
+	);
+	const avdmanager = join(sdk, "cmdline-tools", versions[0], "bin/avdmanager");
+	accessSync(avdmanager, constants.R_OK | constants.X_OK);
 	run(
-		join(sdk, "cmdline-tools/latest/bin/avdmanager"),
+		avdmanager,
 		[
 			"create",
 			"avd",

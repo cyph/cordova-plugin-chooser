@@ -42,9 +42,9 @@ final class ChooserUITests: XCTestCase {
     }
     func testLocalFilesAndVideoWildcard() {
         let app = launch()
-        for (button, filename) in [("JSON", "sample.json"), ("CSV", "sample.csv"),
-                                    ("PDF", "sample.pdf"), ("Image", "sample.png"),
-                                    ("Video", "sample.mp4"), ("Video", "sample.mov")] {
+        for (button, filename) in [("JSON", "fixture-json.json"), ("CSV", "fixture-csv.csv"),
+                                    ("PDF", "fixture-pdf.pdf"), ("Image", "fixture-image.png"),
+                                    ("Video", "fixture-mp4.mp4"), ("Video", "fixture-mov.mov")] {
             app.buttons[button].tap()
             // The real Files UI may display extensions or hide registered ones.
             let stem = (filename as NSString).deletingPathExtension

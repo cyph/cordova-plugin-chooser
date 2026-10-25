@@ -119,16 +119,15 @@ public class ChooserTest {
 			if (pipe) {
 				try {
 					ParcelFileDescriptor[] ends = ParcelFileDescriptor.createPipe();
-					Thread writer = new Thread(() -> {
-						try (FileInputStream input = new FileInputStream(source);
+					// Robolectric backs this pipe with a regular file: populate it
+					// before handing it to the reader so EOF cannot race the writer.
+					// Actual asynchronous pipe reads run in the emulator fixture.
+					try (FileInputStream input = new FileInputStream(source);
 							 FileOutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(ends[1])) {
 							byte[] buffer = new byte[65536];
 							int count;
 							while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-						} catch (IOException error) { throw new IllegalStateException(error); }
-					}, "chooser-fixture-pipe");
-					writer.setDaemon(true);
-					writer.start();
+					}
 					return ends[0];
 				} catch (IOException error) { throw new FileNotFoundException(error.toString()); }
 			}

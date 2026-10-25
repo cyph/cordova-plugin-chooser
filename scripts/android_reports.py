@@ -28,7 +28,7 @@ def check_instrumentation(directory):
     suites = [ET.parse(path).getroot() for path in reports]
     assert all(int(suite.get(key, 0)) == 0 for suite in suites for key in ["failures", "errors", "skipped"]), "Failed or skipped instrumentation"
     executed = {case.get("name") for suite in suites for case in suite.iter("testcase") if "ChooserBridgeTest" in case.get("classname", "") and case.find("skipped") is None}
-    required = {"realBridgeCopiesLargeFilesAndEnforcesLimits", "cancellationSettlesOnceAndCanImmediatelyReopen"}
+    required = {"realBridgeCopiesLargeFilesAndEnforcesLimits", "cancellationSettlesOnceAndCanImmediatelyReopen", "unknownLengthPdfPipesPreserveBytes"}
     assert required <= executed, f"Missing bridge cases: {required - executed}"
 
 
