@@ -33,10 +33,14 @@ final class ChooserUITests: XCTestCase {
         button.tap()
     }
     private func browseFixtures(_ app: XCUIApplication) {
-        let location = app.cells.containing(NSPredicate(
-            format: "label == %@ OR label == %@", "On My iPhone", "On My iPad")).firstMatch
+        let location = app.cells.matching(NSPredicate(
+            format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad")).firstMatch
+        let browse = app.tabBars.buttons["Browse"].firstMatch
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            location.exists || browse.exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
         if !location.exists {
-            let browse = app.tabBars.buttons["Browse"].firstMatch
             XCTAssertTrue(browse.waitForExistence(timeout: 15))
             browse.tap()
             // Return through the actual navigation stack, including a folder
@@ -49,8 +53,8 @@ final class ChooserUITests: XCTestCase {
         }
         XCTAssertTrue(location.waitForExistence(timeout: 15))
         location.tap()
-        let folder = app.cells.containing(NSPredicate(
-            format: "label == %@", "Chooser Fixtures")).firstMatch
+        let folder = app.cells.matching(NSPredicate(
+            format: "label BEGINSWITH %@", "Chooser Fixtures")).firstMatch
         XCTAssertTrue(folder.waitForExistence(timeout: 15))
         folder.tap()
     }
@@ -67,9 +71,12 @@ final class ChooserUITests: XCTestCase {
         app.buttons["Choose"].tap()
         let cancelButton = app.buttons["Cancel"].firstMatch
         XCTAssertTrue(cancelButton.waitForExistence(timeout: 15))
-        // Drag the sheet by its top edge, avoiding a scrollable file listing.
-        let top = cancelButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
-        top.press(forDuration: 0.1, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 650)))
+        // Drag the grabber area at the sheet's center, clear of the iPad sidebar.
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let top = origin.withOffset(CGVector(dx: app.frame.width / 2,
+            dy: cancelButton.frame.minY - app.frame.minY - 18))
+        top.press(forDuration: 0.1, thenDragTo: origin.withOffset(
+            CGVector(dx: app.frame.width / 2, dy: app.frame.height - 12)))
         expect(app, "canceled:1")
         app.buttons["Choose"].tap()
         cancel(app)
@@ -83,6 +90,11 @@ final class ChooserUITests: XCTestCase {
         selectFormats(app)
     }
     func testNativeUIKitControl() {
+        let files = XCUIApplication(bundleIdentifier: "com.apple.DocumentsApp")
+        files.launch()
+        if files.buttons["Continue"].exists { files.buttons["Continue"].tap() }
+        browseFixtures(files)
+        files.terminate()
         selectFormats(launch(native: true), csvFirst: true)
     }
     private func selectFormats(_ app: XCUIApplication, csvFirst: Bool = false) {
@@ -95,8 +107,8 @@ final class ChooserUITests: XCTestCase {
             browseFixtures(app)
             // The real Files UI may display extensions or hide registered ones.
             let stem = (filename as NSString).deletingPathExtension
-            let item = app.cells.containing(NSPredicate(
-                format: "label == %@ OR label == %@", filename, stem)).firstMatch
+            let item = app.cells.matching(NSPredicate(
+                format: "label BEGINSWITH %@ OR label BEGINSWITH %@", filename, stem)).firstMatch
             XCTAssertTrue(item.waitForExistence(timeout: 20), "Missing local fixture \(filename)")
             XCTAssertTrue(item.isEnabled)
             let interactive = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in

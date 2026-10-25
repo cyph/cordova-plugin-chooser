@@ -191,7 +191,9 @@ export function verifyIosSimulator({
 				Cordova: {
 					path: join(
 						generated,
-						"platforms/ios/CordovaLib/CordovaLib.xcodeproj",
+						legacy
+							? "platforms/ios/CordovaLib/CordovaLib.xcodeproj"
+							: "platforms/ios/packages/cordova-ios/CordovaLib/CordovaLib.xcodeproj",
 					),
 				},
 			},
