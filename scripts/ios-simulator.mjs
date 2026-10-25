@@ -280,6 +280,28 @@ export function verifyIosSimulator({
 						env,
 					);
 				} catch (error) {
+					try {
+						const providerLog = simctl([
+							"spawn",
+							udid,
+							"log",
+							"show",
+							"--last",
+							"10m",
+							"--style",
+							"compact",
+							"--info",
+							"--debug",
+							"--predicate",
+							'subsystem CONTAINS[c] "DocumentManager" OR subsystem CONTAINS[c] "FileProvider"',
+						]);
+						writeFileSync(
+							join(reportDirectory, `${alias}-${kind}-provider.log`),
+							providerLog,
+						);
+					} catch {
+						console.error("Could not collect simulator provider logs.");
+					}
 					if (existsSync(result)) {
 						const attachments = join(
 							reportDirectory,

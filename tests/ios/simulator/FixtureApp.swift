@@ -36,8 +36,33 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     }
 }
 
+@MainActor
+private final class PickerEvents: NSObject, UIDocumentPickerDelegate {
+    weak var receiver: UIDocumentPickerDelegate?
+    weak var label: UILabel?
+    init(receiver: UIDocumentPickerDelegate?, label: UILabel) {
+        self.receiver = receiver
+        self.label = label
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        label?.text = "picked:" + urls.map(\.lastPathComponent).joined(separator: ",")
+        receiver?.documentPicker?(controller, didPickDocumentsAt: urls)
+    }
+    @available(iOS, introduced: 8.0, deprecated: 11.0)
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL) {
+        label?.text = "picked:" + url.lastPathComponent
+        receiver?.documentPicker?(controller, didPickDocumentAt: url)
+    }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        label?.text = "cancelled"
+        receiver?.documentPickerWasCancelled?(controller)
+    }
+}
+
 final class FixtureController: CDVViewController {
     let outcome = UILabel()
+    private let events = UILabel()
+    private var pickerEvents: PickerEvents?
     private var messages: FixtureMessages?
     static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -71,6 +96,9 @@ final class FixtureController: CDVViewController {
         outcome.accessibilityIdentifier = "Outcome"
         outcome.text = "loading"
         controls.addArrangedSubview(outcome)
+        events.accessibilityIdentifier = "PickerEvents"
+        events.text = "idle"
+        controls.addArrangedSubview(events)
         controls.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controls)
         NSLayoutConstraint.activate([
@@ -81,6 +109,10 @@ final class FixtureController: CDVViewController {
     }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
         if let picker = controller as? UIDocumentPickerViewController {
+            events.text = "presented"
+            let observer = PickerEvents(receiver: picker.delegate, label: events)
+            pickerEvents = observer
+            picker.delegate = observer
             picker.directoryURL = Self.documents
             // Force the historical adaptive sheet route only in this fixture.
             if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {

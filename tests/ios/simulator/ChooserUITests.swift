@@ -10,6 +10,14 @@ final class ChooserUITests: XCTestCase {
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.lifetime = .keepAlways
             add(screenshot)
+            let app = XCUIApplication()
+            let events = app.staticTexts["PickerEvents"]
+            if events.exists {
+                let trace = XCTAttachment(string: events.label)
+                trace.name = "Picker delegate events"
+                trace.lifetime = .keepAlways
+                add(trace)
+            }
         }
         super.tearDown()
     }
