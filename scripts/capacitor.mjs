@@ -69,6 +69,12 @@ export function prepareCapacitor({ root, output, run, pack }) {
 	const env = { npm_config_offline: "true", npm_config_ignore_scripts: "true" };
 	run("node", [cli, "add", "android"], directory, false, env);
 	run("node", [cli, "sync", "android"], directory, false, env);
+	// Replace the CLI's demonstration tests with this fixture's owned suites.
+	for (const name of ["androidTest", "test"])
+		rmSync(join(directory, "android/app/src", name), {
+			recursive: true,
+			force: true,
+		});
 	const registration = readFileSync(
 		join(directory, "android/app/src/main/res/xml/config.xml"),
 		"utf8",

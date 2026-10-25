@@ -82,6 +82,11 @@ export function verifyIosSimulator({
 			join(directory, "config.xml"),
 		);
 		const common = { platform: "iOS", deploymentTarget: "15.0" };
+		const legacy = alias === "cordova-ios7";
+		const cordova = {
+			target: `Cordova/${legacy ? "CordovaLib" : "Cordova"}`,
+			embed: !legacy,
+		};
 		const spec = {
 			name: "ChooserSimulator",
 			options: {
@@ -95,8 +100,20 @@ export function verifyIosSimulator({
 					TARGETED_DEVICE_FAMILY: "1,2",
 					// Cordova 7's old umbrella import needs its scoped pragma;
 					// standalone explicit PCM generation bypasses that header.
-					SWIFT_ENABLE_EXPLICIT_MODULES:
-						alias === "cordova-ios7" ? "NO" : "YES",
+					SWIFT_ENABLE_EXPLICIT_MODULES: legacy ? "NO" : "YES",
+					...(legacy
+						? {
+								HEADER_SEARCH_PATHS: [
+									"$(inherited)",
+									"$(TARGET_BUILD_DIR)/usr/local/lib/include",
+									"$(OBJROOT)/UninstalledProducts/include",
+									"$(OBJROOT)/UninstalledProducts/$(PLATFORM_NAME)/include",
+									"$(BUILT_PRODUCTS_DIR)/include",
+									"$(BUILT_PRODUCTS_DIR)",
+								],
+								OTHER_LDFLAGS: ["$(inherited)", "-ObjC"],
+							}
+						: {}),
 				},
 			},
 			projectReferences: {
@@ -117,7 +134,7 @@ export function verifyIosSimulator({
 						{ path: "www", type: "folder", buildPhase: "resources" },
 						{ path: "config.xml", buildPhase: "resources" },
 					],
-					dependencies: [{ target: "Cordova/Cordova", embed: true }],
+					dependencies: [cordova],
 					settings: {
 						base: {
 							PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.simulator",
@@ -156,7 +173,7 @@ export function verifyIosSimulator({
 					],
 					dependencies: [
 						{ target: "ChooserHost" },
-						{ target: "Cordova/Cordova" },
+						{ ...cordova, embed: false, link: !legacy },
 					],
 					settings: {
 						base: {

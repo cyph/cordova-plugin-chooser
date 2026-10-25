@@ -1,6 +1,8 @@
 import XCTest
 import UIKit
+#if canImport(Cordova)
 import Cordova
+#endif
 import UniformTypeIdentifiers
 @testable import ChooserHost
 

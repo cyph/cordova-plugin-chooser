@@ -1,6 +1,8 @@
 import UIKit
 import WebKit
+#if canImport(Cordova)
 import Cordova
+#endif
 
 @main
 final class FixtureApp: UIResponder, UIApplicationDelegate {
