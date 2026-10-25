@@ -58,6 +58,26 @@ export function verifyIosSimulator({
 		simctl(["list", "devicetypes", "--json"]),
 	).devicetypes;
 	const packed = pack();
+	const assets = join(output, "simulator-assets");
+	rmSync(assets, { recursive: true, force: true });
+	mkdirSync(assets, { recursive: true });
+	const generator = join(output, "generate-simulator-assets");
+	run(
+		"/usr/bin/xcrun",
+		[
+			"swiftc",
+			"-parse-as-library",
+			"-swift-version",
+			"5",
+			join(root, "tests/ios/simulator/GenerateAssets.swift"),
+			"-o",
+			generator,
+		],
+		root,
+		false,
+		env,
+	);
+	run(generator, [assets], root, false, env);
 	report.toolchain.simulators = [];
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
 		const generated = app("ios", alias, packed, env);
@@ -67,6 +87,7 @@ export function verifyIosSimulator({
 		cpSync(join(root, "tests/ios/simulator"), join(directory, "fixture"), {
 			recursive: true,
 		});
+		cpSync(assets, join(directory, "fixture/Assets"), { recursive: true });
 		const bridgingHeader = join(directory, "fixture/Host-Bridging-Header.h");
 		writeFileSync(bridgingHeader, "#import <Cordova/Cordova.h>\n");
 		if (alias === "cordova-ios7") prepareBridgingHeader(bridgingHeader);
@@ -132,6 +153,7 @@ export function verifyIosSimulator({
 					sources: [
 						join(packed, "src/ios"),
 						"fixture/FixtureApp.swift",
+						{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
 						{ path: "www", type: "folder", buildPhase: "resources" },
 						{ path: "config.xml", buildPhase: "resources" },
 					],

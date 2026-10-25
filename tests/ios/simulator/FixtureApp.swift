@@ -45,14 +45,10 @@ final class FixtureController: CDVViewController {
     override func viewDidLoad() {
         startPage = "index.html"
         super.viewDidLoad()
-        let files = ["fixture-json.json": "{\"fixture\":true}", "fixture-csv.csv": "a,b\n1,2\n",
-                     "fixture-pdf.pdf": "%PDF-1.4\n%%EOF", "fixture-mp4.mp4": "synthetic movie type fixture",
-                     "fixture-mov.mov": "synthetic movie type fixture"]
-        for (name, contents) in files {
-            try! Data(contents.utf8).write(to: Self.documents.appendingPathComponent(name))
+        let assets = Bundle.main.url(forResource: "Assets", withExtension: nil)!
+        for source in try! FileManager.default.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil) {
+            try! Data(contentsOf: source).write(to: Self.documents.appendingPathComponent(source.lastPathComponent))
         }
-        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6zAAAAABJRU5ErkJggg==")!
-        try! png.write(to: Self.documents.appendingPathComponent("fixture-image.png"))
         // Conforming the controller itself would opt into Cordova's bridge
         // override hook. Keep this test-only channel on a separate handler.
         let messages = FixtureMessages(owner: self)
