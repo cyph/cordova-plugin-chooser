@@ -69,9 +69,20 @@ final class ChooserUITests: XCTestCase {
             let thumbnail = item.images.firstMatch
             XCTAssertTrue(thumbnail.waitForExistence(timeout: 10))
             XCTAssertFalse(thumbnail.frame.isEmpty)
-            thumbnail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            let open = app.buttons["Open"].firstMatch
-            if open.waitForExistence(timeout: 2) { open.tap() }
+            let outcome = app.staticTexts["Outcome"]
+            let settled = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "selected:\(filename)", "error:")
+            // The remote Files view can expose an item before accepting its
+            // first gesture. Retry only while this picker is still visible;
+            // never substitute a delegate call or an unrestricted request.
+            for _ in 0..<3 {
+                if settled.evaluate(with: outcome) { break }
+                guard item.exists else { break }
+                thumbnail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                let open = app.buttons["Open"].firstMatch
+                if open.waitForExistence(timeout: 2) { open.tap() }
+                let completion = XCTNSPredicateExpectation(predicate: settled, object: outcome)
+                if XCTWaiter.wait(for: [completion], timeout: 5) == .completed { break }
+            }
             expect(app, "selected:\(filename)")
         }
     }
