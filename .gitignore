@@ -13,3 +13,8 @@ result
 tests/android15/.gradle/
 tests/android15/build/
 tests/android15/local.properties
+tests/capacitor/.gradle/
+tests/capacitor/build/
+tests/capacitor/app/build/
+tests/capacitor/runtime/build/
+tests/capacitor/local.properties

@@ -1,0 +1,28 @@
+plugins { id 'com.android.library' }
+// Compile the frozen framework's production sources. This fixture adapter owns
+// its dependency graph without changing files inside the package-manager store.
+def sources = new File(System.getenv('CHOOSER_NODE_MODULES') ?: rootProject.file('../../node_modules').path, '@capacitor/android/capacitor/src/main')
+android {
+    namespace 'com.getcapacitor.android'
+    compileSdk 36
+    defaultConfig { minSdk 24 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    sourceSets.main {
+        java.srcDir new File(sources, 'java')
+        manifest.srcFile new File(sources, 'AndroidManifest.xml')
+        res.srcDir new File(sources, 'res')
+        assets.srcDir new File(sources, 'assets')
+    }
+}
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.core:core:1.17.0'
+    implementation 'androidx.activity:activity:1.11.0'
+    implementation 'androidx.fragment:fragment:1.8.9'
+    implementation 'androidx.coordinatorlayout:coordinatorlayout:1.3.0'
+    implementation 'androidx.webkit:webkit:1.14.0'
+    implementation 'org.apache.cordova:framework:14.0.1'
+}

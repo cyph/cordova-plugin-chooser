@@ -51,6 +51,15 @@
               includeSystemImages = false;
               includeNDK = false;
             };
+            emulatorSdk = pkgs.androidenv.composeAndroidPackages {
+              platformVersions = [ "33" ];
+              buildToolsVersions = [ "36.0.0" ];
+              includeEmulator = true;
+              includeSystemImages = true;
+              systemImageTypes = [ "google_apis" ];
+              abiVersions = [ "x86_64" ];
+              includeNDK = false;
+            };
           in
           {
             default = pkgs.mkShell { packages = base; };
@@ -77,7 +86,34 @@
               ANDROID_SDK_ROOT = "${android.androidsdk}/libexec/android-sdk";
               CORDOVA_ANDROID_GRADLE_DISTRIBUTION_URL = "file://${pkgs.gradle-packages.gradle_8.src}";
             };
-            ios = pkgs.mkShell { packages = base ++ [ pkgs.cocoapods ]; };
+            capacitor = pkgs.mkShell {
+              packages = base ++ [
+                pkgs.jdk21
+                gradle
+                android.androidsdk
+              ];
+              JAVA_HOME = "${pkgs.jdk21}";
+              ANDROID_HOME = "${android.androidsdk}/libexec/android-sdk";
+              ANDROID_SDK_ROOT = "${android.androidsdk}/libexec/android-sdk";
+            };
+            android-emulator = pkgs.mkShell {
+              packages = base ++ [
+                pkgs.jdk21
+                gradle
+                android.androidsdk
+                emulatorSdk.androidsdk
+              ];
+              JAVA_HOME = "${pkgs.jdk21}";
+              ANDROID_HOME = "${android.androidsdk}/libexec/android-sdk";
+              ANDROID_SDK_ROOT = "${android.androidsdk}/libexec/android-sdk";
+              CHOOSER_EMULATOR_SDK = "${emulatorSdk.androidsdk}/libexec/android-sdk";
+            };
+            ios = pkgs.mkShell {
+              packages = base ++ [
+                pkgs.cocoapods
+                pkgs.xcodegen
+              ];
+            };
           }
         );
     packages =

@@ -50,6 +50,9 @@
 		"test:types": "tsc --noEmit --strict --module node16 --moduleResolution node16 --lib ES2020,DOM tests/types/contracts.ts"
 	},
 	"devDependencies": {
+		"@capacitor/android": "8.5.2",
+		"@capacitor/cli": "8.5.2",
+		"@capacitor/core": "8.5.2",
 		"cordova": "^13.0.0",
 		"cordova-android14": "npm:cordova-android@>=14.0.0 <15",
 		"cordova-android15": "npm:cordova-android@>=15.0.0 <16",

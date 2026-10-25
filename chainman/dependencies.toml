@@ -1,4 +1,13 @@
 # Keep patched versions even after temporary maturity exceptions are retired.
+[constraints."npm:@capacitor/android"]
+range = "=8.5.2"
+reason = "Upgrade all Capacitor packages and their native graph together with emulator qualification."
+[constraints."npm:@capacitor/cli"]
+range = "=8.5.2"
+reason = "Keep fixture generation on the qualified Capacitor runtime generation."
+[constraints."npm:@capacitor/core"]
+range = "=8.5.2"
+reason = "Keep the JavaScript and Android bridge on identical releases."
 [constraints."npm:uuid"]
 range = ">=11.1.1"
 reason = "GHSA-w5hq-g745-h8pq; xcode uses the retained CommonJS uuid.v4 API."

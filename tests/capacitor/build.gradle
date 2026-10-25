@@ -1,0 +1,33 @@
+buildscript { configurations.classpath { resolutionStrategy.activateDependencyLocking() } }
+plugins {
+    id 'com.android.application' apply false
+    id 'com.android.library' apply false
+}
+abstract class PreferJar implements AttributeDisambiguationRule<String> {
+    void execute(MultipleCandidatesDetails<String> details) {
+        if (details.consumerValue == null && details.candidateValues.contains('jar')) details.closestMatch('jar')
+    }
+}
+allprojects {
+    buildscript.configurations.classpath.resolutionStrategy.activateDependencyLocking()
+    group = 'com.cyph.chooser.fixtures'
+    version = '1.0'
+    dependencies.attributesSchema.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE) {
+        disambiguationRules.add(PreferJar)
+    }
+    dependencyLocking {
+        lockAllConfigurations()
+        lockMode = LockMode.STRICT
+        lockFile = rootProject.file("locks/${project.name}.lockfile")
+    }
+    tasks.register('resolveVerificationDependencies') {
+        doLast {
+            configurations.findAll { it.canBeResolved }.each { configuration ->
+                // Freeze external inputs without executing project artifact tasks.
+                configuration.incoming.artifactView {
+                    componentFilter { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+                }.files.files
+            }
+        }
+    }
+}
