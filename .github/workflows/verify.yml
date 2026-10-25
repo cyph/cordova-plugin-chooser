@@ -190,7 +190,7 @@ jobs:
           if-no-files-found: error
   ios-simulator:
     if: ${{ !github.event.repository.private }}
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 90
     env:
       CHAINMAN_MODE: host-nix
