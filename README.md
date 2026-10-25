@@ -1,115 +1,94 @@
 # Cordova Plugin Chooser
 
-Choose files from Android's document picker, iOS Files, or a browser file input. Read file contents, inspect metadata, or use temporary references for larger files.
+Choose files on Android, iOS, and the Cordova browser platform. Read a small file into JavaScript, inspect metadata, or obtain a temporary reference for a larger file.
 
-**This checkout prepares `2.0.0-rc.1`; it is not published to npm.** npm `1.3.2` does not include the new multiple-selection and managed-reference methods. For that release, use its [versioned documentation](https://github.com/cyph/cordova-plugin-chooser/blob/12863c700b2ff29c51e6755ff92b11a61e568f9b/README.md). Upgrading applications should read the [migration guide](docs/MIGRATION.md).
+Chooser supports single and multiple selection, Promises and callbacks, and TypeScript. It exposes the global `chooser` after Cordova's `deviceready` event.
 
-## Install
+## Installation
 
-For the published release, run this in your Cordova application:
-
-```sh
-cordova plugin add cordova-plugin-chooser
-```
-
-To try the candidate APIs documented here, install the public candidate branch:
+This documentation covers **2.0.0-rc.1**. Install the release candidate explicitly from your Cordova application:
 
 ```sh
-cordova plugin add https://github.com/cyph/cordova-plugin-chooser.git#candidate/2.0.0
+cordova plugin add cordova-plugin-chooser@2.0.0-rc.1
 ```
 
-The candidate branch can move. For reproducible evaluation, replace `candidate/2.0.0` with the full commit SHA you reviewed, or install a local checkout of that revision. Installing a Git candidate does not require an npm prerelease to exist.
+An unversioned installation follows npm's `latest` tag, which may point to a stable 1.x release. If you are upgrading, start with the [migration guide](docs/MIGRATION.md). Historical changes are in the [changelog](CHANGELOG.md).
 
-The plugin exposes the global `chooser` after `deviceready`. TypeScript declarations are included. The package is a Cordova bridge, not a standalone Node.js picker. Applications do not need chainman to use it.
+| Platform | Installation requirement | Maintained families |
+| --- | --- | --- |
+| Android | `cordova-android >=14.0.0` | 14.x and 15.x |
+| iOS | `cordova-ios >=7.0.0` | 7.x and 8.x |
+| Browser | Cordova Browser and the required browser APIs | Cordova Browser 7.x |
+
+See [platform setup](docs/PLATFORMS.md) for OS requirements, Swift configuration, and browser features. The plugin requires no blanket Android storage permissions or additional Swift-support plugin. Installing this npm package alone does not initialize Cordova or provide a standalone web or Node.js picker.
 
 ## Choose a method
 
-| Need | One file | Multiple files | Result |
-| --- | --- | --- | --- |
-| Read contents into JavaScript | `getFile()` | `getFiles()` | Metadata, `Uint8Array` and base64 data URI |
-| Inspect names, types and sizes | `getFileMetadata()` | `getFilesMetadata()` | Metadata without loading contents in plugin code |
-| Handle large files through references | `getFileUri()` | `getFilesUri()` | Metadata and a managed temporary URI |
+| What your application needs | One file | Multiple files |
+| --- | --- | --- |
+| Complete contents in JavaScript | `getFile()` | `getFiles()` |
+| Name, type, URI, and reported size | `getFileMetadata()` | `getFilesMetadata()` |
+| A temporary reference with optional selection limits | `getFileUri()` | `getFilesUri()` |
 
-All picker methods return a Promise and also accept callbacks. Canceling resolves to `undefined`. Multiple-selection methods return an array even when one file is selected. Use `releaseFile(id)` when finished with a managed reference; browser results from every method have an ID to release.
+Cancellation resolves to `undefined`. Successful multiple-selection calls return an array, including when only one file is selected.
+
+Data methods load complete contents into memory. Prefer a URI method with explicit limits for large files or unknown sizes. Native URI methods make an app-private cache copy; browser methods return Blob URLs. Release managed references with `releaseFile(id)` after their consumers finish. **Every browser result has an ID to release**, including data and metadata results.
 
 ## Quick start
 
-Add a button and a place to show the selection:
+Add a selection button and status area, then load Cordova's generated script and your application script:
 
 ```html
-<button id="choose-file" disabled>Choose a file</button>
-<p id="selection"></p>
+<button id="choose-file" type="button" disabled>Choose a file</button>
+<p id="selection" role="status"></p>
+<script src="cordova.js"></script>
+<script src="app.js"></script>
 ```
 
-Load this from your app's JavaScript after including `cordova.js`:
+In `app.js`, display metadata without loading the file's complete contents:
 
 ```js
 document.addEventListener('deviceready', () => {
   const button = document.getElementById('choose-file');
-  const selection = document.getElementById('selection');
+  const output = document.getElementById('selection');
   button.disabled = false;
 
   button.addEventListener('click', async () => {
     button.disabled = true;
     let file;
     try {
-      // Invoke directly from the click handler for browser compatibility.
       file = await chooser.getFileMetadata('image/*,application/pdf');
-      selection.textContent = file
-        ? `${file.name} (${file.size === null ? 'unknown size' : file.size + ' bytes'})`
-        : 'No file selected';
+      output.textContent = file
+        ? `${file.name}: ${file.size === null ? 'unknown size' : file.size + ' bytes'}`
+        : 'Selection canceled.';
     } catch (error) {
-      selection.textContent = String(error);
+      output.textContent = 'Could not select a file. Please try again.';
     } finally {
-      try {
-        if (file?.id) await chooser.releaseFile(file.id);
-      } catch (error) {
-        console.error('Could not release the file reference', error);
-      } finally {
-        button.disabled = false;
+      if (file && file.id) {
+        try {
+          await chooser.releaseFile(file.id);
+        } catch (error) {
+          console.error('Could not release the file reference.');
+        }
       }
+      button.disabled = false;
     }
   });
 });
 ```
 
-MIME filters are picker hints. Validate content before relying on its type. A file name or reported size is provider metadata, not a guarantee.
-
-## Compatibility
-
-The maintained platform families and their platform-defined OS floors are:
-
-| Cordova platform | OS requirement |
-| --- | --- |
-| Android 14.x / 15.x | Android 7.0 / API 24 or later |
-| iOS 7.x | iOS 11 or later |
-| iOS 8.x | iOS 13 or later |
-| Browser | Current Chrome, Edge, Firefox or Safari with file-input `cancel`, FileReader, Blob URLs and Web Crypto |
-
-See Cordova's [Android requirements](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) and [iOS requirements](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) for application build prerequisites. The [verification guide](docs/VERIFICATION.md) describes automated coverage and checks that need a device or provider. A successful build does not establish every OS/provider combination.
-
-The current Apple build lane uses Xcode 26.3, iOS SDK 26.2 and an iOS 15.0 deployment target. That target follows the [selected Xcode's supported deployment range](https://developer.apple.com/xcode/system-requirements) and is higher than Cordova's historical OS floors above. Source fallbacks for older OS versions remain, but this lane does not qualify builds targeting iOS 11–14.
-
-The plugin adds no blanket storage/media permissions and needs no separate Swift-support plugin. On iOS it selects regular documents through Files; it does not provide a camera or Photos-library UI.
-
-For iOS, set these preferences in your application's `config.xml` to match the current build lane:
-
-```xml
-<platform name="ios">
-  <preference name="SwiftVersion" value="5.0" />
-  <preference name="deployment-target" value="15.0" />
-</platform>
-```
-
-The iOS package includes `ChooserPrivacy.bundle/PrivacyInfo.xcprivacy`. It declares file-timestamp API use with reason `C617.1` for inspection of the plugin's app-private cache. The plugin does not track users or collect data off-device. Its resource bundle leaves your app's privacy manifest intact; your app remains responsible for declarations covering its own data handling and other dependencies. See Apple's [required-reason API guidance](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api).
+Browser pickers must open directly from a user interaction, before awaiting unrelated work. Disable selection controls while a request is active. MIME filters guide the picker; validate selected contents in the component that consumes them.
 
 ## Documentation
 
-- [API reference](docs/API.md): methods, callbacks, TypeScript, results and options.
-- [Migration from 1.3.2](docs/MIGRATION.md): platform requirements and new resource ownership.
-- [File handling and troubleshooting](docs/FILE-HANDLING.md): large files, cleanup, cloud providers and lifecycle behavior.
-- [Contributing](CONTRIBUTING.md): setup and implementation conventions.
-- [Verification and dependency maintenance](docs/VERIFICATION.md): chainman commands and CI coverage.
-- [Changelog](CHANGELOG.md): release candidate changes.
+- [API reference](docs/API.md): methods, overloads, result types, options, and TypeScript.
+- [File handling](docs/FILE-HANDLING.md): large files, consumption, ownership, and cleanup.
+- [Platforms](docs/PLATFORMS.md): setup, providers, permissions, and lifecycle behavior.
+- [Migration](docs/MIGRATION.md): upgrading from 1.3.2.
+- [Troubleshooting](docs/TROUBLESHOOTING.md): symptoms and practical checks.
+- [Contributing](CONTRIBUTING.md) and [verification](docs/VERIFICATION.md): development and maintenance.
+- [Changelog](CHANGELOG.md): current and historical releases.
 
-Apache-2.0 licensed. See [LICENSE](LICENSE), [NOTICE](NOTICE) and Git history for contributor attribution.
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for licensing and contributor notices.

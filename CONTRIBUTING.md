@@ -1,38 +1,48 @@
 # Contributing
 
+Before changing behavior, read the [API reference](docs/API.md) and [platform guide](docs/PLATFORMS.md). For bug reports, use the [reproduction checklist](docs/TROUBLESHOOTING.md#report-a-reproducible-issue).
+
 ## Development setup
 
-Start with a checkout, Git, Nix with flakes enabled, and `just`. Chainman selects toolchains and installs frozen dependencies:
+Start with Git, Nix with flakes enabled, and `just`:
 
 ```sh
+git clone --branch master https://github.com/cyph/cordova-plugin-chooser.git
+cd cordova-plugin-chooser
 just setup
 just doctor
-just verify
 ```
 
-Do not install separate language tools or refresh locks with ad hoc package-manager commands. The immutable runtime comes from `chainman.lock`; a sibling checkout is unnecessary. See [verification and dependency maintenance](docs/VERIFICATION.md) for native prerequisites and update commands.
+Without a separate `just` installation, use the flake's package, for example:
 
-## Changes and tests
+```sh
+nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+```
 
-Keep changes focused on a concrete behavior. Explain the problem, resulting behavior and checks in the pull request. Add regression coverage at a public contract or resource boundary. Keep [API documentation](docs/API.md), TypeScript declarations and platform implementations synchronized.
+Chainman selects toolchains and installs frozen dependencies and Git hooks. Its runtime is pinned by [chainman.lock](https://github.com/cyph/cordova-plugin-chooser/blob/master/chainman.lock); no sibling checkout is needed. Use the declared update workflow rather than refreshing locks with ad hoc package-manager commands. Re-run setup after toolchain or dependency configuration changes.
 
-Preserve Promise/callback overloads, single/array result shapes and cancellation resolving to `undefined`. Prefer additive options. Error messages currently have no stable machine-readable schema.
+On Linux, `just verify` runs portable and browser checks. On macOS, use `just chainman run verify-portable` and the appropriate native task. See [verification and dependency maintenance](docs/VERIFICATION.md) for commands, host prerequisites, and update policy.
 
-Run the portable gate for every change and relevant native lanes for native or dependency changes. A fixture test, source inspection and packed-app build establish different things; report checks accurately. Keep run-specific results in CI or the pull request. Project docs should explain usage and maintenance, without execution diaries, investigation dumps, machine-specific instructions or vulnerability reports.
+## Changes and review
+
+Keep a contribution focused on a concrete behavior. Explain the trigger, resulting behavior, and validation in the pull request. Add regression coverage at the relevant public contract, provider, or resource-ownership boundary. Keep JavaScript, the [public declarations](index.d.ts), native implementations, and documentation consistent.
+
+Preserve these contracts unless a change is explicitly intended and documented:
+
+- Methods return Promises, including calls with optional callbacks; picker cancellation resolves to `undefined`.
+- Successful plural methods return nonempty arrays; failed batches do not expose partial success.
+- Metadata paths avoid complete-content reads in plugin code. Native copies use bounded I/O and count actual bytes for limits.
+- Release operates only on plugin-owned resources. Failed batches attempt cleanup, and reset suppresses stale completions.
+- Browser invocation preserves the user gesture, and managed URLs are released after failures and navigation.
 
 ## Implementation boundaries
 
-- `Chooser` integrates the bridge and native picker. `ChooserRequest` owns request state and cancellation.
-- `ChooserFiles` handles bounded I/O and cache ownership; `ChooserBudget` counts actual bytes. `ChooserTransaction` stages, promotes and recovers native batches.
-- Keep provider I/O off the cache housekeeping queue. Recovery must not sweep active writers. Successful references belong to the caller until release or eviction.
-- Keep metadata operations free of whole-file reads. Treat names, types and reported sizes as untrusted metadata. Generated filenames and opaque IDs constrain release to plugin-owned cache files.
-- Android picker ownership can outlive callback ownership after reset; exercise the actual Cordova result dispatcher. iOS started workers retain their process-wide lease until I/O returns, even after callback invalidation.
-- Preserve the browser's direct user gesture, exactly-once completion, and Blob cleanup after failures and navigation.
+`Chooser` integrates the bridge and picker; `ChooserRequest` owns request state and cancellation. File, budget, and transaction helpers handle I/O, limits, staging, promotion, and recovery. Keep slow provider work separate from cache housekeeping, and never recover a cache while another writer is active.
 
-## Attribution and integration
+Android picker ownership can outlive callback ownership after reset. On iOS, a started worker retains its lease until I/O returns. Exercise these boundaries with the real Cordova dispatcher or relevant host fixtures when changing lifecycle code. The public error interface is currently text, not a stable typed schema.
 
-Preserve authorship when importing changes, using `git cherry-pick -x` where appropriate. For adapted contributions, name the contributor, link the original immutable commit in the commit body, and explain the adaptation. Retain license and copyright notices.
+## Attribution and submission
 
-When accepting a pull request through a local merge, preserve original commits and merge ancestry through upstream integration. Squashing or rebasing them away prevents GitHub from recognizing the indirect merge.
+Preserve authorship for imported commits, using `git cherry-pick -x` when appropriate. For adapted work, name the contributor, link the immutable source commit, and explain the adaptation. Retain license and copyright notices. When integrating an accepted PR by local merge, preserve its original commits and ancestry so upstream GitHub can recognize the indirect merge.
 
-Release preparation includes required verification lanes, synchronizing package/plugin versions, reviewing the changelog and inspecting the packed artifact. Version changes, tags and publication should be deliberate release operations.
+Run the portable gate and relevant native lanes, stating any unexecuted checks. Update the changelog for public changes. Keep run-specific logs and results in CI or the pull request; documentation should explain usage and maintenance. See [release preparation](docs/VERIFICATION.md#release-preparation) for package qualification.

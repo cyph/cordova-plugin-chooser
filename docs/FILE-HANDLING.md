@@ -1,105 +1,82 @@
-# File handling and troubleshooting
+# File handling
 
-## Large files and storage
+Choose metadata for inspection, data for small files processed in JavaScript, and URI methods for bounded copies or native consumers. Each picker call opens a new selection; metadata does not reserve a file for later calls.
 
-Use `getFileUri()` or `getFilesUri()` when a file may be large. Native implementations stream into generated files in a dedicated app-private cache directory. Contents do not cross the JavaScript bridge. This bounds the copy buffer, not total disk usage or provider execution time. Set file-count, per-file and aggregate limits for your application's needs.
+## Memory and storage
 
-Data methods read complete contents, transfer base64 through the bridge, and expose both a data URI and decoded bytes. Base64 adds roughly one third to the encoded length, and multiple representations coexist in memory. Large files or batches can exhaust memory or cause OS termination. Inspecting metadata first cannot enforce a reliable limit because reported sizes can be unknown or inaccurate.
+`getFile()` and `getFiles()` load complete contents. Base64 increases the encoded length by roughly one third, and native buffers, bridge strings, decoded bytes, and data URIs may coexist. Multiple files compound that cost. The OS may terminate the application before it can report an allocation failure. There is no universal safe size for these methods, and inspecting the returned size is too late to prevent their allocation.
 
-Native copies consume additional app storage. Providers may also download/import files into their own temporary storage. A copy is a snapshot, not a link to future edits. Filesystem exhaustion causes an error and attempted cleanup; abrupt termination or deletion failure can leave cache entries until recovery or eviction.
+Use a URI method with explicit [copy limits](API.md#copy-options) when sizes are unknown. Native implementations stream into generated files in a dedicated app-private cache directory. Bounded buffering avoids loading the complete copy into memory, but its contents still consume disk space. Providers may need additional storage for downloads or imports. Limits constrain accepted file bytes and counts, not provider execution time or the provider's own resource use.
 
-Browser URI methods create Blob URLs referencing File objects, without a native filesystem copy or FileReader content read. Consumers that later convert a Blob to an ArrayBuffer or base64 still incur that allocation.
+Browser URI methods create Blob URLs referencing the selected `File` objects without reading their contents with `FileReader`. A consumer that subsequently converts a reference into an array buffer, text, or base64 can still allocate the complete file.
 
 ## Consume, then release
 
-Release after every consumer finishes. For multiple results, attempt every release even if one fails:
+Keep a managed reference until all readers, previews, uploads, and application copies have finished. Then release its ID. This helper bounds the selection and attempts every release even if another release fails:
 
 ```js
-async function withSelectedFiles(consumeFiles) {
+async function chooseAndConsume(consumeFiles) {
   const files = await chooser.getFilesUri({
-    maxFiles: 5,
-    maxFileSize: 20 * 1024 * 1024,
-    maxTotalSize: 50 * 1024 * 1024
+    accept: 'image/*,application/pdf',
+    maxFiles: 4,
+    maxFileSize: 10 * 1024 * 1024,
+    maxTotalSize: 25 * 1024 * 1024
   });
   if (files === undefined) return;
 
   try {
-    await consumeFiles(files);
+    return await consumeFiles(files);
   } finally {
-    const releases = await Promise.allSettled(
-      files.map(file => chooser.releaseFile(file.id))
-    );
-    releases.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        console.error('Could not release a file reference', result.reason);
-        // Keep files[index].id if your app will retry cleanup.
+    await Promise.all(files.map(async file => {
+      try {
+        await chooser.releaseFile(file.id);
+      } catch (error) {
+        console.error('Could not release a selected file.');
+        // Keep file.id here if your application will retry cleanup.
       }
-    });
+    }));
   }
 }
 ```
 
-`consumeFiles` is supplied by your application. Invoke `withSelectedFiles` directly from a click handler in browsers and handle its returned Promise's rejection. The consumer must resolve only when finished with the references.
+Your application supplies `consumeFiles`. Invoke the helper directly from a selection control after `deviceready`, and handle its rejection. The limits above allow four files, at most 10 MiB each and 25 MiB in total. All consumption must finish before the supplied Promise settles, on both success and failure paths. Cleanup errors are handled separately so they do not replace a processing error.
 
-On Android/iOS, pass the private `file:` URI to a native-capable reader or uploader accepting local file URIs. Ordinary WebView `fetch()` is not a portable way to read it. Sharing it with another app requires the platform's sharing mechanism. This plugin does not provide uploading or cross-app sharing.
+For parallel consumers, a plain `Promise.all()` can reject while another consumer is still running. Wait for every consumer to settle before releasing references. Use `Promise.allSettled()` where available, or attach success and failure handlers to each consumer before awaiting `Promise.all()` of those non-rejecting outcomes. Applications supporting older WebViews should check runtime availability or provide a polyfill. Sequential processing is another straightforward option.
 
-In a Cordova browser app, a managed `blob:` URL can be fetched while alive. After `deviceready`, invoke this from a click handler and handle its returned Promise's rejection:
+### Native consumers
 
-```js
-async function inspectBrowserFile() {
-  const file = await chooser.getFileUri();
-  if (file === undefined) return;
-  try {
-    const response = await fetch(file.uri);
-    if (!response.ok) throw new Error('Could not open the selected Blob');
-    const blob = await response.blob();
-    console.log(file.name, blob.size, blob.type);
-  } finally {
-    await chooser.releaseFile(file.id);
-  }
-}
-```
+Android and iOS URI methods return private `file:` URIs. Use a native reader, uploader, or storage integration that explicitly accepts local file URIs. Ordinary WebView `fetch(file.uri)` is not a portable native-file reader. Chooser supplies selection and temporary copies; uploading, sharing, and saving to permanent storage belong to the consuming application.
 
-This example is browser-only. For small files on every platform, `getFile()` provides a `Uint8Array`; browser results still need release by ID when no longer needed.
+For cross-app access, use a sharing integration. Android commonly requires a `FileProvider` and a temporary grant; see [file-sharing guidance](https://developer.android.com/training/secure-file-sharing/share-file).
+
+### Browser consumers
+
+A live Blob URL can be assigned to a supported preview element or read using `fetch(file.uri)`. Keep the reference until the preview or read finishes. `response.blob()`, `response.arrayBuffer()`, and `response.text()` consume the complete response; use supported response-body streaming for incremental processing and keep application buffering bounded.
+
+For metadata inspection, use the returned `name`, `mediaType`, and `size` directly. Fetching a Blob merely to obtain its size is unnecessary. Browser data and metadata results also own Blob URLs and require release when no longer needed, even if your application never uses their `uri` field.
 
 ## Reference lifetimes
 
-| Result | Ownership and lifetime |
-| --- | --- |
-| Native data/metadata URI | Provider or OS controlled; no persistent grant is promised. No managed ID to release. |
-| Native copy URI | Plugin-owned app-private cache file, usable until release, OS/app cache eviction, or app removal. |
-| Browser URI from any method | Plugin-owned Blob URL, usable until release or `pagehide`. |
+| Result | URI lifetime | Cleanup |
+| --- | --- | --- |
+| Native data or metadata | Controlled by the OS/provider; continued access is not promised | No managed ID is returned |
+| Native URI method | App-private cache, until release or cache removal | Call `releaseFile(id)` |
+| Any browser result | Current page, until release or `pagehide` | Call `releaseFile(id)` |
 
-Treat IDs as opaque. Store the returned name and MIME type separately when needed: generated native filenames have no useful extension. Never build a cache path from `name` or attempt release by parsing a URI.
+Native copies are snapshots of the bytes read. They do not track later edits to the original. Copies may survive app restarts, but cache is not durable storage and can be evicted. Copy important contents into application-managed persistent storage. Retain the display name and MIME type separately: generated native cache names have no meaningful extension.
 
-Native successful copies can survive an app restart, but cache is not durable storage. Copy important data into storage your application owns using an appropriate native API. Interrupted batches are recovered when a later copy starts; there is no promise of background completion or a result callback after process death.
+IDs are opaque. Pass them back unchanged; do not derive IDs from paths, construct cache paths, or edit the plugin's cache journals. A repeated release normally succeeds for an already-absent resource, but filesystem errors can still reject. Do not release references while a consumer still owns them.
 
-Browser navigation, including entry into the back/forward cache, revokes managed URLs. Do not persist browser IDs or URLs for reuse after returning to the page. Releasing a URL does not erase bytes already loaded into JavaScript memory.
+Browser navigation, including back/forward-cache entry, revokes URLs. Select again on return. Saving a URL does not extend its lifetime, and release does not erase bytes or strings already held by JavaScript.
 
-## Providers and filtering
+## Failed and interrupted work
 
-Android uses document providers and content URIs. Original single-file data/metadata methods prefer local files; multiple and URI methods allow remote providers, and URI methods accept `localOnly`. Providers may require authentication, connectivity, downloads or export conversion. The plugin cannot force cloud-native documents to be available offline or exported in a particular format.
+A failed batch rejects without partial results and attempts to remove resources allocated for it. References from earlier successful requests remain independent. Filesystem failures and uncooperative provider reads can delay cleanup.
 
-On iOS, data/metadata selection may cause the OS to import a file. Access to an original provider URI is not guaranteed after the operation ends. Directories and file packages are outside the regular-file contract; Photos and camera access need another integration.
+Native interrupted-transaction recovery runs when a copy first initializes the cache in a process. If termination occurs after committing a copy but before its ID reaches the application, the copy can remain until cache removal. Successful copies have no automatic expiration timer; release known IDs explicitly.
 
-MIME filters and names are hints. Providers and OS versions may offer different matching documents, and unknown types may broaden selection. Validate contents in the component that consumes them. Render names using text APIs such as `textContent`, and choose application-controlled names when writing elsewhere.
+Reset invalidates request callbacks, and browser `pagehide` also revokes outstanding URLs. Processing is not a durable background job. For Android's restored picker results and platform-specific behavior, see [Platforms](PLATFORMS.md#restored-android-results).
 
-## Lifecycle and troubleshooting
+## Names and content types
 
-| Symptom | What to check |
-| --- | --- |
-| `chooser` is undefined | Install the plugin, prepare/rebuild, and wait for `deviceready`. |
-| Browser picker does not open | Invoke directly from a user event handler before other asynchronous work. Use a browser supporting file-input cancellation. |
-| `BUSY` | Wait for the existing request. Android retains an outstanding picker's reservation after WebView reset until its activity result returns. |
-| iOS picker will not present | Finish dismissing another modal; check supported orientations on iPhone and iPad. |
-| `size` is `null` or wrong | Metadata is optional and may be stale. Use a URI method with streaming limits. |
-| Native URI cannot be fetched in JavaScript | Use a native-capable consumer, or `getFile()` for a suitably small file. |
-| Browser URL stops working | Release and navigation revoke it; select again. |
-| Cloud selection stalls or fails | Check provider connectivity/account state and try a local file. Cancellation is best effort. |
-| Copy fails near a limit or on a full device | Check actual byte limits and cache storage; failed batches return no usable references. |
-
-Reset requests provider cancellation and abandons callback ownership. An uncooperative read can delay cleanup until it returns. iOS permits at most two outstanding file workers across plugin instances, including abandoned reads; further requests can remain busy until one finishes.
-
-If Android kills the app while a picker is open, the original JavaScript Promise is gone. Cordova may deliver the restored native result through `resume`'s `pendingResult`. This is Cordova's raw result channel, not a replay through the JavaScript wrapper: account for the original operation and deserialize/normalize accordingly. See [Cordova's lifecycle guide](https://cordova.apache.org/docs/en/latest/guide/platforms/android/#lifecycle-guide) and the [manual fixture](../tests/fixture-app/www/app.js). Interrupted processing is not a durable background job.
-
-For a reproducible issue, include the plugin revision, Cordova platform version, OS/browser, method/options, provider type and a minimal nonprivate sample. Avoid personal files, tokens, file contents or sensitive URIs in public reports.
+Display names and MIME types are descriptive metadata. Render names with text APIs such as `textContent`, validate contents in the component that processes them, and choose application-controlled destination names when saving elsewhere. A filter or filename extension does not establish that a file matches a format or is safe for its intended consumer.
