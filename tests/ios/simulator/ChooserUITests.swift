@@ -10,14 +10,6 @@ final class ChooserUITests: XCTestCase {
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.lifetime = .keepAlways
             add(screenshot)
-            let app = XCUIApplication()
-            let events = app.staticTexts["PickerEvents"]
-            if events.exists {
-                let trace = XCTAttachment(string: events.label)
-                trace.name = "Picker delegate events"
-                trace.lifetime = .keepAlways
-                add(trace)
-            }
         }
         super.tearDown()
     }
@@ -60,8 +52,15 @@ final class ChooserUITests: XCTestCase {
         cancel(app)
         expect(app, "canceled:2")
     }
-    func testLocalFilesAndVideoWildcard() {
+    func testLocalFilesAndVideoWildcard() throws {
         let app = launch()
+        let identifiers = try XCTUnwrap(app.staticTexts["Outcome"].value as? String)
+        XCTAssertFalse(identifiers.isEmpty)
+        app.terminate()
+        app.launch()
+        expect(app, "ready")
+        XCTAssertEqual(app.staticTexts["Outcome"].value as? String, identifiers,
+            "Relaunching must preserve the documents' file identifiers")
         for (button, filename) in [("JSON", "fixture-json.json"), ("CSV", "fixture-csv.csv"),
                                     ("PDF", "fixture-pdf.pdf"), ("Image", "fixture-image.png"),
                                     ("Video", "fixture-mp4.mp4"), ("Video", "fixture-mov.mov")] {
@@ -77,20 +76,9 @@ final class ChooserUITests: XCTestCase {
             }, object: nil)
             XCTAssertEqual(XCTWaiter.wait(for: [interactive], timeout: 20), .completed,
                 "Local fixture is not interactive: \(filename)")
-            let outcome = app.staticTexts["Outcome"]
-            let settled = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "selected:\(filename)", "error:")
-            // The remote Files view can expose an item before accepting its
-            // first gesture. Retry only while this picker is still visible;
-            // never substitute a delegate call or an unrestricted request.
-            for _ in 0..<3 {
-                if settled.evaluate(with: outcome) { break }
-                guard item.exists else { break }
-                item.tap()
-                let open = app.buttons["Open"].firstMatch
-                if open.waitForExistence(timeout: 2) { open.tap() }
-                let completion = XCTNSPredicateExpectation(predicate: settled, object: outcome)
-                if XCTWaiter.wait(for: [completion], timeout: 5) == .completed { break }
-            }
+            item.tap()
+            let open = app.buttons["Open"].firstMatch
+            if open.waitForExistence(timeout: 2) { open.tap() }
             expect(app, "selected:\(filename)")
         }
     }

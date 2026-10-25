@@ -36,33 +36,8 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     }
 }
 
-@MainActor
-private final class PickerEvents: NSObject, UIDocumentPickerDelegate {
-    weak var receiver: UIDocumentPickerDelegate?
-    weak var label: UILabel?
-    init(receiver: UIDocumentPickerDelegate?, label: UILabel) {
-        self.receiver = receiver
-        self.label = label
-    }
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        label?.text = "picked:" + urls.map(\.lastPathComponent).joined(separator: ",")
-        receiver?.documentPicker?(controller, didPickDocumentsAt: urls)
-    }
-    @available(iOS, introduced: 8.0, deprecated: 11.0)
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL) {
-        label?.text = "picked:" + url.lastPathComponent
-        receiver?.documentPicker?(controller, didPickDocumentAt: url)
-    }
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        label?.text = "cancelled"
-        receiver?.documentPickerWasCancelled?(controller)
-    }
-}
-
 final class FixtureController: CDVViewController {
     let outcome = UILabel()
-    private let events = UILabel()
-    private var pickerEvents: PickerEvents?
     private var messages: FixtureMessages?
     static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -71,9 +46,21 @@ final class FixtureController: CDVViewController {
         startPage = "index.html"
         super.viewDidLoad()
         let assets = Bundle.main.url(forResource: "Assets", withExtension: nil)!
-        for source in try! FileManager.default.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil) {
-            try! Data(contentsOf: source).write(to: Self.documents.appendingPathComponent(source.lastPathComponent))
+        let manager = FileManager.default
+        let sources = try! manager.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil)
+        var identifiers: [String] = []
+        for source in sources.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let destination = Self.documents.appendingPathComponent(source.lastPathComponent)
+            // Preserve indexed documents across launches; replacing them
+            // invalidates the local provider's cached item identifiers.
+            if !manager.fileExists(atPath: destination.path) {
+                try! manager.copyItem(at: source, to: destination)
+            }
+            let attributes = try! manager.attributesOfItem(atPath: destination.path)
+            let identifier = attributes[.systemFileNumber] as! NSNumber
+            identifiers.append("\(source.lastPathComponent):\(identifier.uint64Value)")
         }
+        outcome.accessibilityValue = identifiers.joined(separator: ",")
         // Conforming the controller itself would opt into Cordova's bridge
         // override hook. Keep this test-only channel on a separate handler.
         let messages = FixtureMessages(owner: self)
@@ -96,9 +83,6 @@ final class FixtureController: CDVViewController {
         outcome.accessibilityIdentifier = "Outcome"
         outcome.text = "loading"
         controls.addArrangedSubview(outcome)
-        events.accessibilityIdentifier = "PickerEvents"
-        events.text = "idle"
-        controls.addArrangedSubview(events)
         controls.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controls)
         NSLayoutConstraint.activate([
@@ -109,10 +93,6 @@ final class FixtureController: CDVViewController {
     }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
         if let picker = controller as? UIDocumentPickerViewController {
-            events.text = "presented"
-            let observer = PickerEvents(receiver: picker.delegate, label: events)
-            pickerEvents = observer
-            picker.delegate = observer
             picker.directoryURL = Self.documents
             // Force the historical adaptive sheet route only in this fixture.
             if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {
