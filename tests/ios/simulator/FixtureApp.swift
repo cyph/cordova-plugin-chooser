@@ -98,6 +98,7 @@ final class FixtureController: CDVViewController, UIDocumentPickerDelegate {
             // Force the historical adaptive sheet route only in this fixture.
             if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {
                 picker.modalPresentationStyle = .pageSheet
+                picker.isModalInPresentation = false
                 if let sheet = picker.sheetPresentationController {
                     sheet.detents = [.medium(), .large()]
                     sheet.selectedDetentIdentifier = .medium

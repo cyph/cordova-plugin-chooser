@@ -65,6 +65,16 @@ test("qualification requires every successful job, complete reports and the same
 	};
 	reports.forEach(save);
 	assert.equal(aggregateReports(directory, sha, jobs).lanes.length, 8);
+	const simulator = reports.find((report) => report.lane === "ios-simulator");
+	save({
+		...simulator,
+		checks: simulator.checks.filter((check) => !check.endsWith(":compile")),
+	});
+	assert.throws(
+		() => aggregateReports(directory, sha, jobs),
+		/Missing ios-simulator check/,
+	);
+	save(simulator);
 	for (const result of ["failure", "skipped", "cancelled"]) {
 		assert.throws(
 			() => aggregateReports(directory, sha, { ...jobs, ios: { result } }),

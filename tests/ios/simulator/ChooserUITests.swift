@@ -37,25 +37,28 @@ final class ChooserUITests: XCTestCase {
             format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad")).firstMatch
         // Files uses a top segmented control on iPad and a tab bar on iPhone.
         let browse = app.buttons["Browse"].firstMatch
+        let folder = app.cells.matching(NSPredicate(
+            format: "label BEGINSWITH %@", "Chooser Fixtures")).firstMatch
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            location.exists || browse.exists
+            folder.exists || location.exists || browse.exists
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
-        if !location.exists {
+        if !folder.exists && !location.exists {
             XCTAssertTrue(browse.waitForExistence(timeout: 15))
             browse.tap()
             // Return through the actual navigation stack, including a folder
             // remembered by an earlier picker. Never inject a filesystem URL.
             for _ in 0..<4 {
+                if folder.exists || location.exists { break }
                 let back = app.buttons["BackButton"].firstMatch
-                if !back.waitForExistence(timeout: 2) { break }
+                if !back.waitForExistence(timeout: 2) || !back.isEnabled { break }
                 back.tap()
             }
         }
-        XCTAssertTrue(location.waitForExistence(timeout: 15))
-        location.tap()
-        let folder = app.cells.matching(NSPredicate(
-            format: "label BEGINSWITH %@", "Chooser Fixtures")).firstMatch
+        if !folder.exists {
+            XCTAssertTrue(location.waitForExistence(timeout: 15))
+            location.tap()
+        }
         XCTAssertTrue(folder.waitForExistence(timeout: 15))
         folder.tap()
     }
@@ -77,7 +80,8 @@ final class ChooserUITests: XCTestCase {
         let top = origin.withOffset(CGVector(dx: app.frame.width / 2,
             dy: cancelButton.frame.minY - app.frame.minY - 5))
         top.press(forDuration: 0.1, thenDragTo: origin.withOffset(
-            CGVector(dx: app.frame.width / 2, dy: app.frame.height - 12)))
+            CGVector(dx: app.frame.width / 2, dy: app.frame.height - 12)),
+            withVelocity: .fast, thenHoldForDuration: 0)
         expect(app, "canceled:1")
         app.buttons["Choose"].tap()
         cancel(app)

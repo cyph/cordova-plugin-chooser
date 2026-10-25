@@ -29,6 +29,8 @@ export const requiredChecks = {
 	"capacitor-android": ["package", "api33-bridge"],
 	"ios-simulator": [
 		"package",
+		"cordova-ios7:compile",
+		"cordova-ios8:compile",
 		...["cordova-ios7", "cordova-ios8"].flatMap((alias) =>
 			["iphone", "ipad"].flatMap((device) => [
 				`${alias}:${device}:native-control`,

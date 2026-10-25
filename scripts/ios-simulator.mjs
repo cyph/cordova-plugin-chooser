@@ -125,6 +125,7 @@ export function verifyIosSimulator({
 	);
 	report.toolchain.simulators = [];
 	const failures = [];
+	const fixtures = [];
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
 		const generated = app("ios", alias, packed, env);
 		const directory = join(output, "simulator-tests", alias);
@@ -143,6 +144,10 @@ export function verifyIosSimulator({
 		cpSync(
 			join(root, "tests/ios/simulator/index.html"),
 			join(directory, "www/index.html"),
+		);
+		writeFileSync(
+			join(directory, "www/unit.html"),
+			"<!doctype html><html><body></body></html>\n",
 		);
 		const name = alias === "cordova-ios7" ? "ChooserFixture" : "App";
 		cpSync(
@@ -324,6 +329,29 @@ export function verifyIosSimulator({
 			false,
 			env,
 		);
+		run(
+			"/usr/bin/xcodebuild",
+			[
+				"build-for-testing",
+				"-project",
+				"ChooserSimulator.xcodeproj",
+				"-scheme",
+				"Chooser",
+				"-destination",
+				"generic/platform=iOS Simulator",
+				"-derivedDataPath",
+				join(directory, "derived"),
+				`ARCHS=${process.arch === "arm64" ? "arm64" : "x86_64"}`,
+				...signing,
+			],
+			directory,
+			false,
+			env,
+		);
+		checked(`${alias}:compile`);
+		fixtures.push({ alias, directory });
+	}
+	for (const { alias, directory } of fixtures) {
 		for (const [kind, deviceName] of [
 			["iphone", "iPhone 17"],
 			["ipad", "iPad (A16)"],

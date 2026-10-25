@@ -9,13 +9,14 @@ import UniformTypeIdentifiers
 @MainActor
 private final class PickerHarness {
     let window: UIWindow
-    let presenter = UIViewController()
+    let presenter = CDVViewController()
     let plugin = Chooser()
     let sink = FixtureSink()
 
     init() throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         window = UIWindow(windowScene: scene)
+        presenter.startPage = "unit.html"
         window.rootViewController = presenter
         window.makeKeyAndVisible()
         presenter.loadViewIfNeeded()
