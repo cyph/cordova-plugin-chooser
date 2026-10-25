@@ -55,6 +55,19 @@ A live Blob URL can be assigned to a supported preview element or read using `fe
 
 For metadata inspection, use the returned `name`, `mediaType`, and `size` directly. Fetching a Blob merely to obtain its size is unnecessary. Browser data and metadata results also own Blob URLs and require release when no longer needed, even if your application never uses their `uri` field.
 
+### Content Security Policy
+
+The application's Content Security Policy (CSP) must allow `blob:` for the consumer using the URL. Cordova's default application policy can block reads and previews even after selection succeeds. Add `blob:` to `connect-src` for `fetch()` reads, `img-src` for image previews, or `media-src` for audio/video previews, according to the application's needs.
+
+For example, these directives allow same-origin connections and images plus Blob URL reads and image previews:
+
+```text
+connect-src 'self' blob:;
+img-src 'self' blob:;
+```
+
+Merge the required sources into the application's existing directives, retaining any trusted origins it already needs. This fragment is not a complete policy. Keep the rest of the policy intact and grant `blob:` only to the relevant consumers; `'self'` alone is not a portable allowance for Blob URLs. See the [CSP specification](https://www.w3.org/TR/CSP3/#directive-connect-src).
+
 ## Reference lifetimes
 
 | Result | URI lifetime | Cleanup |

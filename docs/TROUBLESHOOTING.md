@@ -46,6 +46,10 @@ Use a consumer supporting the returned URI scheme. A `content:` URI or Blob URL 
 
 Check whether the reference was released too early, the cache was removed, or browser navigation revoked its URL. Saving a URI does not preserve access. Use [file-handling guidance](FILE-HANDLING.md#reference-lifetimes) to choose persistent storage when needed.
 
+## Browser selection succeeds but a read or preview is blocked
+
+Check the browser console for Content Security Policy violations. The application must permit `blob:` in the directive for its consumer: `connect-src` for `fetch()`, `img-src` for images, or `media-src` for audio/video. Merge the required sources into the existing policy using the [CSP guidance](FILE-HANDLING.md#content-security-policy), then retry with a live reference. Selection and metadata inspection can succeed while the policy blocks subsequent consumption.
+
 ## Large files exhaust memory or copies exceed limits
 
 Data methods materialize complete contents. Prefer URI methods with limits and a consumer that avoids loading the entire file into JavaScript. A larger Android heap cannot make whole-file allocation safe for arbitrary sizes.

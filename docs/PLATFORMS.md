@@ -15,7 +15,7 @@ The plugin declares `cordova-android >=14.0.0` and `cordova-ios >=7.0.0` in [plu
 
 Follow Cordova's [Android](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) or [iOS](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) toolchain requirements. Minimum engine constraints do not establish qualification for future platform versions.
 
-The repository builds Android 14/15 and iOS 7/8 applications and exercises Cordova Browser 7. Its Apple fixtures use Swift 5 mode and an iOS 15.0 deployment target. Those fixtures do not establish qualification for older deployment targets, even though source fallbacks remain. Your Xcode version and other dependencies may impose a higher OS floor than Cordova itself. [Verification](VERIFICATION.md) distinguishes automated coverage from device/provider checks.
+The repository builds Android 14/15 and iOS 7/8 applications and exercises Cordova Browser 7. Its Cordova iOS application fixtures use Swift 5 mode and an iOS 15.0 deployment target. Those fixtures do not establish qualification for older deployment targets, even though source fallbacks remain. Your Xcode version and other dependencies may impose a higher OS floor than Cordova itself. [Verification](VERIFICATION.md) distinguishes automated coverage from device/provider checks.
 
 ## Android
 
@@ -89,5 +89,7 @@ Use the Cordova browser platform with Promises, typed arrays, `FileReader`, Blob
 Invoke the picker directly from a click or other user interaction after `deviceready`, before awaiting network requests or timers. The plugin opens the input synchronously. Without `cancel` event support, dismissing a dialog can leave the request pending; there is no timer-based cancellation fallback.
 
 All results contain a Blob URL and managed ID, including metadata and data results. URI methods reference selected `File` objects without a native filesystem copy. Browsers do not expose the original path, so `sourceUri` is absent. Limits use `File.size`, and `localOnly` has no effect.
+
+The application's [Content Security Policy](FILE-HANDLING.md#content-security-policy) must permit Blob URLs for any reads or previews that consume them.
 
 Release references after use. `pagehide` cancels the active operation and revokes outstanding URLs, including when navigating into the back/forward cache. See [reference lifetimes](FILE-HANDLING.md#reference-lifetimes) before persisting results.

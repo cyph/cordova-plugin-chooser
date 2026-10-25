@@ -11,17 +11,32 @@ const file = (name = "binary.bin", buffer = bytes) => ({
 	mimeType: "application/octet-stream",
 	buffer,
 });
+const image = {
+	name: "pixel.png",
+	mimeType: "image/png",
+	buffer: Buffer.from(
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=",
+		"base64",
+	),
+};
+const blobPolicies = {
+	blocked: { read: false, preview: false },
+	read: { read: true, preview: false },
+	preview: { read: false, preview: true },
+	allowed: { read: true, preview: true },
+};
 
 for (const engine of ["chromium", "firefox", "webkit"]) {
 	test(
-		`${engine}: packed Cordova bridge, real DOM reads and resource ownership`,
+		`${engine}: packed Cordova bridge, CSP and resource ownership`,
 		{ timeout: 90000 },
 		async (context) => {
 			const server = createServer(async (req, res) => {
 				try {
+					const request = new URL(req.url, "http://localhost");
 					const path = resolve(
 						root,
-						`.${decodeURIComponent(new URL(req.url, "http://localhost").pathname)}`,
+						`.${decodeURIComponent(request.pathname)}`,
 					);
 					if (!path.startsWith(root + sep)) {
 						res.writeHead(403).end();
@@ -32,6 +47,15 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 						{ ".html": "text/html", ".js": "text/javascript" }[extname(path)] ||
 							"application/octet-stream",
 					);
+					if (extname(path) === ".html") {
+						const policy =
+							blobPolicies[request.searchParams.get("csp")] ||
+							blobPolicies.allowed;
+						res.setHeader(
+							"Content-Security-Policy",
+							`default-src 'self'; connect-src 'self'${policy.read ? " blob:" : ""}; img-src 'self'${policy.preview ? " blob:" : ""}; object-src 'none'; base-uri 'self'`,
+						);
+					}
 					res.end(await readFile(path));
 				} catch {
 					res.writeHead(404).end();
@@ -223,6 +247,49 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 					}, selected.uri),
 					true,
 				);
+				for (const [name, policy] of Object.entries(blobPolicies)) {
+					await context.test(`Blob URL CSP: ${name}`, async () => {
+						await page.goto(`${url}?csp=${name}`);
+						await page.waitForFunction(
+							() => !document.getElementById("pick").disabled,
+						);
+						dialog = await start("getFileUri", "image/png");
+						await dialog.setFiles(image);
+						const selectedImage = (await result()).value;
+						assert.match(selectedImage.uri, /^blob:/);
+						try {
+							const consumed = await page.evaluate(async (uri) => {
+								let data = null;
+								try {
+									data = Array.from(
+										new Uint8Array(await (await fetch(uri)).arrayBuffer()),
+									);
+								} catch {
+									/* A restrictive connect-src rejects this read. */
+								}
+								const preview = await new Promise((resolve) => {
+									const element = new Image();
+									const finish = (loaded) => {
+										element.remove();
+										resolve(loaded);
+									};
+									element.onload = () => finish(true);
+									element.onerror = () => finish(false);
+									element.src = uri;
+									document.body.appendChild(element);
+								});
+								return { data, preview };
+							}, selectedImage.uri);
+							assert.deepEqual(
+								consumed.data,
+								policy.read ? [...image.buffer] : null,
+							);
+							assert.equal(consumed.preview, policy.preview);
+						} finally {
+							await release(selectedImage);
+						}
+					});
+				}
 				assert.deepEqual(errors, []);
 			} finally {
 				if (browser) await browser.close();
