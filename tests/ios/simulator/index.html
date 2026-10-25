@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
+<script src="cordova.js"></script><script>
+let cancellations = 0;
+const report = text => window.webkit.messageHandlers.fixture.postMessage(text);
+document.addEventListener('deviceready', () => report('ready'), false);
+window.pick = accept => chooser.getFileMetadata(accept).then(file => {
+  if (file === undefined) report('canceled:' + (++cancellations));
+  else report('selected:' + file.name);
+}, error => report('error:' + String(error)));
+</script></body></html>
