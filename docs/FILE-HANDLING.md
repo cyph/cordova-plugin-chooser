@@ -93,3 +93,31 @@ Reset invalidates request callbacks, and browser `pagehide` also revokes outstan
 ## Names and content types
 
 Display names and MIME types are descriptive metadata. Render names with text APIs such as `textContent`, validate contents in the component that processes them, and choose application-controlled destination names when saving elsewhere. A filter or filename extension does not establish that a file matches a format or is safe for its intended consumer.
+
+## CSV, JSON, and provider filters
+
+Start with the registered CSV type, [`text/csv`](https://www.iana.org/assignments/media-types/text/csv), or `application/json` for JSON. Providers may classify the same file differently. If a document is disabled, an explicit `'*/*'` request can help distinguish a type-registration problem from an unavailable document; validate the accepted contents in the application. A filename-based fallback after selection cannot enable a file that the picker disabled. Chooser neither silently broadens the requested filter nor enforces a file format after selection.
+
+For a small UTF-8 CSV, decode the bytes before passing text to your application's CSV parser:
+
+```js
+async function chooseSmallCsv(parseCsv) {
+  const file = await chooser.getFile('text/csv');
+  if (file === undefined) return;
+  try {
+    const text = new TextDecoder('utf-8', {fatal: true}).decode(file.data);
+    return await parseCsv(text);
+  } finally {
+    if (file.id) {
+      try {
+        await chooser.releaseFile(file.id);
+      } catch (error) {
+        console.error('Could not release the selected file.');
+        // Retain file.id if your application will retry cleanup.
+      }
+    }
+  }
+}
+```
+
+Call this helper directly from a user interaction after `deviceready` and handle its rejection. Choose the decoder to match the file's encoding. The application supplies a CSV parser that handles quoting, delimiters, and headers; `JSON.stringify(file.data)` serializes bytes, and `JSON.parse()` does not parse CSV. For large files, use a URI method with limits and an incremental reader/parser instead of decoding the whole file in JavaScript.

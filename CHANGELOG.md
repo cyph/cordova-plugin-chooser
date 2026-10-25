@@ -17,6 +17,8 @@ First release candidate for 2.0.0. Changes are relative to 1.3.2; see the [migra
 
 ### Changed and fixed
 
+- Reject invalid filters, callbacks, and unknown copy-option keys before opening a picker, preventing silently ignored wrapper options or misspelled limits.
+
 - Requires Cordova Android 14 or later, or Cordova iOS 7 or later, on the corresponding native platform. Maintained families are Android 14/15 and iOS 7/8; see [platform requirements](docs/PLATFORMS.md#requirements-and-coverage).
 - Removed the separate Swift-support dependency and corrected package entry points and source registration.
 - Preserved existing single-file calls and cancellation behavior while correcting binary decoding, canonical base64 padding, and application callback error handling.

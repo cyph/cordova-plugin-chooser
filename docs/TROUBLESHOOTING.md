@@ -34,6 +34,8 @@ The old Promise cannot receive the result. Handle Cordova's raw `resume.pendingR
 
 Try `'*/*'` to distinguish filter/type-registration differences from provider availability. Continue validating accepted contents in the consumer. Providers may require sign-in, connectivity, or a download.
 
+For CSV, start with `text/csv`; `text/comma-separated-values` is not a universal provider requirement. See [CSV, JSON, and provider filters](FILE-HANDLING.md#csv-json-and-provider-filters). The system picker exposes provider locations, not every filesystem path. iCloud entitlements are not a general fix for an empty picker.
+
 Android's legacy single-file methods prefer local providers; use a URI method with its default remote-provider allowance when appropriate. iOS uses the document picker, so items available only in Photos may not appear. Directories and document packages are outside the regular-file contract. See [Platforms](PLATFORMS.md) for the selection rules.
 
 ## iOS cannot present the picker
@@ -54,7 +56,11 @@ Check the browser console for Content Security Policy violations. The applicatio
 
 Data methods materialize complete contents. Prefer URI methods with limits and a consumer that avoids loading the entire file into JavaScript. A larger Android heap cannot make whole-file allocation safe for arbitrary sizes.
 
-Only URI methods accept limit options. Check spelling, units, and free storage; unknown properties are ignored and zero means unlimited. Native limits count actual bytes despite inaccurate metadata. See [copy options](API.md#copy-options).
+Only URI methods accept limit options. Check spelling, units, and free storage; unknown properties reject and zero means unlimited. Native limits count actual bytes despite inaccurate metadata. See [copy options](API.md#copy-options).
+
+## A wrapper reports missing data or the call rejects before selection
+
+The Awesome Cordova Plugins Chooser wrapper targets another fork with different arguments and result fields. Use the [direct typed API and migration guidance](MIGRATION.md#awesome-cordova-plugins-and-fork-specific-wrappers). An `any` cast does not translate calls or enable size limits. Data methods return bytes; metadata and URI methods deliberately omit them.
 
 ## Releasing a reference fails
 

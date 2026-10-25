@@ -131,11 +131,11 @@ interface CopyOptions {
 | `maxTotalSize` | `0` | Maximum bytes across the selection |
 | `localOnly` | `false` | Android only: ask the picker to exclude remote providers; ignored elsewhere |
 
-Limits must be nonnegative JavaScript safe integers. Zero or omission means unlimited; a value exactly at a limit succeeds. `accept` must be a string and `localOnly` a boolean when supplied. Invalid recognized options reject with a `TypeError` before the picker opens. Unknown option names are ignored, so use the exact names above; a misspelled limit is not enforced.
+Limits must be nonnegative JavaScript safe integers. Zero or omission means unlimited; a value exactly at a limit succeeds. `accept` must be a string and `localOnly` a boolean when supplied. Invalid arguments and unknown option names reject with a `TypeError` before the picker opens. Use the exact keys above, including `accept` rather than a wrapper's `mimeTypes`.
 
 Native byte limits count bytes while streaming, even when provider sizes are absent or incorrect. Browser limits use `File.size`. Count limits reject an oversized selection rather than truncate it. Single-file methods still return at most one file. A failed batch rejects as a whole and attempts to clean up its new resources; it never returns a partial array. Filesystem failures or unfinished provider work can delay cleanup.
 
-Data and metadata methods accept MIME strings only. Passing an options object to them does not apply limits: a non-string filter is treated as `'*/*'`. See [bounded-copy usage](FILE-HANDLING.md#consume-then-release) for a complete example.
+Data and metadata methods accept an omitted filter, a MIME string, or the callback-first form. Objects, `null`, and other non-string filters reject. Supplied callbacks must be functions. Invalid calls reject their Promise and invoke a supplied failure callback without opening a picker. See [bounded-copy usage](FILE-HANDLING.md#consume-then-release) for a complete example.
 
 ## Release a reference
 

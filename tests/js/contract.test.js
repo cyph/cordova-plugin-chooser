@@ -120,3 +120,28 @@ test('release returns void and supports both callbacks and Promises', async () =
 	assert.equal(await chooser.releaseFile('00000000-0000-4000-8000-000000000001', () => { callbackCount++; }), undefined);
 	assert.equal(callbackCount, 1);
 });
+
+test('incompatible wrapper arguments and misspelled options reject before native dispatch', async () => {
+	let calls = 0;
+	const chooser = loadChooser(() => { calls++; });
+	for (const method of ['getFile', 'getFileMetadata', 'getFiles', 'getFilesMetadata']) {
+		for (const filter of [{mimeTypes: 'text/csv', maxFileSize: 1}, {}, [], 1, true, null]) {
+			let failures = 0;
+			let reason;
+			const promise = chooser[method](filter, undefined, error => { failures++; reason = error; });
+			await assert.rejects(promise, error => error.name === 'TypeError' && error === reason);
+			assert.equal(failures, 1);
+		}
+	}
+	for (const method of ['getFileUri', 'getFilesUri']) {
+		for (const options of [{mimeTypes: 'text/csv'}, {maxFilesize: 1}, {accept: 'text/csv', extra: true}, new Date(), null]) {
+			await assert.rejects(chooser[method](options), error => error.name === 'TypeError');
+		}
+	}
+	for (const method of ['getFile', 'getFileMetadata', 'getFiles', 'getFilesMetadata', 'getFileUri', 'getFilesUri']) {
+		await assert.rejects(chooser[method]('*/*', {}), error => error.name === 'TypeError');
+		await assert.rejects(chooser[method](() => {}, 'invalid'), error => error.name === 'TypeError');
+	}
+	await assert.rejects(chooser.releaseFile('00000000-0000-4000-8000-000000000001', {}));
+	assert.equal(calls, 0);
+});

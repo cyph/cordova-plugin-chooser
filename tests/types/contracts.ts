@@ -32,5 +32,11 @@ async function contracts() {
 	chooser.getFileUri({maxTotalSize: true});
 	// @ts-expect-error A result object is not a release identifier.
 	chooser.releaseFile({uri: 'file:///source'});
+	// @ts-expect-error Fork-specific options are not this plugin's data API.
+	chooser.getFile({mimeTypes: 'text/csv', maxFileSize: 1});
+	// @ts-expect-error Copy options use accept, not a wrapper's mimeTypes field.
+	chooser.getFileUri({mimeTypes: 'text/csv'});
+	// @ts-expect-error Unknown or misspelled limits are rejected.
+	chooser.getFilesUri({maxFilesize: 1});
 }
 void contracts;

@@ -53,6 +53,13 @@ function normalizeAccept(accept) {
 	return (typeof accept === 'string' ? accept.toLowerCase().replace(/\s/g, '') : '') || '*/*';
 }
 
+function validateCallbacks(success, failure) {
+	if ((success !== undefined && typeof success !== 'function') ||
+		(failure !== undefined && typeof failure !== 'function')) {
+		throw new TypeError('Callbacks must be functions when supplied.');
+	}
+}
+
 /* A callback's exception must not change the returned Promise's file result. */
 function notify(callback, value) {
 	if (typeof callback === 'function') {
@@ -89,6 +96,10 @@ function callPicker(accept, success, failure, configuration) {
 		accept = undefined;
 	}
 	var result = new Promise(function (resolve, reject) {
+		validateCallbacks(success, failure);
+		if (!copy && accept !== undefined && typeof accept !== 'string') {
+			throw new TypeError('Expected a MIME filter string; copy options require a URI method.');
+		}
 		var options = {
 			accept: normalizeAccept(accept),
 			mode: mode,
@@ -99,10 +110,16 @@ function callPicker(accept, success, failure, configuration) {
 			localOnly: false
 		};
 		if (copy) {
-			if (accept !== undefined && accept !== null && typeof accept !== 'string') {
-				if (typeof accept !== 'object' || Array.isArray(accept)) {
+			if (accept !== undefined && typeof accept !== 'string') {
+				if (accept === null || typeof accept !== 'object' || Array.isArray(accept) ||
+					Object.prototype.toString.call(accept) !== '[object Object]') {
 					throw new TypeError('Expected a MIME filter or copy options.');
 				}
+				Object.keys(accept).forEach(function (name) {
+					if (['accept', 'maxFileSize', 'maxFiles', 'maxTotalSize', 'localOnly'].indexOf(name) < 0) {
+						throw new TypeError('Unknown copy option: ' + name + '.');
+					}
+				});
 				if (accept.accept !== undefined && typeof accept.accept !== 'string') {
 					throw new TypeError('accept must be a string.');
 				}
@@ -172,6 +189,7 @@ module.exports = {
 	},
 	releaseFile: function (id, success, failure) {
 		var result = new Promise(function (resolve, reject) {
+			validateCallbacks(success, failure);
 			if (typeof id !== 'string' || id.length !== 36 || !managedId.test(id)) {
 				throw new TypeError('Expected a managed file id returned by chooser.');
 			}

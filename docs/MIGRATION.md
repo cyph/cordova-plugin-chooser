@@ -48,6 +48,16 @@ Release IDs from every browser result and from native URI methods. Native data/m
 
 Use the [bundled TypeScript declarations](API.md#typescript) for the direct API. Ionic and other wrappers have independent method coverage and types; confirm they expose the methods and fields you use, or call the injected `chooser` global.
 
+### Awesome Cordova Plugins and fork-specific wrappers
+
+The Awesome Cordova Plugins Chooser wrapper [adopted the MaximBelov fork](https://github.com/danielsogl/awesome-cordova-plugins/commit/ba37646fc4b7cc86b497affa0ef932ad374b9080). Its `mimeTypes`/`maxFileSize` options and `path`/`displayName`/`mimeType` fields describe a different API. Installing this plugin does not change that wrapper's declarations or translate its calls.
+
+Use the injected `chooser` directly with the [bundled types](API.md#typescript). A small CSV can be selected with `chooser.getFile('text/csv')`, which returns `data` and `dataURI`. For a bounded copy, use `chooser.getFileUri({accept: 'text/csv', maxFileSize: 1024 * 1024})`, consume its URI, and release its ID as shown in [file handling](FILE-HANDLING.md#consume-then-release).
+
+Calls such as `chooser.getFile({mimeTypes: 'text/csv', maxFileSize: 1})` are invalid and now reject rather than silently discarding the filter and limit. Unknown copy-option keys also reject. Casting to `any` cannot translate these contracts. Omit the filter or pass `undefined` for unrestricted selection.
+
+### Android lifecycle
+
 If your Android application handles activity recreation, account for Cordova's raw restored-result channel. It does not replay the old Promise or apply the JavaScript wrapper's decoding. See [restored Android results](PLATFORMS.md#restored-android-results).
 
 The published 1.3.2 archive contains version `1.3.1` in `plugin.xml`. Check the installed npm version and source before inferring which code an old installation contains. The [changelog](../CHANGELOG.md) records the historical fixes.
