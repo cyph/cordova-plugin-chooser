@@ -60,11 +60,16 @@ final class ChooserUITests: XCTestCase {
             app.buttons[button].tap()
             // The real Files UI may display extensions or hide registered ones.
             let stem = (filename as NSString).deletingPathExtension
-            let item = app.descendants(matching: .any).matching(NSPredicate(
+            let item = app.cells.containing(NSPredicate(
                 format: "label == %@ OR label == %@", filename, stem)).firstMatch
             XCTAssertTrue(item.waitForExistence(timeout: 20), "Missing local fixture \(filename)")
             XCTAssertTrue(item.isEnabled)
-            item.tap()
+            // Files exposes the filename as a separate text interaction.
+            // Activate the document thumbnail within its enclosing cell.
+            let thumbnail = item.images.firstMatch
+            XCTAssertTrue(thumbnail.waitForExistence(timeout: 10))
+            XCTAssertTrue(thumbnail.isHittable)
+            thumbnail.tap()
             let open = app.buttons["Open"].firstMatch
             if open.waitForExistence(timeout: 2) { open.tap() }
             expect(app, "selected:\(filename)")

@@ -34,7 +34,12 @@ private final class PickerHarness {
     }
     func open(_ callback: String) -> UIDocumentPickerViewController {
         plugin.getFile(command: CDVInvokedUrlCommand(arguments: ["*/*", false], callbackId: callback, className: "Chooser", methodName: "getFile"))
-        waitUntil { self.presenter.presentedViewController is UIDocumentPickerViewController }
+        // UIKit exposes presentedViewController before the presentation
+        // completion installs the adaptive-dismissal delegate.
+        waitUntil {
+            guard let picker = self.presenter.presentedViewController as? UIDocumentPickerViewController else { return false }
+            return picker.presentationController?.delegate === self.plugin && !picker.isBeingPresented
+        }
         return presenter.presentedViewController as! UIDocumentPickerViewController
     }
     func messages(_ callback: String) -> [CDVPluginResult] {
