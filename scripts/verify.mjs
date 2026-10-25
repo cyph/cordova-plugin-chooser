@@ -20,6 +20,8 @@ import { aggregateReports, requiredChecks } from "./qualification.mjs";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
+import { verifyIosSimulator } from "./ios-simulator.mjs";
+import { verifyCapacitorAndroid, prepareCapacitor } from "./capacitor.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, ".verification");
@@ -592,6 +594,29 @@ const lanes = {
 	"android-dependencies": androidDependencies,
 	ios,
 	"ios-modern": () => ios(true),
+	"ios-simulator": () =>
+		verifyIosSimulator({
+			root,
+			output,
+			reportDirectory,
+			report,
+			run,
+			pack,
+			app,
+			checked,
+		}),
+	"capacitor-android": () =>
+		verifyCapacitorAndroid({
+			root,
+			output,
+			reportDirectory,
+			report,
+			run,
+			pack,
+			checked,
+			aapt2Path,
+		}),
+	"capacitor-prepare": () => prepareCapacitor({ root, output, run, pack }),
 	"android-failures"() {
 		androidEnvironment(true);
 		pack();

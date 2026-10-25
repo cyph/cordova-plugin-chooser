@@ -84,6 +84,16 @@ verify-ios-modern *args:
     exec {{quote(just_executable())}} chainman run verify-ios-modern "$@"
 
 [positional-arguments]
+verify-ios-simulator *args:
+    #!/bin/sh
+    exec {{quote(just_executable())}} chainman run verify-ios-simulator "$@"
+
+[positional-arguments]
+verify-capacitor-android *args:
+    #!/bin/sh
+    exec {{quote(just_executable())}} chainman run verify-capacitor-android "$@"
+
+[positional-arguments]
 verify-android-failures *args:
     #!/bin/sh
     exec {{quote(just_executable())}} chainman run verify-android-failures "$@"

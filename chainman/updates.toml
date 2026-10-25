@@ -21,6 +21,13 @@ outputs = [
   "tests/android15/settings-gradle.lockfile",
   "tests/android15/gradle/verification-metadata.xml",
   ".github/workflows/verify.yml",
+  "tests/capacitor/locks/app.lockfile",
+  "tests/capacitor/locks/runtime.lockfile",
+  "tests/capacitor/buildscript-gradle.lockfile",
+  "tests/capacitor/settings-gradle.lockfile",
+  "tests/capacitor/app/buildscript-gradle.lockfile",
+  "tests/capacitor/runtime/buildscript-gradle.lockfile",
+  "tests/capacitor/gradle/verification-metadata.xml",
 ]
 
 [updates.adapters.nix]
@@ -185,6 +192,36 @@ adapter = "actions"
 profile = "toolchain"
 files = [".github/workflows/*.yml"]
 
+[updates.adapters.capacitor]
+adapter = "gradle"
+profile = "capacitor"
+directory = "tests/capacitor"
+manifests = [
+  "tests/capacitor/build.gradle",
+  "tests/capacitor/app/build.gradle",
+  "tests/capacitor/runtime/build.gradle",
+  "tests/capacitor/settings.gradle",
+]
+mode = "compatible"
+explicit_only = true
+pins = []
+catalogs = []
+maven_repositories = ["central", "google", "plugins"]
+resolve = [
+  [
+    "gradle",
+    "--no-daemon",
+    "--refresh-dependencies",
+    "resolveVerificationDependencies",
+    "--write-locks",
+    "--write-verification-metadata",
+    "sha256",
+  ],
+]
+# Framework sources are owned by the frozen npm graph; these adapters stay inside
+# the checkout and never write Gradle state into node_modules.
+local_projects = { "com.cyph.chooser.fixtures:app" = "tests/capacitor/app", "com.cyph.chooser.fixtures:runtime" = "tests/capacitor/runtime" }
+
 [[updates.steps]]
 resolve = "nix"
 [[updates.steps]]
@@ -201,6 +238,8 @@ resolve = "android14"
 resolve = "android15"
 [[updates.steps]]
 resolve = "android-sdks"
+[[updates.steps]]
+resolve = "capacitor"
 [[updates.steps]]
 resolve = "github"
 

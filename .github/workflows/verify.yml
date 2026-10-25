@@ -159,9 +159,76 @@ jobs:
           retention-days: 14
           overwrite: true
           if-no-files-found: error
+  capacitor-android:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Qualify capacitor-android
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-capacitor-android
+      - name: Verify tracked files are unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Retain qualification reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-capacitor-android
+          path: .verification/reports/
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error
+  ios-simulator:
+    if: ${{ !github.event.repository.private }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Qualify ios-simulator
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-ios-simulator
+      - name: Verify tracked files are unchanged
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Retain qualification reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-ios-simulator
+          path: .verification/reports/
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error
   qualification:
     if: ${{ always() && !github.event.repository.private }}
-    needs: [portable, android, android-failures, ios, ios-modern]
+    needs:
+      [
+        portable,
+        android,
+        android-failures,
+        ios,
+        ios-modern,
+        ios-simulator,
+        capacitor-android,
+      ]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:

@@ -5,6 +5,31 @@ const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 const { version } = require("../../package.json");
 
+test("simulator evidence requires every case, with no failures or skips", async () => {
+	const { checkSimulatorResults, simulatorCases } =
+		await import("../../scripts/simulator-results.mjs");
+	const summary = {
+		totalTestCount: 6,
+		passedTests: 6,
+		failedTests: 0,
+		skippedTests: 0,
+	};
+	checkSimulatorResults(summary, simulatorCases);
+	for (const patch of [
+		{ totalTestCount: 0 },
+		{ passedTests: 5 },
+		{ failedTests: 1 },
+		{ skippedTests: 1 },
+	])
+		assert.throws(() =>
+			checkSimulatorResults({ ...summary, ...patch }, simulatorCases),
+		);
+	assert.throws(
+		() => checkSimulatorResults(summary, simulatorCases.slice(1)),
+		/Missing simulator case/,
+	);
+});
+
 test("qualification requires every successful job, complete reports and the same package", async (t) => {
 	const { aggregateReports, requiredChecks } =
 		await import("../../scripts/qualification.mjs");
@@ -12,9 +37,15 @@ test("qualification requires every successful job, complete reports and the same
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
 	const sha = "a".repeat(40);
 	const jobs = Object.fromEntries(
-		["portable", "android", "android-failures", "ios", "ios-modern"].map(
-			(name) => [name, { result: "success" }],
-		),
+		[
+			"portable",
+			"android",
+			"android-failures",
+			"ios",
+			"ios-modern",
+			"ios-simulator",
+			"capacitor-android",
+		].map((name) => [name, { result: "success" }]),
 	);
 	const reports = Object.entries(requiredChecks).map(([lane, checks]) => ({
 		schema: 1,
@@ -33,7 +64,7 @@ test("qualification requires every successful job, complete reports and the same
 		);
 	};
 	reports.forEach(save);
-	assert.equal(aggregateReports(directory, sha, jobs).lanes.length, 6);
+	assert.equal(aggregateReports(directory, sha, jobs).lanes.length, 8);
 	for (const result of ["failure", "skipped", "cancelled"]) {
 		assert.throws(
 			() => aggregateReports(directory, sha, { ...jobs, ios: { result } }),

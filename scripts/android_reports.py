@@ -22,6 +22,16 @@ def check_lint(directory):
         assert not issues, f"Untriaged Android lint findings: {path}"
 
 
+def check_instrumentation(directory):
+    reports = list(directory.rglob("TEST-*.xml"))
+    assert reports, "Missing instrumentation JUnit reports"
+    suites = [ET.parse(path).getroot() for path in reports]
+    assert all(int(suite.get(key, 0)) == 0 for suite in suites for key in ["failures", "errors", "skipped"]), "Failed or skipped instrumentation"
+    executed = {case.get("name") for suite in suites for case in suite.iter("testcase") if "ChooserBridgeTest" in case.get("classname", "") and case.find("skipped") is None}
+    required = {"realBridgeCopiesLargeFilesAndEnforcesLimits", "cancellationSettlesOnceAndCanImmediatelyReopen"}
+    assert required <= executed, f"Missing bridge cases: {required - executed}"
+
+
 def config_paths(resources):
     """Follow xml/config's resource table entries, including optimized ZIP paths."""
     selected = False
@@ -53,7 +63,7 @@ def check_apk(directory, resources):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=["tests", "lint", "apk"])
+    parser.add_argument("operation", choices=["tests", "lint", "apk", "instrumentation"])
     parser.add_argument("directory", type=Path)
     parser.add_argument("--resources", type=Path, help="AAPT2 dump resources output for the release APK")
     args = parser.parse_args()
@@ -62,5 +72,5 @@ if __name__ == "__main__":
             parser.error("apk requires --resources")
         check_apk(args.directory, args.resources.read_text())
     else:
-        {"tests": check_tests, "lint": check_lint}[args.operation](args.directory)
+        {"tests": check_tests, "lint": check_lint, "instrumentation": check_instrumentation}[args.operation](args.directory)
     print(f"Android {args.operation}: OK")

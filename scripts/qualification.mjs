@@ -26,6 +26,13 @@ export const requiredChecks = {
 		),
 	],
 	"android-failures": ["package", "dependency-failures"],
+	"capacitor-android": ["package", "api33-bridge"],
+	"ios-simulator": [
+		"package",
+		...["cordova-ios7", "cordova-ios8"].flatMap((alias) =>
+			["iphone", "ipad"].map((device) => `${alias}:${device}`),
+		),
+	],
 	ios: [
 		"package",
 		"foundation",
@@ -71,7 +78,15 @@ export function validateReport(report, sha) {
 
 export function aggregateReports(directory, sha, results) {
 	assert.match(sha, /^[a-f0-9]{40}$/);
-	const jobs = ["portable", "android", "android-failures", "ios", "ios-modern"];
+	const jobs = [
+		"portable",
+		"android",
+		"android-failures",
+		"ios",
+		"ios-modern",
+		"ios-simulator",
+		"capacitor-android",
+	];
 	for (const job of jobs)
 		assert.equal(
 			results[job]?.result,

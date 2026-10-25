@@ -35,6 +35,19 @@ allowed_platforms = ["Darwin"]
 inputs = ["chainman/apple.json", "chainman/tools.json"]
 entry_setup = ["javascript"]
 
+[profiles.capacitor]
+flake = ".#capacitor"
+inputs = ["chainman/tools.json"]
+allowed_modes = ["host-nix"]
+entry_setup = ["javascript"]
+
+[profiles.android-emulator]
+flake = ".#android-emulator"
+inputs = ["chainman/tools.json"]
+allowed_modes = ["host-nix"]
+allowed_platforms = ["Linux"]
+entry_setup = ["javascript"]
+
 [profiles.ios-modern]
 flake = ".#ios"
 allowed_modes = ["host-nix"]
@@ -90,6 +103,27 @@ shutdown_seconds = 10
 profile = "ios-modern"
 setup = ["javascript"]
 commands = [["node", "scripts/verify.mjs", "ios-modern"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.verify-ios-simulator]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "ios-simulator"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.verify-capacitor-android]
+profile = "android-emulator"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "capacitor-android"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.prepare-capacitor]
+profile = "capacitor"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "capacitor-prepare"]]
 cleanup_children = true
 shutdown_seconds = 10
 
