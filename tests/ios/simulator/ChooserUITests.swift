@@ -31,6 +31,28 @@ final class ChooserUITests: XCTestCase {
         XCTAssertTrue(button.waitForExistence(timeout: 15))
         button.tap()
     }
+    private func browseFixtures(_ app: XCUIApplication) {
+        let location = app.cells.containing(NSPredicate(
+            format: "label == %@ OR label == %@", "On My iPhone", "On My iPad")).firstMatch
+        if !location.exists {
+            let browse = app.tabBars.buttons["Browse"].firstMatch
+            XCTAssertTrue(browse.waitForExistence(timeout: 15))
+            browse.tap()
+            // Return through the actual navigation stack, including a folder
+            // remembered by an earlier picker. Never inject a filesystem URL.
+            for _ in 0..<4 {
+                let back = app.buttons["BackButton"].firstMatch
+                if !back.waitForExistence(timeout: 2) { break }
+                back.tap()
+            }
+        }
+        XCTAssertTrue(location.waitForExistence(timeout: 15))
+        location.tap()
+        let folder = app.cells.containing(NSPredicate(
+            format: "label == %@", "Chooser Fixtures")).firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 15))
+        folder.tap()
+    }
     func testCancelAndImmediateReopen() {
         let app = launch()
         for count in 1...3 {
@@ -61,6 +83,7 @@ final class ChooserUITests: XCTestCase {
                                     ("PDF", "fixture-pdf.pdf"), ("Image", "fixture-image.png"),
                                     ("Video", "fixture-mp4.mp4"), ("Video", "fixture-mov.mov")] {
             app.buttons[button].tap()
+            browseFixtures(app)
             // The real Files UI may display extensions or hide registered ones.
             let stem = (filename as NSString).deletingPathExtension
             let item = app.cells.containing(NSPredicate(

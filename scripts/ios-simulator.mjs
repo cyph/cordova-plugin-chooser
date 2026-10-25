@@ -117,11 +117,6 @@ export function verifyIosSimulator({
 			recursive: true,
 		});
 		cpSync(assets, join(directory, "fixture/Assets"), { recursive: true });
-		const fixtureDirectory = join(directory, "fixture/FixtureDirectory.swift");
-		writeFileSync(
-			fixtureDirectory,
-			'import Foundation\nenum FixtureDirectory { static var url: URL { fatalError("Fixture directory was not configured.") } }\n',
-		);
 		const bridgingHeader = join(directory, "fixture/Host-Bridging-Header.h");
 		writeFileSync(bridgingHeader, "#import <Cordova/Cordova.h>\n");
 		if (alias === "cordova-ios7") prepareBridgingHeader(bridgingHeader);
@@ -230,7 +225,6 @@ export function verifyIosSimulator({
 					sources: [
 						join(packed, "src/ios"),
 						"fixture/FixtureApp.swift",
-						"fixture/FixtureDirectory.swift",
 						{ path: "www", type: "folder", buildPhase: "resources" },
 						{ path: "config.xml", buildPhase: "resources" },
 					],
@@ -249,7 +243,6 @@ export function verifyIosSimulator({
 						properties: {
 							CFBundleDisplayName: "Chooser fixture",
 							UILaunchScreen: {},
-							UIFileSharingEnabled: true,
 							UIApplicationSceneManifest: {
 								UIApplicationSupportsMultipleScenes: false,
 							},
@@ -385,46 +378,45 @@ export function verifyIosSimulator({
 						join(reportDirectory, `${alias}-${kind}-sources.json`),
 						JSON.stringify({ before }, null, 2),
 					);
-					writeFileSync(
-						fixtureDirectory,
-						`import Foundation\nenum FixtureDirectory { static let url = URL(fileURLWithPath: ${JSON.stringify(sources)}, isDirectory: true) }\n`,
-					);
-					run(
-						"/usr/bin/xcodebuild",
-						[
-							"test",
-							"-project",
-							"ChooserSimulator.xcodeproj",
-							"-scheme",
-							"Chooser",
-							"-destination",
-							`platform=iOS Simulator,id=${udid}`,
-							"-destination-timeout",
-							"120",
-							"-parallel-testing-enabled",
-							"NO",
-							"-resultBundlePath",
-							result,
-							"-derivedDataPath",
-							join(directory, "derived"),
-							...signing,
-							"AppleLanguages=(en)",
-							"AppleLocale=en_US",
-						],
-						directory,
-						false,
-						env,
-					);
-					const after = sourceFingerprint(sources);
-					writeFileSync(
-						join(reportDirectory, `${alias}-${kind}-sources.json`),
-						JSON.stringify({ before, after }, null, 2),
-					);
-					assert.deepEqual(
-						after,
-						before,
-						"Picker selection changed the fixture provider's originals",
-					);
+					try {
+						run(
+							"/usr/bin/xcodebuild",
+							[
+								"test",
+								"-project",
+								"ChooserSimulator.xcodeproj",
+								"-scheme",
+								"Chooser",
+								"-destination",
+								`platform=iOS Simulator,id=${udid}`,
+								"-destination-timeout",
+								"120",
+								"-parallel-testing-enabled",
+								"NO",
+								"-resultBundlePath",
+								result,
+								"-derivedDataPath",
+								join(directory, "derived"),
+								...signing,
+								"AppleLanguages=(en)",
+								"AppleLocale=en_US",
+							],
+							directory,
+							false,
+							env,
+						);
+					} finally {
+						const after = sourceFingerprint(sources);
+						writeFileSync(
+							join(reportDirectory, `${alias}-${kind}-sources.json`),
+							JSON.stringify({ before, after }, null, 2),
+						);
+						assert.deepEqual(
+							after,
+							before,
+							"Picker selection changed the fixture provider's originals",
+						);
+					}
 				} catch (error) {
 					try {
 						const providerLog = simctl([

@@ -74,7 +74,6 @@ final class FixtureController: CDVViewController {
     }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
         if let picker = controller as? UIDocumentPickerViewController {
-            picker.directoryURL = FixtureDirectory.url
             // Force the historical adaptive sheet route only in this fixture.
             if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {
                 picker.modalPresentationStyle = .pageSheet
