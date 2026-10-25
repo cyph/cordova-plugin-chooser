@@ -1,15 +1,38 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
 	cpSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { checkSimulatorResults } from "./simulator-results.mjs";
+
+const sourceNames = [
+	"fixture-csv.csv",
+	"fixture-image.png",
+	"fixture-json.json",
+	"fixture-mov.mov",
+	"fixture-mp4.mp4",
+	"fixture-pdf.pdf",
+];
+function sourceFingerprint(directory) {
+	return sourceNames.map((name) => {
+		const path = join(directory, name);
+		const attributes = statSync(path, { bigint: true });
+		return {
+			name,
+			inode: String(attributes.ino),
+			size: String(attributes.size),
+			sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
+		};
+	});
+}
 
 export function verifyIosSimulator({
 	root,
@@ -30,6 +53,12 @@ export function verifyIosSimulator({
 		readFileSync(join(root, "chainman/apple.json"), "utf8"),
 	);
 	const env = appleEnvironment(apple);
+	const signing = [
+		"CODE_SIGNING_ALLOWED=YES",
+		"CODE_SIGN_IDENTITY=-",
+		"CODE_SIGN_STYLE=Manual",
+		"DEVELOPMENT_TEAM=",
+	];
 	assert.equal(
 		run("/usr/bin/xcodebuild", ["-version"], root, true, env),
 		`Xcode ${apple.xcode}\nBuild version ${apple.build}`,
@@ -88,6 +117,11 @@ export function verifyIosSimulator({
 			recursive: true,
 		});
 		cpSync(assets, join(directory, "fixture/Assets"), { recursive: true });
+		const fixtureDirectory = join(directory, "fixture/FixtureDirectory.swift");
+		writeFileSync(
+			fixtureDirectory,
+			'import Foundation\nenum FixtureDirectory { static var url: URL { fatalError("Fixture directory was not configured.") } }\n',
+		);
 		const bridgingHeader = join(directory, "fixture/Host-Bridging-Header.h");
 		writeFileSync(bridgingHeader, "#import <Cordova/Cordova.h>\n");
 		if (alias === "cordova-ios7") prepareBridgingHeader(bridgingHeader);
@@ -150,13 +184,53 @@ export function verifyIosSimulator({
 				},
 			},
 			targets: {
+				ChooserVault: {
+					...common,
+					type: "application",
+					sources: [
+						"fixture/FixtureVault.swift",
+						{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
+					],
+					settings: {
+						base: {
+							PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.fixtures",
+							SWIFT_STRICT_CONCURRENCY: "complete",
+							SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
+						},
+					},
+					info: {
+						path: "Vault-Info.plist",
+						properties: {
+							CFBundleDisplayName: "Chooser Fixtures",
+							UILaunchScreen: {},
+							UIFileSharingEnabled: true,
+							LSSupportsOpeningDocumentsInPlace: true,
+							UIApplicationSceneManifest: {
+								UIApplicationSupportsMultipleScenes: false,
+							},
+							CFBundleDocumentTypes: [
+								{
+									CFBundleTypeName: "Fixture documents",
+									CFBundleTypeRole: "Editor",
+									LSHandlerRank: "Alternate",
+									LSItemContentTypes: ["public.data"],
+								},
+							],
+							UISupportedInterfaceOrientations: [
+								"UIInterfaceOrientationPortrait",
+								"UIInterfaceOrientationLandscapeLeft",
+								"UIInterfaceOrientationLandscapeRight",
+							],
+						},
+					},
+				},
 				ChooserHost: {
 					...common,
 					type: "application",
 					sources: [
 						join(packed, "src/ios"),
 						"fixture/FixtureApp.swift",
-						{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
+						"fixture/FixtureDirectory.swift",
 						{ path: "www", type: "folder", buildPhase: "resources" },
 						{ path: "config.xml", buildPhase: "resources" },
 					],
@@ -217,6 +291,7 @@ export function verifyIosSimulator({
 				},
 			},
 			schemes: {
+				ChooserVault: { build: { targets: { ChooserVault: "all" } } },
 				Chooser: {
 					build: { targets: { ChooserHost: "all" } },
 					test: {
@@ -256,6 +331,64 @@ export function verifyIosSimulator({
 				simctl(["boot", udid]);
 				simctl(["bootstatus", udid, "-b"]);
 				try {
+					const derived = join(directory, "derived");
+					run(
+						"/usr/bin/xcodebuild",
+						[
+							"build",
+							"-project",
+							"ChooserSimulator.xcodeproj",
+							"-scheme",
+							"ChooserVault",
+							"-configuration",
+							"Debug",
+							"-destination",
+							`platform=iOS Simulator,id=${udid}`,
+							"-derivedDataPath",
+							derived,
+							...signing,
+						],
+						directory,
+						false,
+						env,
+					);
+					simctl([
+						"install",
+						udid,
+						join(
+							derived,
+							"Build/Products/Debug-iphonesimulator/ChooserVault.app",
+						),
+					]);
+					simctl(["launch", udid, "com.cyph.chooser.fixtures"]);
+					const container = simctl([
+						"get_app_container",
+						udid,
+						"com.cyph.chooser.fixtures",
+						"data",
+					]);
+					run(
+						"python3",
+						[
+							"-c",
+							"import pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+30\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.read_text()=='ready', 'Fixture source did not become ready'",
+							join(container, "Library/Caches/chooser-fixture-ready"),
+						],
+						root,
+						false,
+						env,
+					);
+					simctl(["terminate", udid, "com.cyph.chooser.fixtures"]);
+					const sources = join(container, "Documents");
+					const before = sourceFingerprint(sources);
+					writeFileSync(
+						join(reportDirectory, `${alias}-${kind}-sources.json`),
+						JSON.stringify({ before }, null, 2),
+					);
+					writeFileSync(
+						fixtureDirectory,
+						`import Foundation\nenum FixtureDirectory { static let url = URL(fileURLWithPath: ${JSON.stringify(sources)}, isDirectory: true) }\n`,
+					);
 					run(
 						"/usr/bin/xcodebuild",
 						[
@@ -274,16 +407,23 @@ export function verifyIosSimulator({
 							result,
 							"-derivedDataPath",
 							join(directory, "derived"),
-							"CODE_SIGNING_ALLOWED=YES",
-							"CODE_SIGN_IDENTITY=-",
-							"CODE_SIGN_STYLE=Manual",
-							"DEVELOPMENT_TEAM=",
+							...signing,
 							"AppleLanguages=(en)",
 							"AppleLocale=en_US",
 						],
 						directory,
 						false,
 						env,
+					);
+					const after = sourceFingerprint(sources);
+					writeFileSync(
+						join(reportDirectory, `${alias}-${kind}-sources.json`),
+						JSON.stringify({ before, after }, null, 2),
+					);
+					assert.deepEqual(
+						after,
+						before,
+						"Picker selection changed the fixture provider's originals",
 					);
 				} catch (error) {
 					try {
