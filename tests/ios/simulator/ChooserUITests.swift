@@ -57,7 +57,11 @@ final class ChooserUITests: XCTestCase {
         app.buttons["Seed"].tap()
         let save = app.buttons.matching(NSPredicate(format: "label IN %@", ["Save", "Copy", "Export", "Move"])).firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 20))
-        XCTAssertTrue(save.isEnabled)
+        let writable = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            save.exists && save.isEnabled && save.isHittable
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [writable], timeout: 30), .completed,
+            "The local Files destination must accept the exported fixtures")
         save.tap()
         expect(app, "seeded")
         let identifiers = try XCTUnwrap(app.staticTexts["Outcome"].value as? String)

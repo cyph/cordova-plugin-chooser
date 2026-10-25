@@ -118,7 +118,10 @@ export function verifyIosSimulator({
 			settings: {
 				base: {
 					SWIFT_VERSION: "5.0",
-					CODE_SIGNING_ALLOWED: "NO",
+					CODE_SIGNING_ALLOWED: "YES",
+					CODE_SIGN_IDENTITY: "-",
+					CODE_SIGN_STYLE: "Manual",
+					DEVELOPMENT_TEAM: "",
 					TARGETED_DEVICE_FAMILY: "1,2",
 					// Cordova 7's old umbrella import needs its scoped pragma;
 					// standalone explicit PCM generation bypasses that header.
@@ -271,7 +274,10 @@ export function verifyIosSimulator({
 							result,
 							"-derivedDataPath",
 							join(directory, "derived"),
-							"CODE_SIGNING_ALLOWED=NO",
+							"CODE_SIGNING_ALLOWED=YES",
+							"CODE_SIGN_IDENTITY=-",
+							"CODE_SIGN_STYLE=Manual",
+							"DEVELOPMENT_TEAM=",
 							"AppleLanguages=(en)",
 							"AppleLocale=en_US",
 						],
