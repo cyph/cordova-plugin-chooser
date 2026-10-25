@@ -17,6 +17,10 @@ import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.security.MessageDigest;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +54,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = {28, 35}, manifest = Config.NONE)
+@Config(sdk = {24, 28, 30, 33, 35}, manifest = Config.NONE)
 public class ChooserTest {
 	private Chooser plugin;
 	private AppCompatActivity activity;
@@ -58,6 +62,7 @@ public class ChooserTest {
 	private ExecutorService worker;
 	private FixtureProvider provider;
 	private int code;
+	private Intent launched;
 	private static final Uri URI = Uri.parse("content://chooser.fixture/file");
 
 	static class Recorded extends CallbackContext {
@@ -74,6 +79,10 @@ public class ChooserTest {
 		int opens;
 		boolean nullCursor;
 		boolean failOpen;
+		boolean pipe;
+		String displayName = "../source.bin";
+		String mediaType;
+		Long reportedSize;
 		long offset;
 		long length = AssetFileDescriptor.UNKNOWN_LENGTH;
 		volatile CancellationSignal querySignal;
@@ -81,11 +90,11 @@ public class ChooserTest {
 		CountDownLatch queryStarted;
 		CountDownLatch resumeQuery;
 		@Override public boolean onCreate() { return true; }
-		@Override public String getType(Uri uri) { return null; }
+		@Override public String getType(Uri uri) { return mediaType; }
 		@Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
 			if (nullCursor) return null;
 			MatrixCursor cursor = new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE});
-			cursor.addRow(new Object[]{"../source.bin", null});
+			cursor.addRow(new Object[]{displayName, reportedSize});
 			return cursor;
 		}
 		@Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort, CancellationSignal signal) {
@@ -107,6 +116,22 @@ public class ChooserTest {
 		@Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
 			opens++;
 			if (failOpen) throw new FileNotFoundException("offline");
+			if (pipe) {
+				try {
+					ParcelFileDescriptor[] ends = ParcelFileDescriptor.createPipe();
+					Thread writer = new Thread(() -> {
+						try (FileInputStream input = new FileInputStream(source);
+							 FileOutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(ends[1])) {
+							byte[] buffer = new byte[65536];
+							int count;
+							while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+						} catch (IOException error) { throw new IllegalStateException(error); }
+					}, "chooser-fixture-pipe");
+					writer.setDaemon(true);
+					writer.start();
+					return ends[0];
+				} catch (IOException error) { throw new FileNotFoundException(error.toString()); }
+			}
 			return ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY);
 		}
 		@Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException(); }
@@ -122,7 +147,7 @@ public class ChooserTest {
 		when(cordova.getActivity()).thenReturn(activity);
 		when(cordova.getContext()).thenReturn(activity);
 		when(cordova.getThreadPool()).thenReturn(worker);
-		doAnswer(call -> { code = call.getArgument(2); return null; }).when(cordova).startActivityForResult(any(), any(), anyInt());
+		doAnswer(call -> { launched = call.getArgument(1); code = call.getArgument(2); return null; }).when(cordova).startActivityForResult(any(), any(), anyInt());
 		plugin = new Chooser();
 		plugin.privateInitialize("Chooser", cordova, mock(CordovaWebView.class), new CordovaPreferences());
 		provider = Robolectric.buildContentProvider(FixtureProvider.class).create("chooser.fixture").get();
@@ -143,14 +168,20 @@ public class ChooserTest {
 	}
 
 	private void drain() throws Exception {
+		drain(5);
+	}
+	private void drain(int seconds) throws Exception {
 		shadowOf(Looper.getMainLooper()).idle();
-		worker.submit(() -> {}).get(5, TimeUnit.SECONDS);
+		worker.submit(() -> {}).get(seconds, TimeUnit.SECONDS);
 		ChooserTransaction.HOUSEKEEPING.submit(() -> {}).get(5, TimeUnit.SECONDS);
 	}
 
 	private Recorded start(boolean data) throws Exception {
+		return start("*/*", data);
+	}
+	private Recorded start(String accept, boolean data) throws Exception {
 		Recorded callback = new Recorded("request");
-		assertTrue(plugin.execute("getFile", new JSONArray().put("*/*").put(data), callback));
+		assertTrue(plugin.execute("getFile", new JSONArray().put(accept).put(data), callback));
 		drain();
 		return callback;
 	}
@@ -353,6 +384,98 @@ public class ChooserTest {
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		drain();
 		assertEquals("AQID", object(data).getString("data"));
+	}
+
+	@Test public void filtersReachThePickerWithoutBroadeningSingleTypes() throws Exception {
+		for (String accept : new String[]{"application/json", "text/csv", "application/pdf", "image/*", "video/*"}) {
+			Recorded request = start(accept, false);
+			Intent inner = launched.getParcelableExtra(Intent.EXTRA_INTENT);
+			assertEquals(Intent.ACTION_GET_CONTENT, inner.getAction());
+			assertTrue(inner.hasCategory(Intent.CATEGORY_OPENABLE));
+			assertEquals(accept, inner.getType());
+			assertNull(inner.getStringArrayExtra(Intent.EXTRA_MIME_TYPES));
+			assertTrue(inner.getBooleanExtra(Intent.EXTRA_LOCAL_ONLY, false));
+			plugin.onActivityResult(code, Activity.RESULT_CANCELED, null);
+			assertEquals("RESULT_CANCELED", request.only().getStrMessage());
+		}
+		JSONObject options = new JSONObject().put("accept", "text/csv,application/json").put("mode", "metadata").put("multiple", true).put("localOnly", false);
+		Recorded request = new Recorded("plural-filter");
+		plugin.execute("pick", new JSONArray().put(options), request);
+		drain();
+		Intent inner = launched.getParcelableExtra(Intent.EXTRA_INTENT);
+		assertEquals("*/*", inner.getType());
+		assertArrayEquals(new String[]{"text/csv", "application/json"}, inner.getStringArrayExtra(Intent.EXTRA_MIME_TYPES));
+		assertTrue(inner.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false));
+		assertFalse(inner.getBooleanExtra(Intent.EXTRA_LOCAL_ONLY, true));
+		plugin.onActivityResult(code, Activity.RESULT_CANCELED, null);
+		request.only();
+	}
+
+	@Test public void pdfBytesSurviveUnknownLengthPipesAndEmptyFilesRemainValid() throws Exception {
+		byte[] pdf = new byte[]{37, 80, 68, 70, 45, 49, 46, 52, 10, 0, (byte)255};
+		Files.write(provider.source.toPath(), pdf);
+		provider.displayName = "sample.pdf";
+		provider.mediaType = "application/pdf";
+		provider.pipe = true;
+		Recorded data = start(true);
+		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+		drain();
+		assertArrayEquals(pdf, android.util.Base64.decode(object(data).getString("data"), android.util.Base64.DEFAULT));
+		assertEquals(pdf.length, object(data).getLong("size"));
+		Recorded copied = copy(0, false);
+		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+		drain();
+		assertArrayEquals(pdf, Files.readAllBytes(new File(Uri.parse(object(copied).getString("uri")).getPath()).toPath()));
+		Files.write(provider.source.toPath(), new byte[0]);
+		Recorded empty = start(true);
+		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+		drain();
+		assertEquals("", object(empty).getString("data"));
+		assertEquals(0, object(empty).getLong("size"));
+	}
+
+	private static byte[] hash(File file) throws Exception {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		try (FileInputStream input = new FileInputStream(file)) {
+			byte[] buffer = new byte[65536];
+			int count;
+			while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
+		}
+		return digest.digest();
+	}
+
+	@Test public void largeCopiesKeepTheBridgePayloadSmallAndReleaseOnlyTheCopy() throws Exception {
+		for (int mib : new int[]{45, 128}) {
+			long size = mib * 1024L * 1024L;
+			byte[] block = new byte[65536];
+			for (int i = 0; i < block.length; i++) block[i] = (byte)(i % 251);
+			try (FileOutputStream output = new FileOutputStream(provider.source)) {
+				for (long written = 0; written < size; written += block.length) output.write(block);
+			}
+			provider.displayName = mib == 45 ? "sample.exe" : "sample.mp4";
+			provider.reportedSize = 1L;
+			Recorded copied = copy(size, false);
+			plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+			drain(60);
+			JSONObject result = object(copied);
+			assertFalse(result.has("data"));
+			assertFalse(result.has("dataURI"));
+			assertTrue(copied.only().getStrMessage().length() < 16384);
+			assertEquals(size, result.getLong("size"));
+			File output = new File(Uri.parse(result.getString("uri")).getPath());
+			assertArrayEquals(hash(provider.source), hash(output));
+			Recorded released = new Recorded("large-release");
+			plugin.execute("releaseFile", new JSONArray().put(result.getString("id")), released);
+			drain();
+			assertEquals(PluginResult.Status.OK.ordinal(), released.only().getStatus());
+			assertFalse(output.exists());
+			assertEquals(size, provider.source.length());
+			Recorded exceeded = copy(size - 1, false);
+			plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+			drain(60);
+			assertTrue(exceeded.only().getStrMessage().startsWith("FILE_TOO_LARGE:"));
+			assertEmptyCache();
+		}
 	}
 
 	@Test public void releaseDoesNotWaitForBlockedProviderAndResetCancelsItsQuery() throws Exception {

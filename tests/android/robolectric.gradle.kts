@@ -18,7 +18,7 @@ tasks.register("resolveVerificationDependencies") {
     doLast { check(lintTool.resolve().isNotEmpty()) }
 }
 // Each role needs a different version of the same module. Keep resolution separate.
-val sdkInputs = listOf("runtime", "compile").map { role ->
+val sdkInputs = listOf("api24", "runtime", "api30", "api33", "compile").map { role ->
     val dependency = sdkCatalog.findLibrary("robolectric-sdk-$role").get()
     val configuration = configurations.create("robolectric${role.replaceFirstChar { it.uppercase() }}Sdk") {
         isCanBeResolved = true
@@ -58,7 +58,7 @@ tasks.withType<Test>().configureEach {
 // result from the other API level. Both consume the same frozen SDK directory.
 afterEvaluate {
     val debugTests = tasks.named<Test>("testDebugUnitTest")
-    for (api in listOf(28, 35)) {
+    for (api in listOf(24, 28, 30, 33, 35)) {
         tasks.register<Test>("testApi$api") {
             dependsOn(provider { debugTests.get().taskDependencies.getDependencies(debugTests.get()) })
             testClassesDirs = debugTests.get().testClassesDirs

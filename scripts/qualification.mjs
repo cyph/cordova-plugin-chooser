@@ -12,9 +12,17 @@ export const requiredChecks = {
 	android: [
 		"package",
 		...["android", "android15"].flatMap((name) =>
-			["api28", "api35", "lint", "debug", "release", "reinstall"].map(
-				(check) => `${name}:${check}`,
-			),
+			[
+				"api24",
+				"api28",
+				"api30",
+				"api33",
+				"api35",
+				"lint",
+				"debug",
+				"release",
+				"reinstall",
+			].map((check) => `${name}:${check}`),
 		),
 	],
 	"android-failures": ["package", "dependency-failures"],

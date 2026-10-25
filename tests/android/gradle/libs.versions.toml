@@ -8,6 +8,9 @@ robolectric = "4.16.1"
 # Keep the exact SDK artifacts coordinated with Robolectric and JDK updates.
 robolectric-runtime-sdk = "9-robolectric-4913185-2-i7"
 robolectric-compile-sdk = "15-robolectric-13954326-i7"
+robolectric-api24-sdk = "7.0.0_r1-robolectric-r1-i7"
+robolectric-api30-sdk = "11-robolectric-6757853-i7"
+robolectric-api33-sdk = "13-robolectric-9030017-i7"
 mockito = "5.18.0"
 
 [libraries]
@@ -17,6 +20,9 @@ junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 robolectric-sdk-runtime = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-runtime-sdk" }
 robolectric-sdk-compile = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-compile-sdk" }
+robolectric-sdk-api24 = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-api24-sdk" }
+robolectric-sdk-api30 = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-api30-sdk" }
+robolectric-sdk-api33 = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectric-api33-sdk" }
 mockito = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 
 [plugins]

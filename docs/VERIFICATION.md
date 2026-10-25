@@ -35,7 +35,7 @@ Xcode is an external prerequisite. [apple.json](https://github.com/cyph/cordova-
 | `just chainman run verify-portable` | JavaScript, typings, tooling, privacy declarations, source registration, and package checks |
 | `just verify-browser` | Packed plugin in Chromium, Firefox, and WebKit through Cordova Browser; removal/reinstallation |
 | `just verify-android-dependencies` | Strict resolution and staging of frozen Robolectric SDK JARs |
-| `just verify-android` | Android 14/15 fixtures, API 28/35 Robolectric tests, debug/release lint, packed debug/release APK builds, and reinstallation |
+| `just verify-android` | Android 14/15 fixtures, API 24/28/30/33/35 Robolectric tests, debug/release lint, packed debug/release APK builds, and reinstallation |
 | `just verify-android-failures` | Isolated missing/corrupted SDK and offline-loading failure cases |
 | `just verify-ios` | Foundation fixtures and unsigned Cordova iOS 7/8 debug/release archives, including privacy-bundle coexistence |
 | `just verify-ios-modern` | Both iOS generations on the modern Apple profile, plus Foundation address/thread sanitizers |
@@ -52,7 +52,7 @@ Integration tasks install the packed plugin into disposable applications using f
 
 Browser tests exercise selection, limits, release, failures, and navigation through the registered bridge in three engines. CSP cases independently block or permit managed Blob URL reads and image previews. Automated empty selections do not establish real cancel-dialog behavior, and Playwright WebKit does not establish complete Safari/OS compatibility.
 
-Android host fixtures compile production sources against Cordova 14/15 and SDK 35/36. Separate Robolectric tasks execute API 28 and 35 tests, requiring nonempty, unskipped JUnit results. Provider doubles exercise metadata, stream failures, cancellation, restoration, and reset through Cordova's dispatcher. Debug/release lint must have no untriaged issues. Packed release APK checks follow the resource table to the actual config XML and require both Chooser registration and the DEX entrypoint.
+Android host fixtures compile production sources against Cordova 14/15 and SDK 35/36. Separate Robolectric tasks execute API 24, 28, 30, 33, and 35 tests, requiring nonempty, unskipped JUnit results. Provider doubles exercise metadata, PDF descriptor/pipe reads, MIME intent wiring, stream failures, cancellation, restoration, and reset through Cordova's dispatcher. Generated 45 MiB and 128 MiB copies are compared with streaming hashes, exercise exact/exceeded byte limits, and verify small bridge results and preservation of originals. Debug/release lint must have no untriaged issues. Packed release APK checks follow the resource table to the actual config XML and require both Chooser registration and the DEX entrypoint.
 
 Foundation tests compile production iOS helpers without UIKit/Cordova and run as macOS executables. They cover streams, budgets, partial writes, ownership, transactions, recovery, and worker capacity. Both Apple lanes enable complete concurrency diagnostics in Swift 5 mode; packed applications separately compile UIKit/Cordova integration with Swift warnings treated as errors. The Cordova application archives target iOS 15.0. Older source fallbacks do not establish coverage below that deployment target.
 
@@ -68,7 +68,10 @@ Robolectric's SDKs have separate resolvable configurations so resolving one vers
 
 | Role with Robolectric 4.16.1 and JDK 17 | Frozen artifact |
 | --- | --- |
+| API 24 runtime | `org.robolectric:android-all-instrumented:7.0.0_r1-robolectric-r1-i7` |
 | API 28 runtime | `org.robolectric:android-all-instrumented:9-robolectric-4913185-2-i7` |
+| API 30 runtime | `org.robolectric:android-all-instrumented:11-robolectric-6757853-i7` |
+| API 33 runtime | `org.robolectric:android-all-instrumented:13-robolectric-9030017-i7` |
 | API 35 runtime and compile-time SDK | `org.robolectric:android-all-instrumented:15-robolectric-13954326-i7` |
 
 Both fixtures lock and checksum these artifacts. `prepareRobolectricSdks` validates them and stages their original filenames in `build/robolectric-sdks`. Normal tests depend on preparation and use Robolectric offline mode with that explicit directory. Missing files must fail rather than trigger an implicit download. Lint's tool graph is also exposed to dependency resolution for lock/checksum maintenance.

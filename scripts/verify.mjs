@@ -273,7 +273,7 @@ function androidEnvironment(execute = false) {
 		process.env.ANDROID_HOME && existsSync(process.env.ANDROID_HOME),
 		"Missing Nix Android SDK",
 	);
-	report.toolchain.androidRuntimeApis = [28, 35];
+	report.toolchain.androidRuntimeApis = [24, 28, 30, 33, 35];
 	report.toolchain.gradle = run("gradle", ["--version"], root, true);
 	assert.match(report.toolchain.gradle, /Gradle 8\./);
 }
@@ -328,13 +328,16 @@ function android() {
 		// Continue independent checks so one failure still yields the other
 		// SDK and lint diagnostics in the same qualification attempt.
 		run("gradle", [
-			...androidArguments(fixture, buildTools, "testApi28"),
+			...androidArguments(fixture, buildTools, "testApi24"),
+			"testApi28",
+			"testApi30",
+			"testApi33",
 			"testApi35",
 			"lintDebug",
 			"lintRelease",
 			"--continue",
 		]);
-		for (const api of [28, 35]) {
+		for (const api of [24, 28, 30, 33, 35]) {
 			run("python3", [
 				join(root, "scripts/android_reports.py"),
 				"tests",
