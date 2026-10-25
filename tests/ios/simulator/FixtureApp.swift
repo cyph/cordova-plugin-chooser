@@ -54,7 +54,19 @@ final class FixtureController: CDVViewController {
             // Preserve indexed documents across launches; replacing them
             // invalidates the local provider's cached item identifiers.
             if !manager.fileExists(atPath: destination.path) {
-                try! manager.copyItem(at: source, to: destination)
+                let contents = try! Data(contentsOf: source)
+                var coordinationError: NSError?
+                var writeError: Error?
+                // These Documents are exposed through Files. Coordinate the
+                // initial creation instead of cloning bundle file metadata.
+                NSFileCoordinator().coordinate(writingItemAt: destination, options: [], error: &coordinationError) { url in
+                    do { try contents.write(to: url, options: .withoutOverwriting) }
+                    catch { writeError = error }
+                }
+                precondition(coordinationError == nil,
+                    "Could not coordinate fixture creation: \(String(describing: coordinationError))")
+                precondition(writeError == nil,
+                    "Could not write fixture contents: \(String(describing: writeError))")
             }
             let attributes = try! manager.attributesOfItem(atPath: destination.path)
             let identifier = attributes[.systemFileNumber] as! NSNumber

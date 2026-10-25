@@ -96,7 +96,7 @@ Display names and MIME types are descriptive metadata. Render names with text AP
 
 ## CSV, JSON, and provider filters
 
-Start with the registered CSV type, [`text/csv`](https://www.iana.org/assignments/media-types/text/csv), or `application/json` for JSON. Providers may classify the same file differently. If a document is disabled, an explicit `'*/*'` request can help distinguish a type-registration problem from an unavailable document; validate the accepted contents in the application. A filename-based fallback after selection cannot enable a file that the picker disabled. Chooser neither silently broadens the requested filter nor enforces a file format after selection.
+Start with the registered CSV type, [`text/csv`](https://www.iana.org/assignments/media-types/text/csv), or `application/json` for JSON. Providers may classify the same file differently. If a document is disabled, an explicit `'*/*'` request can help distinguish a type-registration problem from an unavailable document; validate the accepted contents in the application. A filename-based fallback after selection cannot enable a file that the picker disabled. Chooser does not automatically retry a disabled selection with a broader filter or enforce a file format after selection. Platform type mappings still apply: [unknown iOS MIME types can broaden selection](PLATFORMS.md#ios).
 
 For a small UTF-8 CSV, decode the bytes before passing text to your application's CSV parser:
 
