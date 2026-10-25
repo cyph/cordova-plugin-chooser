@@ -79,7 +79,7 @@ final class ChooserPickerTests: XCTestCase {
         plugin.onReset()
         h.waitUntil { h.presenter.presentedViewController == nil }
         let second = h.open("selected")
-        let source = FixtureController.documents.appendingPathComponent("unit.json")
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("chooser-unit-\(UUID().uuidString).json")
         try Data("{}".utf8).write(to: source)
         defer { try? FileManager.default.removeItem(at: source) }
         plugin.documentPicker(first, didPickDocumentsAt: [source])
