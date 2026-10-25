@@ -3,5 +3,5 @@
 
 @interface FixtureSink : NSObject <CDVCommandDelegate>
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray<CDVPluginResult *> *> *results;
-@property(nonatomic, copy) UrlTransformerBlock urlTransformer;
+@property(nonatomic, copy) NSURL *(^urlTransformer)(NSURL *);
 @end

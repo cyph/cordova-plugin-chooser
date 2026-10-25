@@ -35,7 +35,8 @@ final class ChooserUITests: XCTestCase {
     private func browseFixtures(_ app: XCUIApplication) {
         let location = app.cells.matching(NSPredicate(
             format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad")).firstMatch
-        let browse = app.tabBars.buttons["Browse"].firstMatch
+        // Files uses a top segmented control on iPad and a tab bar on iPhone.
+        let browse = app.buttons["Browse"].firstMatch
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             location.exists || browse.exists
         }, object: nil)
@@ -74,7 +75,7 @@ final class ChooserUITests: XCTestCase {
         // Drag the grabber area at the sheet's center, clear of the iPad sidebar.
         let origin = app.coordinate(withNormalizedOffset: .zero)
         let top = origin.withOffset(CGVector(dx: app.frame.width / 2,
-            dy: cancelButton.frame.minY - app.frame.minY - 18))
+            dy: cancelButton.frame.minY - app.frame.minY - 5))
         top.press(forDuration: 0.1, thenDragTo: origin.withOffset(
             CGVector(dx: app.frame.width / 2, dy: app.frame.height - 12)))
         expect(app, "canceled:1")

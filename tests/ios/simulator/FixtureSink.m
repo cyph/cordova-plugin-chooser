@@ -1,8 +1,15 @@
 #import "FixtureSink.h"
+#if __has_include(<Cordova/CDVSettingsDictionary.h>)
+#import <Cordova/CDVSettingsDictionary.h>
+#endif
 
 @implementation FixtureSink
 - (instancetype)init { if ((self = [super init])) { self.results = [NSMutableDictionary new]; } return self; }
+#if __has_include(<Cordova/CDVSettingsDictionary.h>)
+- (CDVSettingsDictionary *)settings { return [[CDVSettingsDictionary alloc] initWithDictionary:@{}]; }
+#else
 - (NSDictionary *)settings { return @{}; }
+#endif
 - (NSString *)pathForResource:(NSString *)path { return nil; }
 - (id)getCommandInstance:(NSString *)name { return nil; }
 - (void)sendPluginResult:(CDVPluginResult *)result callbackId:(NSString *)callback {
