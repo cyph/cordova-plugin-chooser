@@ -34,7 +34,7 @@ class AndroidReportsTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             check_lint(self.directory)
 
-    def test_bridge_instrumentation_requires_both_cases_and_no_skips(self):
+    def test_bridge_instrumentation_requires_all_cases_and_no_skips(self):
         report = self.directory / "TEST-fixture.xml"
         cases = ['realBridgeCopiesLargeFilesAndEnforcesLimits', 'cancellationSettlesOnceAndCanImmediatelyReopen', 'unknownLengthPdfPipesPreserveBytes']
         content = ''.join(f'<testcase classname="ChooserBridgeTest" name="{name}"/>' for name in cases)

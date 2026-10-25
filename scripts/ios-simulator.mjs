@@ -7,7 +7,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { appleEnvironment } from "./apple.mjs";
+import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { checkSimulatorResults } from "./simulator-results.mjs";
 
 export function verifyIosSimulator({
@@ -66,6 +66,9 @@ export function verifyIosSimulator({
 		cpSync(join(root, "tests/ios/simulator"), join(directory, "fixture"), {
 			recursive: true,
 		});
+		const bridgingHeader = join(directory, "fixture/Host-Bridging-Header.h");
+		writeFileSync(bridgingHeader, "#import <Cordova/Cordova.h>\n");
+		if (alias === "cordova-ios7") prepareBridgingHeader(bridgingHeader);
 		cpSync(join(generated, "platforms/ios/www"), join(directory, "www"), {
 			recursive: true,
 		});
@@ -117,6 +120,7 @@ export function verifyIosSimulator({
 							SWIFT_STRICT_CONCURRENCY: "complete",
 							SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
 							ENABLE_TESTABILITY: "YES",
+							SWIFT_OBJC_BRIDGING_HEADER: "fixture/Host-Bridging-Header.h",
 						},
 					},
 					info: {
