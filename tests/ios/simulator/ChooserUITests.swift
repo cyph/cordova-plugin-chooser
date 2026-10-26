@@ -84,7 +84,7 @@ final class ChooserUITests: XCTestCase {
             for _ in 0..<4 {
                 if firstHittable(folder) != nil || firstHittable(location) != nil { break }
                 let names = ["BackButton", "Back", "Go Back"]
-                let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", names, names))
+                let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", argumentArray: [names, names]))
                 guard let back = firstHittable(buttons), back.isEnabled else { break }
                 back.tap()
             }
