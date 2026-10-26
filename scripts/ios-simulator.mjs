@@ -217,6 +217,7 @@ export function verifyIosSimulator({
 							UILaunchScreen: {},
 							UIFileSharingEnabled: true,
 							LSSupportsOpeningDocumentsInPlace: true,
+							UISupportsDocumentBrowser: true,
 							UIApplicationSceneManifest: {
 								UIApplicationSupportsMultipleScenes: false,
 							},
@@ -457,7 +458,7 @@ export function verifyIosSimulator({
 					"python3",
 					[
 						"-c",
-						"import pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.read_text()=='ready', 'Fixture source did not become ready'",
+						"import json,pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.is_file(), 'Fixture source did not become ready'\nstatus=json.loads(p.read_text()); assert status.get('status')=='ready', status",
 						join(container, "Library/Caches/chooser-fixture-ready"),
 					],
 					root,
