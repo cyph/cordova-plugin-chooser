@@ -6,11 +6,30 @@ final class ChooserUITests: XCTestCase {
         continueAfterFailure = false
     }
     override func tearDown() {
+        continueAfterFailure = true
         if let run = testRun, run.failureCount > 0 {
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.lifetime = .keepAlways
             add(screenshot)
         }
+        // Cancel before terminating so an unfinished provider interaction cannot
+        // leave the shared Files service attached to the next test's picker.
+        let app = XCUIApplication()
+        if app.state != .notRunning {
+            app.activate()
+            let button = app.buttons["Cancel"].firstMatch
+            if button.exists && button.isHittable {
+                button.tap()
+                let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    !button.exists
+                }, object: nil)
+                XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 15), .completed,
+                    "The fixture picker did not close during cleanup")
+            }
+            app.terminate()
+        }
+        let files = XCUIApplication(bundleIdentifier: "com.apple.DocumentsApp")
+        if files.state != .notRunning { files.terminate() }
         super.tearDown()
     }
     private func launch(sheet: Bool = false, native: Bool = false) -> XCUIApplication {
@@ -32,35 +51,52 @@ final class ChooserUITests: XCTestCase {
         XCTAssertTrue(button.waitForExistence(timeout: 15))
         button.tap()
     }
-    private func browseFixtures(_ app: XCUIApplication) {
-        let location = app.cells.matching(NSPredicate(
-            format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad")).firstMatch
-        // Files uses a top segmented control on iPad and a tab bar on iPhone.
-        let browse = app.buttons["Browse"].firstMatch
-        let folder = app.cells.matching(NSPredicate(
-            format: "label BEGINSWITH %@", "Chooser Fixtures")).firstMatch
+    private func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
+        query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
+    }
+    private func tapVisible(_ query: XCUIElementQuery) {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            folder.exists || location.exists || browse.exists
+            self.firstHittable(query) != nil
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
-        if !folder.exists && !location.exists {
-            XCTAssertTrue(browse.waitForExistence(timeout: 15))
-            browse.tap()
+        if let element = firstHittable(query) {
+            XCTAssertTrue(element.isEnabled)
+            element.tap()
+        } else {
+            XCTFail("No hittable navigation target")
+        }
+    }
+    private func browseFixtures(_ app: XCUIApplication) {
+        let location = app.cells.matching(NSPredicate(
+            format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad"))
+        // Files uses a top segmented control on iPad and a tab bar on iPhone.
+        let browse = app.buttons.matching(identifier: "Browse")
+        let folder = app.cells.matching(NSPredicate(
+            format: "label BEGINSWITH %@", "Chooser Fixtures"))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.firstHittable(folder) != nil || self.firstHittable(location) != nil || self.firstHittable(browse) != nil
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+        if firstHittable(folder) == nil && firstHittable(location) == nil {
+            tapVisible(browse)
             // Return through the actual navigation stack, including a folder
             // remembered by an earlier picker. Never inject a filesystem URL.
             for _ in 0..<4 {
-                if folder.exists || location.exists { break }
-                let back = app.buttons["BackButton"].firstMatch
-                if !back.waitForExistence(timeout: 2) || !back.isEnabled { break }
+                if firstHittable(folder) != nil || firstHittable(location) != nil { break }
+                let names = ["BackButton", "Back", "Go Back"]
+                let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", names, names))
+                guard let back = firstHittable(buttons), back.isEnabled else { break }
                 back.tap()
             }
         }
-        if !folder.exists {
-            XCTAssertTrue(location.waitForExistence(timeout: 15))
-            location.tap()
+        let destination = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.firstHittable(folder) != nil || self.firstHittable(location) != nil
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [destination], timeout: 20), .completed)
+        if firstHittable(folder) == nil {
+            tapVisible(location)
         }
-        XCTAssertTrue(folder.waitForExistence(timeout: 15))
-        folder.tap()
+        tapVisible(folder)
     }
     func testCancelAndImmediateReopen() {
         let app = launch()
