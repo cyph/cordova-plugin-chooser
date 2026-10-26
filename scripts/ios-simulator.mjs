@@ -46,6 +46,7 @@ export function verifyIosSimulator({
 	checked,
 	diagnostic = false,
 	modern = false,
+	diagnosticDevice = "iphone",
 }) {
 	assert.equal(
 		process.platform,
@@ -397,7 +398,7 @@ export function verifyIosSimulator({
 			["iphone", "iPhone 17"],
 			["ipad", "iPad (A16)"],
 		]) {
-			if (diagnostic && kind !== "iphone") continue;
+			if (diagnostic && kind !== diagnosticDevice) continue;
 			const type = devices.find((device) => device.name === deviceName);
 			assert(type, `Missing simulator device type: ${deviceName}`);
 			const udid = simctl([

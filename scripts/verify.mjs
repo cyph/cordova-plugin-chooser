@@ -596,22 +596,29 @@ function ios(modern = false) {
 }
 
 const diagnosticLane = "ios-simulator-diagnostic";
+const diagnosticDevice = process.argv[4] ?? "iphone";
 const expectedChecks =
 	lane === diagnosticLane
 		? [
 				"package",
 				"cordova-ios7:compile",
 				"cordova-ios8:compile",
-				"cordova-ios7:iphone:native-control",
-				"cordova-ios7:iphone",
+				`cordova-ios7:${diagnosticDevice}:native-control`,
+				`cordova-ios7:${diagnosticDevice}`,
 			]
 		: requiredChecks[lane];
 function simulator(diagnostic = false) {
-	assert(
-		process.argv[3] === undefined ||
-			(diagnostic && process.argv[3] === "modern"),
-		"Unexpected simulator profile",
-	);
+	if (diagnostic) {
+		assert(process.argv.length <= 5, "Unexpected simulator arguments");
+		assert(
+			["baseline", "modern"].includes(process.argv[3] ?? "baseline"),
+			"Unexpected simulator profile",
+		);
+		assert(
+			["iphone", "ipad"].includes(diagnosticDevice),
+			"Unexpected simulator device",
+		);
+	} else assert.equal(process.argv.length, 3, "Unexpected simulator arguments");
 	return verifyIosSimulator({
 		root,
 		output,
@@ -622,6 +629,7 @@ function simulator(diagnostic = false) {
 		app,
 		checked,
 		diagnostic,
+		diagnosticDevice,
 		modern: process.argv[3] === "modern",
 	});
 }

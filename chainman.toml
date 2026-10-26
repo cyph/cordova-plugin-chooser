@@ -134,6 +134,36 @@ commands = [
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.diagnose-ios-simulator-ipad]
+profile = "ios"
+setup = ["javascript"]
+commands = [
+  [
+    "node",
+    "scripts/verify.mjs",
+    "ios-simulator-diagnostic",
+    "baseline",
+    "ipad",
+  ],
+]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.diagnose-ios-simulator-modern-ipad]
+profile = "ios-modern"
+setup = ["javascript"]
+commands = [
+  [
+    "node",
+    "scripts/verify.mjs",
+    "ios-simulator-diagnostic",
+    "modern",
+    "ipad",
+  ],
+]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.verify-capacitor-android]
 profile = "android-emulator"
 setup = ["javascript"]

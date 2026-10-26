@@ -1,5 +1,5 @@
 name: Verify
-run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0})', inputs.ios_diagnostic_profile) || 'Release qualification' }}
+run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0}, {1})', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone') || 'Release qualification' }}
 on:
   pull_request:
   push:
@@ -15,10 +15,15 @@ on:
         type: choice
         options: [baseline, modern]
         default: baseline
+      ios_diagnostic_device:
+        description: Device for the focused diagnostic
+        type: choice
+        options: [iphone, ipad]
+        default: iphone
 permissions:
   contents: read
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}', inputs.ios_diagnostic_profile) || false }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}-{1}', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone') || false }}
   cancel-in-progress: true
 jobs:
   portable:
@@ -218,6 +223,9 @@ jobs:
               task=diagnose-ios-simulator-modern
             else
               task=diagnose-ios-simulator
+            fi
+            if [ '${{ inputs.ios_diagnostic_device }}' = ipad ]; then
+              task="$task-ipad"
             fi
           else
             task=verify-ios-simulator

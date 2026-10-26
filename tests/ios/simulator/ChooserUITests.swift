@@ -19,7 +19,9 @@ final class ChooserUITests: PickerUI {
         if swipe { dismissSheet(app) } else { cancel(app) }
         // JavaScript itself opens request two from the first completion.
         presented(app, serial: 2)
-        cancel(app)
+        // Half-height Files sheets can omit their navigation-bar Cancel button.
+        // Exercise the same cancellation route on both requests.
+        if swipe { dismissSheet(app) } else { cancel(app) }
         expect(app, "canceled:2;counts:1,1")
     }
 }

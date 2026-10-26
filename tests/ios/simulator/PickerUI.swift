@@ -63,8 +63,11 @@ class PickerUI: XCTestCase {
         XCTAssertTrue(grabber.isHittable)
         XCTAssertGreaterThan(grabber.frame.midY, app.frame.minY, "Expected an adaptive sheet")
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let end = origin.withOffset(CGVector(dx: grabber.frame.midX - app.frame.minX, dy: app.frame.height - 8))
-        let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let point = CGPoint(x: grabber.frame.midX, y: grabber.frame.midY)
+        XCTAssertTrue(app.frame.contains(point), "Sheet grabber outside the screen")
+        let end = origin.withOffset(CGVector(dx: point.x - app.frame.minX, dy: app.frame.height - 8))
+        let start = origin.withOffset(CGVector(dx: point.x - app.frame.minX, dy: point.y - app.frame.minY))
+        print("CHOOSER_UI dismiss grabber=\(grabber.frame) point=\(point)")
         start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
     }
     func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
