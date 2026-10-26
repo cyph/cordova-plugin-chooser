@@ -67,10 +67,11 @@ class PickerUI: XCTestCase {
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [remoteReady], timeout: 30), .completed, "Remote picker navigation did not become interactive")
         // The outer document-picker host can cover the screen while its remote
-        // Files view presents a half-height sheet. Use its native handle when
-        // available, or its interactive navigation bar without adding a handle.
+        // Files view presents a half-height sheet. Start the dismissal gesture
+        // in its navigation title area, independently of the resizing handle.
         let grabber = app.buttons["Sheet Grabber"].firstMatch
-        guard let target = grabber.exists && grabber.isHittable ? grabber : firstHittable(app.navigationBars) else {
+        let navigation = firstHittable(app.navigationBars)
+        guard let target = navigation ?? (grabber.exists && grabber.isHittable ? grabber : nil) else {
             XCTFail("Missing visible sheet grabber or navigation bar")
             return
         }
@@ -87,7 +88,8 @@ class PickerUI: XCTestCase {
         let bounds = target.frame
         XCTAssertGreaterThan(bounds.midY, screen.minY, "Expected an adaptive sheet")
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let point = CGPoint(x: bounds.midX, y: bounds.midY)
+        // Large navigation bars can include a search field below the title.
+        let point = CGPoint(x: bounds.midX, y: navigation == nil ? bounds.midY : bounds.minY + min(16, bounds.height / 3))
         XCTAssertFalse(bounds.isEmpty, "Empty gesture target")
         XCTAssertTrue(screen.contains(point), "Gesture target outside the screen")
         let end = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: screen.height - 8))
