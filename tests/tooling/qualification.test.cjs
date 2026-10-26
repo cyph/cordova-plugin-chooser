@@ -296,12 +296,15 @@ test("qualification requires every successful job, complete reports and the same
 		() => aggregateReports(directory, sha, jobs),
 		/Missing ios-simulator check/,
 	);
-	for (const check of [
-		"cordova-ios7:iphone:provider-setup",
-		"cordova-ios7:ipad:provider-setup",
-		"cordova-ios8:iphone:provider-setup",
-		"cordova-ios8:ipad:provider-setup",
-	]) {
+	const preparationChecks = simulator.checks.filter(
+		(check) => check.endsWith(":provider-setup") || check.includes(":seed-"),
+	);
+	assert.equal(
+		preparationChecks.length,
+		28,
+		"Each combination requires provider initialization and all six system-created documents",
+	);
+	for (const check of preparationChecks) {
 		save({
 			...simulator,
 			checks: simulator.checks.filter((value) => value !== check),

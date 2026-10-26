@@ -75,14 +75,15 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     private func exportFixture() {
         do {
             let name = ProcessInfo.processInfo.environment["CHOOSER_EXPORT_FILE"] ?? "fixture-pdf.pdf"
-            guard ["fixture-pdf.pdf", "fixture-json.json"].contains(name),
+            guard ["fixture-pdf.pdf", "fixture-json.json", "fixture-csv.csv", "fixture-image.png", "fixture-mp4.mp4", "fixture-mov.mov"].contains(name),
                   let assets = Bundle.main.url(forResource: "Assets", withExtension: nil) else {
                 throw NSError(domain: "ChooserFixture", code: 1)
             }
             let source = assets.appendingPathComponent(name)
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("chooser-export", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let copy = directory.appendingPathComponent("exported-\(name)")
+            let prefix = ProcessInfo.processInfo.environment["CHOOSER_EXPORT_SEED"] == "1" ? "" : "exported-"
+            let copy = directory.appendingPathComponent("\(prefix)\(name)")
             if !FileManager.default.fileExists(atPath: copy.path) { try FileManager.default.copyItem(at: source, to: copy) }
             let picker = UIDocumentPickerViewController(forExporting: [copy], asCopy: true)
             picker.delegate = self

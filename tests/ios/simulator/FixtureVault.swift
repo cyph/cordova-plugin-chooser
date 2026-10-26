@@ -40,6 +40,14 @@ final class VaultScene: UIResponder, UIWindowSceneDelegate {
         let manager = FileManager.default
         let documents = manager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try manager.createDirectory(at: documents, withIntermediateDirectories: true)
+        let mode = Bundle.main.object(forInfoDictionaryKey: "ChooserSeedMode") as? String ?? "copy"
+        if mode == "export" {
+            // Files exposes a sharing container only after it contains a file.
+            // The actual selection fixtures are subsequently saved by its picker.
+            try Data("Files used by the chooser integration fixture.\n".utf8).write(to: documents.appendingPathComponent("ABOUT.txt"), options: .atomic)
+            return
+        }
+        guard mode == "copy" else { throw NSError(domain: "ChooserFixture", code: 4) }
         let assets = Bundle.main.url(forResource: "Assets", withExtension: nil)!
         for source in try manager.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil).sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let destination = documents.appendingPathComponent(source.lastPathComponent)

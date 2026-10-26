@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 
-const formats = ["JSON", "CSV", "PDF", "Image", "MP4", "MOV"];
+export const simulatorDocuments = [
+	{ format: "JSON", name: "fixture-json.json" },
+	{ format: "CSV", name: "fixture-csv.csv" },
+	{ format: "PDF", name: "fixture-pdf.pdf" },
+	{ format: "Image", name: "fixture-image.png" },
+	{ format: "MP4", name: "fixture-mp4.mp4" },
+	{ format: "MOV", name: "fixture-mov.mov" },
+];
+const formats = simulatorDocuments.map(({ format }) => format);
 export const simulatorCases = [
 	...[
 		"testAdaptiveDismissalAndStaleCallbacks",

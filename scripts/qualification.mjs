@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { simulatorDocuments } from "./simulator-results.mjs";
 
 const version = JSON.parse(
 	readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -34,6 +35,9 @@ export const requiredChecks = {
 		...["cordova-ios7", "cordova-ios8"].flatMap((alias) =>
 			["iphone", "ipad"].flatMap((device) => [
 				`${alias}:${device}:provider-setup`,
+				...simulatorDocuments.map(
+					({ format }) => `${alias}:${device}:seed-${format.toLowerCase()}`,
+				),
 				`${alias}:${device}:native-control`,
 				`${alias}:${device}`,
 			]),

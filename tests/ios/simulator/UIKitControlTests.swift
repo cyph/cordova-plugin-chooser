@@ -42,14 +42,20 @@ final class UIKitControlTests: PickerUI {
     func testOpenExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testExportJSON() { export("fixture-json.json") }
     func testExportPDF() { export("fixture-pdf.pdf") }
-    private func export(_ filename: String) {
-        let app = launch(environment: ["CHOOSER_EXPORT_FILE": filename])
+    func testSeedJSON() { export("fixture-json.json", seed: true) }
+    func testSeedCSV() { export("fixture-csv.csv", seed: true) }
+    func testSeedPDF() { export("fixture-pdf.pdf", seed: true) }
+    func testSeedImage() { export("fixture-image.png", seed: true) }
+    func testSeedMP4() { export("fixture-mp4.mp4", seed: true) }
+    func testSeedMOV() { export("fixture-mov.mov", seed: true) }
+    private func export(_ filename: String, seed: Bool = false) {
+        let app = launch(environment: ["CHOOSER_EXPORT_FILE": filename, "CHOOSER_EXPORT_SEED": seed ? "1" : "0"])
         app.buttons["ExportFixture"].tap()
         presented(app, serial: 1)
         browseFixtures(app)
         let buttons = app.navigationBars.buttons.matching(NSPredicate(format: "label IN %@", argumentArray: [["Export", "Save", "Copy", "Move"]]))
         tapVisible(buttons)
-        expect(app, "selected:exported-\(filename)")
+        expect(app, "selected:\(seed ? "" : "exported-")\(filename)")
     }
     func testRequestedPageSheetSwipe() {
         let app = launch(environment: ["CHOOSER_PRESENTATION": "pageSheet"])

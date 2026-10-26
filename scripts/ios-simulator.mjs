@@ -15,6 +15,7 @@ import {
 	simulatorSelection,
 	simulatorTestArguments,
 	simulatorCaseRecords,
+	simulatorDocuments,
 } from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
@@ -27,14 +28,7 @@ const interfaceOrientations = [
 	"UIInterfaceOrientationLandscapeRight",
 ];
 
-const sourceNames = [
-	"fixture-csv.csv",
-	"fixture-image.png",
-	"fixture-json.json",
-	"fixture-mov.mov",
-	"fixture-mp4.mp4",
-	"fixture-pdf.pdf",
-];
+const sourceNames = simulatorDocuments.map(({ name }) => name).sort();
 function sourceFingerprint(directory, names = sourceNames) {
 	return names.map((name) => {
 		const path = join(directory, name);
@@ -240,6 +234,8 @@ export function verifyIosSimulator({
 						path: "Vault-Info.plist",
 						properties: {
 							CFBundleDisplayName: "Chooser Fixtures",
+							ChooserSeedMode:
+								diagnosticScope === "provider" ? "copy" : "export",
 							UILaunchScreen: {},
 							UIFileSharingEnabled: true,
 							LSSupportsOpeningDocumentsInPlace: true,
@@ -632,6 +628,25 @@ export function verifyIosSimulator({
 						env,
 					);
 					sources = join(container, "Documents");
+					if (diagnosticScope === "all") {
+						for (const { format, name } of simulatorDocuments) {
+							suite(
+								join(
+									reportDirectory,
+									`${alias}-${kind}-seed-${format.toLowerCase()}.xcresult`,
+								),
+								"UIKitControl",
+								[`UIKitControlTests/testSeed${format}()`],
+								"provider",
+							);
+							assert.deepEqual(
+								readFileSync(join(sources, name)),
+								readFileSync(join(assets, name)),
+								"System-created source changed fixture bytes",
+							);
+							checked(`${alias}:${kind}:seed-${format.toLowerCase()}`);
+						}
+					}
 					if (diagnosticScope === "provider") {
 						for (const [format, name] of [
 							["JSON", "fixture-json.json"],

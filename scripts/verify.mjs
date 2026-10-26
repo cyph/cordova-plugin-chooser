@@ -21,7 +21,7 @@ import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
 import { verifyIosSimulator } from "./ios-simulator.mjs";
-import { simulatorOptions } from "./simulator-results.mjs";
+import { simulatorOptions, simulatorDocuments } from "./simulator-results.mjs";
 import { spawnVerified } from "./verification-command.mjs";
 import { verifyCapacitorAndroid, prepareCapacitor } from "./capacitor.mjs";
 
@@ -613,6 +613,12 @@ const expectedChecks =
 				"cordova-ios8:compile",
 				...(["all", "provider"].includes(simulatorConfiguration.scope)
 					? [`cordova-ios7:${diagnosticDevice}:provider-setup`]
+					: []),
+				...(simulatorConfiguration.scope === "all"
+					? simulatorDocuments.map(
+							({ format }) =>
+								`cordova-ios7:${diagnosticDevice}:seed-${format.toLowerCase()}`,
+						)
 					: []),
 				...(simulatorConfiguration.scope === "provider"
 					? [

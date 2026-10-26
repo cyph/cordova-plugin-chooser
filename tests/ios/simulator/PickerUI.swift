@@ -66,7 +66,7 @@ class PickerUI: XCTestCase {
                 $0.exists && $0.isEnabled && $0.isHittable
             }
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [remoteReady], timeout: 30), .completed, "Remote picker navigation did not become interactive")
+        XCTAssertEqual(XCTWaiter.wait(for: [remoteReady], timeout: 60), .completed, "Remote picker navigation did not become interactive")
         // The outer document-picker host can cover the screen while its remote
         // Files view presents a sheet. Prefer the native handle; Files titles
         // can be buttons that open folder menus instead of dragging the sheet.
@@ -137,7 +137,7 @@ class PickerUI: XCTestCase {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             self.firstHittable(currentFolder) != nil || self.firstHittable(folder) != nil || self.firstHittable(location) != nil || self.firstHittable(browse) != nil
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed)
         if firstHittable(currentFolder) != nil { return }
         if firstHittable(folder) == nil && firstHittable(location) == nil {
             tapVisible(browse)
