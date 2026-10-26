@@ -188,7 +188,7 @@ class PickerUI: XCTestCase {
 
     func observeSwipeThenCancel(_ app: XCUIApplication) {
         dismissSheet(app)
-        let completed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "canceled:1"), evaluatedWith: app.staticTexts["Outcome"])
+        let completed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "canceled:1"), object: app.staticTexts["Outcome"])
         let result = XCTWaiter.wait(for: [completed], timeout: 5)
         let observed = "Swipe outcome=\(app.staticTexts["Outcome"].label) completed=\(result == .completed)"
         print("CHOOSER_UI \(observed)")
