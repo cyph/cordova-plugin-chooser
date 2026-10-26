@@ -66,6 +66,7 @@ export function verifyIosSimulator({
 		report.diagnostic = {
 			device: diagnosticDevice,
 			scope: diagnosticScope,
+			sourceDocuments: diagnosticScope === "all",
 			required: selected,
 		};
 	assert.equal(
@@ -425,59 +426,63 @@ export function verifyIosSimulator({
 			try {
 				simctl(["boot", udid]);
 				simctl(["bootstatus", udid, "-b"]);
-				const derived = join(directory, "derived");
-				run(
-					"/usr/bin/xcodebuild",
-					[
-						"build",
-						"-project",
-						"ChooserSimulator.xcodeproj",
-						"-scheme",
-						"ChooserVault",
-						"-configuration",
-						"Debug",
-						"-destination",
-						`platform=iOS Simulator,id=${udid}`,
-						"-derivedDataPath",
-						derived,
-						...buildSettings,
-					],
-					directory,
-					false,
-					env,
-				);
-				simctl([
-					"install",
-					udid,
-					join(
-						derived,
-						"Build/Products/Debug-iphonesimulator/ChooserVault.app",
-					),
-				]);
-				simctl(["launch", udid, "com.cyph.chooser.fixtures"]);
-				const container = simctl([
-					"get_app_container",
-					udid,
-					"com.cyph.chooser.fixtures",
-					"data",
-				]);
-				run(
-					"python3",
-					[
-						"-c",
-						"import json,pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.is_file(), 'Fixture source did not become ready'\nstatus=json.loads(p.read_text()); assert status.get('status')=='ready', status",
-						join(container, "Library/Caches/chooser-fixture-ready"),
-					],
-					root,
-					false,
-					env,
-				);
-				const sources = join(container, "Documents");
-				const before = sourceFingerprint(sources);
-				writeFileSync(
-					join(reportDirectory, `${alias}-${kind}-sources.json`),
-					JSON.stringify({ before }, null, 2),
-				);
+				let sources;
+				let before;
+				if (diagnosticScope === "all") {
+					const derived = join(directory, "derived");
+					run(
+						"/usr/bin/xcodebuild",
+						[
+							"build",
+							"-project",
+							"ChooserSimulator.xcodeproj",
+							"-scheme",
+							"ChooserVault",
+							"-configuration",
+							"Debug",
+							"-destination",
+							`platform=iOS Simulator,id=${udid}`,
+							"-derivedDataPath",
+							derived,
+							...buildSettings,
+						],
+						directory,
+						false,
+						env,
+					);
+					simctl([
+						"install",
+						udid,
+						join(
+							derived,
+							"Build/Products/Debug-iphonesimulator/ChooserVault.app",
+						),
+					]);
+					simctl(["launch", udid, "com.cyph.chooser.fixtures"]);
+					const container = simctl([
+						"get_app_container",
+						udid,
+						"com.cyph.chooser.fixtures",
+						"data",
+					]);
+					run(
+						"python3",
+						[
+							"-c",
+							"import json,pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.is_file(), 'Fixture source did not become ready'\nstatus=json.loads(p.read_text()); assert status.get('status')=='ready', status",
+							join(container, "Library/Caches/chooser-fixture-ready"),
+						],
+						root,
+						false,
+						env,
+					);
+					sources = join(container, "Documents");
+					before = sourceFingerprint(sources);
+					writeFileSync(
+						join(reportDirectory, `${alias}-${kind}-sources.json`),
+						JSON.stringify({ before }, null, 2),
+					);
+				}
 
 				const suite = (bundle, scheme, required) =>
 					runSimulatorSuite({
@@ -623,6 +628,7 @@ export function verifyIosSimulator({
 					suite(result, "Chooser", selected.chooser);
 				}, [
 					() => {
+						if (diagnosticScope !== "all") return;
 						const after = sourceFingerprint(sources);
 						writeFileSync(
 							join(reportDirectory, `${alias}-${kind}-sources.json`),
