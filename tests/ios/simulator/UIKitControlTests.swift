@@ -28,4 +28,16 @@ final class UIKitControlTests: PickerUI {
         dismissSheet(app)
         expect(app, "canceled:1")
     }
+    func testSystemDelegateSwipe() {
+        let app = launch(sheet: true)
+        app.buttons["SystemDelegate"].tap()
+        presented(app, serial: 1)
+        dismissSheet(app)
+        // Observe the real transition without installing an adaptive delegate
+        // or treating a synthesized cancellation callback as dismissal.
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !app.staticTexts["PickerReady"].exists && app.buttons["Choose"].isHittable
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 30), .completed, "System-managed picker did not dismiss")
+    }
 }

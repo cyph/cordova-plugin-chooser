@@ -20,11 +20,15 @@ test("captured xcresult trees retain exact case identities and failure outcomes"
 	} = await import("../../scripts/simulator-results.mjs");
 	for (const [label, required] of [
 		["chooser", simulatorCases],
-		// This captured bundle predates the plain-sheet gesture control.
+		// This captured bundle predates the additional gesture controls.
 		[
 			"control",
 			controlCases.filter(
-				(id) => id !== "UIKitControlTests/testPlainSheetSwipe()",
+				(id) =>
+					![
+						"UIKitControlTests/testPlainSheetSwipe()",
+						"UIKitControlTests/testSystemDelegateSwipe()",
+					].includes(id),
 			),
 		],
 	]) {
@@ -98,6 +102,7 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		"UIKitControlTests/testCancel()",
 		"UIKitControlTests/testSwipe()",
 		"UIKitControlTests/testPlainSheetSwipe()",
+		"UIKitControlTests/testSystemDelegateSwipe()",
 	]);
 	assert.deepEqual(focus.chooser, [
 		"ChooserUITests/testCancelPromiseReopen()",
@@ -110,6 +115,7 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		"-only-testing:UIKitControlTests/UIKitControlTests/testCancel",
 		"-only-testing:UIKitControlTests/UIKitControlTests/testSwipe",
 		"-only-testing:UIKitControlTests/UIKitControlTests/testPlainSheetSwipe",
+		"-only-testing:UIKitControlTests/UIKitControlTests/testSystemDelegateSwipe",
 	]);
 });
 

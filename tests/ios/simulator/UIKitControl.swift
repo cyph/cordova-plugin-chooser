@@ -44,6 +44,11 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         sheet.accessibilityIdentifier = "PlainSheet"
         sheet.addAction(UIAction { [weak self] _ in self?.plainSheet() }, for: .touchUpInside)
         controls.addArrangedSubview(sheet)
+        let systemDelegate = UIButton(type: .system)
+        systemDelegate.setTitle("System dismissal delegate", for: .normal)
+        systemDelegate.accessibilityIdentifier = "SystemDelegate"
+        systemDelegate.addAction(UIAction { [weak self] _ in self?.pick(.item, observeDismissal: false) }, for: .touchUpInside)
+        controls.addArrangedSubview(systemDelegate)
         outcome.accessibilityIdentifier = "Outcome"
         outcome.text = "ready"
         controls.addArrangedSubview(outcome)
@@ -55,10 +60,10 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
             controls.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
     }
-    private func pick(_ type: UTType) {
+    private func pick(_ type: UTType, observeDismissal: Bool = true) {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [type], asCopy: true)
         picker.delegate = self
-        showPicker(picker)
+        showPicker(picker, observeDismissal: observeDismissal)
     }
     private func plainSheet() {
         let content = UIViewController()
@@ -71,12 +76,14 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         })
         showPicker(sheet)
     }
-    private func showPicker(_ picker: UIViewController) {
+    private func showPicker(_ picker: UIViewController, observeDismissal: Bool = true) {
         probe.configure(picker)
         current = picker
         recordedDismissalPermission = false
         present(picker, animated: true) {
-            picker.presentationController?.delegate = self
+            let original = picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"
+            FixtureEvents.record("UIKit original presentation delegate=\(original) replaced=\(observeDismissal)")
+            if observeDismissal { picker.presentationController?.delegate = self }
             self.probe.presented(picker)
         }
     }

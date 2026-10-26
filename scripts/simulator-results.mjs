@@ -20,6 +20,7 @@ export const controlCases = [
 	"UIKitControlTests/testCancel()",
 	"UIKitControlTests/testSwipe()",
 	"UIKitControlTests/testPlainSheetSwipe()",
+	"UIKitControlTests/testSystemDelegateSwipe()",
 ];
 
 export function simulatorOptions(args, diagnostic) {
@@ -50,7 +51,9 @@ export function simulatorSelection(diagnostic, scope = "all") {
 	const select = (cases) =>
 		scope === "all"
 			? [...cases]
-			: cases.filter((id) => /\/test(?:Cancel|Swipe|PlainSheetSwipe)/.test(id));
+			: cases.filter((id) =>
+					/\/test(?:Cancel|Swipe|PlainSheetSwipe|SystemDelegateSwipe)/.test(id),
+				);
 	const control = select(controlCases);
 	const chooser = select(simulatorCases);
 	return { control, chooser };
