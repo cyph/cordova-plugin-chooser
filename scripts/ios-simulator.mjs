@@ -59,11 +59,13 @@ export function verifyIosSimulator({
 		),
 	);
 	const env = appleEnvironment(apple);
-	const signing = [
+	const deploymentTarget = "15.0";
+	const buildSettings = [
 		"CODE_SIGNING_ALLOWED=YES",
 		"CODE_SIGN_IDENTITY=-",
 		"CODE_SIGN_STYLE=Manual",
 		"DEVELOPMENT_TEAM=",
+		`IPHONEOS_DEPLOYMENT_TARGET=${deploymentTarget}`,
 	];
 	assert.equal(
 		run("/usr/bin/xcodebuild", ["-version"], root, true, env),
@@ -160,7 +162,7 @@ export function verifyIosSimulator({
 			join(generated, "platforms/ios", name, "config.xml"),
 			join(directory, "config.xml"),
 		);
-		const common = { platform: "iOS", deploymentTarget: "15.0" };
+		const common = { platform: "iOS", deploymentTarget };
 		const legacy = alias === "cordova-ios7";
 		const cordova = {
 			target: `Cordova/${legacy ? "CordovaLib" : "Cordova"}`,
@@ -396,7 +398,7 @@ export function verifyIosSimulator({
 					"-derivedDataPath",
 					join(directory, "derived"),
 					`ARCHS=${process.arch === "arm64" ? "arm64" : "x86_64"}`,
-					...signing,
+					...buildSettings,
 				],
 				directory,
 				false,
@@ -445,7 +447,7 @@ export function verifyIosSimulator({
 						`platform=iOS Simulator,id=${udid}`,
 						"-derivedDataPath",
 						derived,
-						...signing,
+						...buildSettings,
 					],
 					directory,
 					false,
@@ -510,7 +512,7 @@ export function verifyIosSimulator({
 									bundle,
 									"-derivedDataPath",
 									join(directory, "derived"),
-									...signing,
+									...buildSettings,
 									"AppleLanguages=(en)",
 									"AppleLocale=en_US",
 								],
