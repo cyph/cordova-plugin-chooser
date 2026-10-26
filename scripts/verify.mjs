@@ -419,6 +419,7 @@ function android() {
 
 function ios(modern = false) {
 	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
+	run("node", ["--test", "tests/tooling/verification-command.test.cjs"]);
 	const apple = readJSON(
 		join(root, modern ? "chainman/apple-modern.json" : "chainman/apple.json"),
 	);
@@ -614,6 +615,8 @@ const expectedChecks =
 			]
 		: requiredChecks[lane];
 function simulator(diagnostic = false) {
+	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
+	run("node", ["--test", "tests/tooling/verification-command.test.cjs"]);
 	return verifyIosSimulator({
 		root,
 		output,
