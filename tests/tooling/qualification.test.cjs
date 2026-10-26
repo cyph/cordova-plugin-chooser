@@ -85,6 +85,7 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		assert.throws(() => simulatorOptions(args, false));
 	for (const args of [
 		["--unknown"],
+		["--presentation-only"],
 		["--dismissal-only", "--dismissal-only"],
 		["other"],
 		["baseline", "other"],
@@ -114,7 +115,7 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		simulatorTestArguments(controlCases, "all").length,
 		controlCases.length,
 	);
-	for (const scope of ["provider", "presentation"]) {
+	for (const scope of ["provider"]) {
 		assert.deepEqual(simulatorOptions([`--${scope}-only`], true).scope, scope);
 		assert.throws(() => simulatorOptions([`--${scope}-only`], false));
 		assert.throws(() => simulatorSelection(false, scope));
@@ -131,7 +132,7 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		}
 	}
 	assert.throws(() =>
-		simulatorOptions(["--provider-only", "--presentation-only"], true),
+		simulatorOptions(["--provider-only", "--dismissal-only"], true),
 	);
 	assert.deepEqual(simulatorTestArguments(focus.control, "dismissal"), [
 		"-only-testing:UIKitControlTests/UIKitControlTests/testCancel",

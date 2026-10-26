@@ -192,25 +192,6 @@ class PickerUI: XCTestCase {
         expect(app, "\(resultPrefix):\(filename)")
     }
 
-    func observeSwipeThenCancel(_ app: XCUIApplication) {
-        dismissSheet(app)
-        let completed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "canceled:1"), object: app.staticTexts["Outcome"])
-        let result = XCTWaiter.wait(for: [completed], timeout: 5)
-        let observed = "Swipe outcome=\(app.staticTexts["Outcome"].label) completed=\(result == .completed)"
-        print("CHOOSER_UI \(observed)")
-        let attachment = XCTAttachment(string: observed)
-        attachment.name = "Observed swipe outcome"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        if result != .completed {
-            // A prevented gesture must leave the request pending. Verify that
-            // the real Cancel control can still finish it; do not invent a callback.
-            expect(app, "ready")
-            cancel(app)
-            expect(app, "canceled:1")
-        }
-    }
-
     func pendingPicker(_ app: XCUIApplication) {
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "ready"), object: app.staticTexts["Outcome"])
         settled.isInverted = true

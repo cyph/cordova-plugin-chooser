@@ -15,12 +15,6 @@ final class ChooserUITests: PickerUI {
     func testMetadataExportedPDF() { select("PDF", "exported-fixture-pdf.pdf") }
     func testUriOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"], resultPrefix: "copied") }
     func testUriExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"], resultPrefix: "copied") }
-    func testDefaultSwipeThenCancel() {
-        let app = launch()
-        app.buttons["Choose"].tap()
-        presented(app, serial: 1)
-        observeSwipeThenCancel(app)
-    }
 
     private func reopen(_ mode: String, swipe: Bool) {
         let policy = ProcessInfo.processInfo.environment["CHOOSER_NATIVE_SWIPE_POLICY"]

@@ -601,7 +601,7 @@ export function verifyIosSimulator({
 						),
 					]);
 					// Start the local provider through a real picker interaction before
-					// the source app creates documents in its shared directory.
+					// the shared source container is populated.
 					suite(
 						join(reportDirectory, `${alias}-${kind}-provider-setup.xcresult`),
 						"UIKitControl",

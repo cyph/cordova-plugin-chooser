@@ -47,11 +47,6 @@ const providerChooserCases = [
 	"MetadataExportedPDF",
 	"UriExportedPDF",
 ].map((name) => `ChooserUITests/test${name}()`);
-const presentationControlCases = [
-	"RequestedPageSheetSwipe",
-	"RequestedFullScreenCancel",
-	"DefaultSwipeThenCancel",
-].map((name) => `UIKitControlTests/test${name}()`);
 
 export function simulatorOptions(args, diagnostic) {
 	if (!diagnostic)
@@ -60,9 +55,7 @@ export function simulatorOptions(args, diagnostic) {
 	assert(
 		switches.length <= 1 &&
 			switches.every((arg) =>
-				["--dismissal-only", "--provider-only", "--presentation-only"].includes(
-					arg,
-				),
+				["--dismissal-only", "--provider-only"].includes(arg),
 			),
 		"Unexpected simulator switch",
 	);
@@ -83,7 +76,7 @@ export function simulatorOptions(args, diagnostic) {
 
 export function simulatorSelection(diagnostic, scope = "all") {
 	assert(
-		["all", "dismissal", "provider", "presentation"].includes(scope),
+		["all", "dismissal", "provider"].includes(scope),
 		"Unexpected simulator scope",
 	);
 	assert(
@@ -94,11 +87,6 @@ export function simulatorSelection(diagnostic, scope = "all") {
 		return {
 			control: [...providerControlCases],
 			chooser: [...providerChooserCases],
-		};
-	if (scope === "presentation")
-		return {
-			control: [...presentationControlCases],
-			chooser: ["ChooserUITests/testDefaultSwipeThenCancel()"],
 		};
 	const select = (cases) =>
 		scope === "all"
@@ -113,7 +101,7 @@ export function simulatorSelection(diagnostic, scope = "all") {
 
 export function simulatorTestArguments(required, scope) {
 	assert(
-		["all", "dismissal", "provider", "presentation"].includes(scope),
+		["all", "dismissal", "provider"].includes(scope),
 		"Unexpected simulator scope",
 	);
 	// Select exact cases even for the full lane: exploratory cases live in the

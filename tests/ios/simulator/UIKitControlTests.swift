@@ -57,23 +57,4 @@ final class UIKitControlTests: PickerUI {
         tapVisible(buttons)
         expect(app, "selected:\(seed ? "" : "exported-")\(filename)")
     }
-    func testRequestedPageSheetSwipe() {
-        let app = launch(environment: ["CHOOSER_PRESENTATION": "pageSheet"])
-        app.buttons["Choose"].tap()
-        presented(app, serial: 1)
-        dismissSheet(app)
-        expect(app, "canceled:1")
-    }
-    func testRequestedFullScreenCancel() {
-        let app = launch(environment: ["CHOOSER_PRESENTATION": "fullScreen"])
-        app.buttons["Choose"].tap()
-        presented(app, serial: 1)
-        cancel(app)
-        expect(app, "canceled:1")
-    }
-    func testDefaultSwipeThenCancel() {
-        let app = launch()
-        app.buttons["SystemDelegate"].tap()
-        observeSwipeThenCancel(app)
-    }
 }

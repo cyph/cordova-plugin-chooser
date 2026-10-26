@@ -103,14 +103,6 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     }
     private func showPicker(_ picker: UIViewController, observeDismissal: Bool = true) {
         current = picker
-        let requested = ProcessInfo.processInfo.environment["CHOOSER_PRESENTATION"] ?? "default"
-        let previous = picker.modalPresentationStyle.rawValue
-        switch requested {
-        case "pageSheet": picker.modalPresentationStyle = .pageSheet
-        case "fullScreen": picker.modalPresentationStyle = .fullScreen
-        default: break
-        }
-        FixtureEvents.record("UIKit presentation requested=\(requested) previous=\(previous) assigned=\(picker.modalPresentationStyle.rawValue)")
         // This control must leave UIKit presentation completely untouched,
         // including its adaptive delegate and view/accessibility hierarchy.
         guard observeDismissal else {
