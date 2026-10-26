@@ -56,14 +56,21 @@ function retain(source, name) {
 	assert(existsSync(source), `Missing qualification output: ${source}`);
 	cpSync(source, join(reportDirectory, name), { recursive: true });
 }
-const run = (command, args, cwd = root, capture = false, env = {}) => {
+const run = (
+	command,
+	args,
+	cwd = root,
+	capture = false,
+	env = {},
+	{ timeout = 20 * 60 * 1000 } = {},
+) => {
 	console.log(`> ${command} ${args.join(" ")}`);
 	const result = spawnSync(command, args, {
 		cwd,
 		env: { ...process.env, ...env },
 		stdio: "pipe",
 		encoding: "utf8",
-		timeout: 20 * 60 * 1000,
+		timeout,
 		maxBuffer: 64 * 1024 * 1024,
 	});
 	mkdirSync(reportDirectory, { recursive: true });
@@ -219,6 +226,7 @@ function portable() {
 		"tests/tooling/verification.test.cjs",
 		"tests/tooling/package.test.cjs",
 		"tests/tooling/qualification.test.cjs",
+		"tests/tooling/verification-lifecycle.test.cjs",
 	]);
 	checked("tooling");
 	run("python3", [
@@ -661,7 +669,7 @@ try {
 		rmSync(reportDirectory, { recursive: true, force: true });
 		saveReport();
 	}
-	lanes[lane]();
+	await lanes[lane]();
 	if (Object.hasOwn(requiredChecks, lane)) {
 		for (const check of requiredChecks[lane])
 			assert(
@@ -675,6 +683,13 @@ try {
 	if (Object.hasOwn(requiredChecks, lane)) {
 		report.status = "failed";
 		report.failure = error.message;
+		const describe = (error) => ({
+			name: error.name,
+			message: error.message,
+			...(error.cause ? { cause: describe(error.cause) } : {}),
+			...(error.errors ? { errors: error.errors.map(describe) } : {}),
+		});
+		report.failureDetails = describe(error);
 		saveReport();
 	}
 	throw error;

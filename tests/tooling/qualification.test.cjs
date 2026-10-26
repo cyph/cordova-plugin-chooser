@@ -5,29 +5,76 @@ const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 const { version } = require("../../package.json");
 
-test("simulator evidence requires every case, with no failures or skips", async () => {
-	const { checkSimulatorResults, simulatorCases } =
+test("simulator evidence requires exact passing case identities and consistent totals", async () => {
+	const { checkSimulatorResults, simulatorCases, controlCases } =
 		await import("../../scripts/simulator-results.mjs");
-	const summary = {
-		totalTestCount: 7,
-		passedTests: 7,
+	const tree = (ids) => ({
+		testNodes: [
+			{
+				nodeType: "Test Plan",
+				children: [
+					{
+						nodeType: "Destination",
+						children: ids.map((nodeIdentifier) => ({
+							nodeType: "Test Case",
+							nodeIdentifier,
+							result: "Passed",
+						})),
+					},
+				],
+			},
+		],
+	});
+	const summary = (ids) => ({
+		totalTestCount: ids.length,
+		passedTests: ids.length,
 		failedTests: 0,
 		skippedTests: 0,
-	};
-	checkSimulatorResults(summary, simulatorCases);
-	for (const patch of [
-		{ totalTestCount: 0 },
-		{ passedTests: 6 },
-		{ failedTests: 1 },
-		{ skippedTests: 1 },
-	])
-		assert.throws(() =>
-			checkSimulatorResults({ ...summary, ...patch }, simulatorCases),
-		);
-	assert.throws(
-		() => checkSimulatorResults(summary, simulatorCases.slice(1)),
-		/Missing simulator case/,
-	);
+	});
+	for (const required of [simulatorCases, controlCases]) {
+		checkSimulatorResults(summary(required), tree(required), required);
+		for (const patch of [
+			{ totalTestCount: 0 },
+			{ totalTestCount: required.length + 1 },
+			{ passedTests: 0 },
+			{ failedTests: 1 },
+			{ skippedTests: 1 },
+		])
+			assert.throws(() =>
+				checkSimulatorResults(
+					{ ...summary(required), ...patch },
+					tree(required),
+					required,
+				),
+			);
+		for (const ids of [
+			required.slice(1),
+			[...required, required[0]],
+			required.map((id) => id.replace("()", "Replacement()")),
+			required.map((id) => "OtherSuite/" + id.split("/")[1]),
+		])
+			assert.throws(() =>
+				checkSimulatorResults(summary(ids), tree(ids), required),
+			);
+		for (const result of ["Failed", "Skipped", "Expected Failure", undefined]) {
+			const data = tree(required);
+			data.testNodes[0].children[0].children[0].result = result;
+			assert.throws(() =>
+				checkSimulatorResults(summary(required), data, required),
+			);
+		}
+		for (const data of [
+			required,
+			{ testNodes: null },
+			{ testNodes: [{ children: "bad" }] },
+			{
+				testNodes: [{ nodeType: "Failure Message", name: required.join(" ") }],
+			},
+		])
+			assert.throws(() =>
+				checkSimulatorResults(summary(required), data, required),
+			);
+	}
 });
 
 test("qualification requires every successful job, complete reports and the same package", async (t) => {

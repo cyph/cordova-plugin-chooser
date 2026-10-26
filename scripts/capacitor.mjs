@@ -16,6 +16,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
+import {
+	withAsyncFinalizers,
+	stopOwnedChild,
+} from "./verification-lifecycle.mjs";
 
 const pause = (milliseconds) =>
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
@@ -120,7 +124,7 @@ export function prepareCapacitor({ root, output, run, pack }) {
 	};
 }
 
-export function verifyCapacitorAndroid(context) {
+export async function verifyCapacitorAndroid(context) {
 	const { root, output, reportDirectory, report, run, checked, aapt2Path } =
 		context;
 	assert.equal(process.platform, "linux");
@@ -140,102 +144,111 @@ export function verifyCapacitorAndroid(context) {
 	const avdHome = join(output, "capacitor-avd");
 	rmSync(avdHome, { recursive: true, force: true });
 	mkdirSync(avdHome, { recursive: true });
-	const emulatorEnv = {
-		...env,
-		ANDROID_HOME: sdk,
-		ANDROID_SDK_ROOT: sdk,
-		ANDROID_AVD_HOME: avdHome,
-	};
-	const avd = "chooser-api33";
-	// avdmanager's custom-device prompt is answered by its default (EOF).
-	const versions = readdirSync(join(sdk, "cmdline-tools")).filter((version) =>
-		existsSync(join(sdk, "cmdline-tools", version, "bin/avdmanager")),
-	);
-	assert.equal(
-		versions.length,
-		1,
-		"Expected one pinned Android command-line tools version",
-	);
-	const avdmanager = join(sdk, "cmdline-tools", versions[0], "bin/avdmanager");
-	accessSync(avdmanager, constants.R_OK | constants.X_OK);
-	run(
-		avdmanager,
-		[
-			"create",
-			"avd",
-			"--force",
-			"--name",
-			avd,
-			"--package",
-			"system-images;android-33;google_apis;x86_64",
-			"--device",
-			"pixel_6",
-		],
-		root,
-		false,
-		emulatorEnv,
-	);
-	const executable = join(sdk, "emulator/emulator");
-	accessSync(executable, constants.R_OK | constants.X_OK);
-	report.toolchain.emulator = run(
-		executable,
-		["-version"],
-		root,
-		true,
-		emulatorEnv,
-	);
-	const port = 5554 + randomInt(64) * 2;
-	const serial = `emulator-${port}`;
-	assert(
-		!run(
-			join(sdk, "platform-tools/adb"),
-			["devices"],
-			root,
-			true,
-			emulatorEnv,
-		).includes(serial),
-		"Selected emulator port is already in use",
-	);
-	const adb = (args) =>
+	let emulator;
+	let adb;
+	await withAsyncFinalizers(() => {
+		const emulatorEnv = {
+			...env,
+			ANDROID_HOME: sdk,
+			ANDROID_SDK_ROOT: sdk,
+			ANDROID_AVD_HOME: avdHome,
+		};
+		const avd = "chooser-api33";
+		// avdmanager's custom-device prompt is answered by its default (EOF).
+		const versions = readdirSync(join(sdk, "cmdline-tools")).filter((version) =>
+			existsSync(join(sdk, "cmdline-tools", version, "bin/avdmanager")),
+		);
+		assert.equal(
+			versions.length,
+			1,
+			"Expected one pinned Android command-line tools version",
+		);
+		const avdmanager = join(
+			sdk,
+			"cmdline-tools",
+			versions[0],
+			"bin/avdmanager",
+		);
+		accessSync(avdmanager, constants.R_OK | constants.X_OK);
 		run(
-			join(sdk, "platform-tools/adb"),
-			["-s", serial, ...args],
+			avdmanager,
+			[
+				"create",
+				"avd",
+				"--force",
+				"--name",
+				avd,
+				"--package",
+				"system-images;android-33;google_apis;x86_64",
+				"--device",
+				"pixel_6",
+			],
+			root,
+			false,
+			emulatorEnv,
+		);
+		const executable = join(sdk, "emulator/emulator");
+		accessSync(executable, constants.R_OK | constants.X_OK);
+		report.toolchain.emulator = run(
+			executable,
+			["-version"],
 			root,
 			true,
 			emulatorEnv,
 		);
-	const log = openSync(join(reportDirectory, "emulator.log"), "w");
-	const emulator = spawn(
-		executable,
-		[
-			"-avd",
-			avd,
-			"-port",
-			String(port),
-			"-memory",
-			"2048",
-			"-cores",
-			"2",
-			"-no-window",
-			"-no-audio",
-			"-no-boot-anim",
-			"-no-snapshot",
-			"-gpu",
-			"swiftshader_indirect",
-			"-accel",
-			"on",
-		],
-		{
-			env: { ...process.env, ...emulatorEnv },
-			stdio: ["ignore", log, log],
-			detached: true,
-		},
-	);
-	closeSync(log);
-	try {
+		const port = 5554 + randomInt(64) * 2;
+		const serial = `emulator-${port}`;
+		assert(
+			!run(
+				join(sdk, "platform-tools/adb"),
+				["devices"],
+				root,
+				true,
+				emulatorEnv,
+			).includes(serial),
+			"Selected emulator port is already in use",
+		);
+		adb = (args, timeout = 30_000) =>
+			run(
+				join(sdk, "platform-tools/adb"),
+				["-s", serial, ...args],
+				root,
+				true,
+				emulatorEnv,
+				{ timeout },
+			);
+		const log = openSync(join(reportDirectory, "emulator.log"), "w");
+		emulator = spawn(
+			executable,
+			[
+				"-avd",
+				avd,
+				"-port",
+				String(port),
+				"-memory",
+				"2048",
+				"-cores",
+				"2",
+				"-no-window",
+				"-no-audio",
+				"-no-boot-anim",
+				"-no-snapshot",
+				"-gpu",
+				"swiftshader_indirect",
+				"-accel",
+				"on",
+			],
+			{
+				env: { ...process.env, ...emulatorEnv },
+				stdio: ["ignore", log, log],
+				detached: true,
+			},
+		);
+		emulator.on("error", () => {});
+		closeSync(log);
 		assert(emulator.pid, "Emulator failed to start");
 		// Wait for the selected serial only; never attach to another emulator.
-		adb(["wait-for-device"]);
+		adb(["wait-for-device"], 4 * 60 * 1000);
 		const end = Date.now() + 4 * 60 * 1000;
 		let ready = false;
 		while (Date.now() < end) {
@@ -283,25 +296,18 @@ export function verifyCapacitorAndroid(context) {
 			results,
 		]);
 		checked("api33-bridge");
-	} finally {
-		if (emulator.pid) {
-			try {
+	}, [
+		() => {
+			if (emulator?.pid)
 				writeFileSync(
 					join(reportDirectory, "logcat.txt"),
 					adb(["logcat", "-d"]),
 				);
-			} finally {
-				try {
-					adb(["emu", "kill"]);
-				} finally {
-					try {
-						process.kill(-emulator.pid, "SIGTERM");
-					} catch (error) {
-						if (error.code !== "ESRCH") throw error;
-					}
-				}
-			}
-		}
-		rmSync(avdHome, { recursive: true, force: true });
-	}
+		},
+		() => {
+			if (emulator?.pid) adb(["emu", "kill"]);
+		},
+		() => stopOwnedChild(emulator),
+		() => rmSync(avdHome, { recursive: true, force: true }),
+	]);
 }

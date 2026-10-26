@@ -1,29 +1,71 @@
 import assert from "node:assert/strict";
 
+const formats = ["JSON", "CSV", "PDF", "Image", "MP4", "MOV"];
 export const simulatorCases = [
-	"testAdaptiveDismissalAndStaleCallbacks",
-	"testResetAndDuplicateSelectionCannotSettleANewerRequest",
-	"testMovieWildcardIncludesMP4AndQuickTime",
-	"testCancelAndImmediateReopen",
-	"testSwipeSheetSettlesOnceAndReopens",
-	"testLocalFilesAndVideoWildcard",
-	"testNativeUIKitControl",
+	...[
+		"testAdaptiveDismissalAndStaleCallbacks",
+		"testResetAndDuplicateSelectionCannotSettleANewerRequest",
+		"testMovieWildcardIncludesMP4AndQuickTime",
+	].map((name) => `ChooserPickerTests/${name}()`),
+	...formats.map((name) => `ChooserUITests/test${name}()`),
+	...[
+		"testCancelPromiseReopen",
+		"testCancelCallbackReopen",
+		"testSwipePromiseReopen",
+		"testSwipeCallbackReopen",
+	].map((name) => `ChooserUITests/${name}()`),
+];
+export const controlCases = [
+	...formats.map((name) => `UIKitControlTests/test${name}()`),
+	"UIKitControlTests/testCancel()",
+	"UIKitControlTests/testSwipe()",
 ];
 
-export function checkSimulatorResults(summary, tests) {
-	assert(
-		Number.isSafeInteger(summary.totalTestCount) &&
-			summary.totalTestCount >= simulatorCases.length,
-		"Missing simulator tests",
+export function checkSimulatorResults(
+	summary,
+	tests,
+	required = simulatorCases,
+) {
+	assert(Array.isArray(tests?.testNodes), "Missing simulator test tree");
+	const cases = [];
+	function visit(nodes) {
+		for (const node of nodes) {
+			assert(node && typeof node === "object", "Malformed simulator node");
+			if (node.nodeType === "Test Case") {
+				assert.equal(
+					typeof node.nodeIdentifier,
+					"string",
+					"Missing test identity",
+				);
+				assert.equal(
+					node.result,
+					"Passed",
+					`Unsuccessful case: ${node.nodeIdentifier}`,
+				);
+				cases.push(node.nodeIdentifier);
+			} else if (node.children !== undefined) {
+				assert(Array.isArray(node.children), "Malformed simulator children");
+				visit(node.children);
+			}
+		}
+	}
+	visit(tests.testNodes);
+	assert.equal(new Set(cases).size, cases.length, "Duplicate simulator case");
+	assert.deepEqual(
+		[...cases].sort(),
+		[...required].sort(),
+		"Missing or unexpected simulator case",
+	);
+	assert.equal(
+		summary.totalTestCount,
+		cases.length,
+		"Inconsistent simulator total",
 	);
 	assert.equal(
 		summary.passedTests,
-		summary.totalTestCount,
+		cases.length,
 		"Unsuccessful simulator tests",
 	);
 	assert.equal(summary.skippedTests, 0, "Simulator tests were skipped");
 	assert.equal(summary.failedTests, 0, "Simulator tests failed");
-	const tree = JSON.stringify(tests);
-	for (const name of simulatorCases)
-		assert(tree.includes(name), `Missing simulator case: ${name}`);
 }
