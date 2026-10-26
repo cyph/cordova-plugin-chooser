@@ -610,8 +610,14 @@ const expectedChecks =
 				"package",
 				"cordova-ios7:compile",
 				"cordova-ios8:compile",
-				...(simulatorConfiguration.scope === "all"
+				...(["all", "provider"].includes(simulatorConfiguration.scope)
 					? [`cordova-ios7:${diagnosticDevice}:provider-setup`]
+					: []),
+				...(simulatorConfiguration.scope === "provider"
+					? [
+							`cordova-ios7:${diagnosticDevice}:export-json`,
+							`cordova-ios7:${diagnosticDevice}:export-pdf`,
+						]
 					: []),
 				`cordova-ios7:${diagnosticDevice}:native-control`,
 				`cordova-ios7:${diagnosticDevice}`,

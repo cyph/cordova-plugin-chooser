@@ -11,6 +11,16 @@ final class ChooserUITests: PickerUI {
     func testCancelCallbackReopen() { reopen("callback", swipe: false) }
     func testSwipePromiseReopen() { reopen("promise", swipe: true) }
     func testSwipeCallbackReopen() { reopen("callback", swipe: true) }
+    func testMetadataOriginalPDF() { select("PDF", "fixture-pdf.pdf") }
+    func testMetadataExportedPDF() { select("PDF", "exported-fixture-pdf.pdf") }
+    func testUriOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"]) }
+    func testUriExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"]) }
+    func testDefaultSwipeThenCancel() {
+        let app = launch()
+        app.buttons["Choose"].tap()
+        presented(app, serial: 1)
+        observeSwipeThenCancel(app)
+    }
 
     private func reopen(_ mode: String, swipe: Bool) {
         let app = launch(sheet: swipe, reopen: mode)

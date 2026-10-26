@@ -34,8 +34,8 @@ const sourceNames = [
 	"fixture-mp4.mp4",
 	"fixture-pdf.pdf",
 ];
-function sourceFingerprint(directory) {
-	return sourceNames.map((name) => {
+function sourceFingerprint(directory, names = sourceNames) {
+	return names.map((name) => {
 		const path = join(directory, name);
 		const attributes = statSync(path, { bigint: true });
 		return {
@@ -66,7 +66,7 @@ export function verifyIosSimulator({
 		report.diagnostic = {
 			device: diagnosticDevice,
 			scope: diagnosticScope,
-			sourceDocuments: diagnosticScope === "all",
+			sourceDocuments: ["all", "provider"].includes(diagnosticScope),
 			required: selected,
 		};
 	assert.equal(
@@ -109,6 +109,9 @@ export function verifyIosSimulator({
 		run("/usr/bin/xcrun", ["simctl", ...args], root, true, env);
 	const runtime = `com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`;
 	const runtimes = JSON.parse(simctl(["list", "runtimes", "--json"])).runtimes;
+	report.toolchain.availableSimulatorRuntimes = runtimes
+		.filter((item) => item.isAvailable)
+		.map(({ identifier }) => identifier);
 	assert(
 		runtimes.some((item) => item.identifier === runtime && item.isAvailable),
 		"Pinned iOS simulator runtime is unavailable",
@@ -293,6 +296,7 @@ export function verifyIosSimulator({
 					sources: [
 						"fixture/UIKitControl.swift",
 						"fixture/FixturePresentation.swift",
+						{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
 					],
 					settings: {
 						base: {
@@ -558,7 +562,8 @@ export function verifyIosSimulator({
 					});
 				let sources;
 				let before;
-				if (diagnosticScope === "all") {
+				let fingerprintNames = [...sourceNames];
+				if (["all", "provider"].includes(diagnosticScope)) {
 					const derived = join(directory, "derived");
 					run(
 						"/usr/bin/xcodebuild",
@@ -616,7 +621,39 @@ export function verifyIosSimulator({
 						env,
 					);
 					sources = join(container, "Documents");
-					before = sourceFingerprint(sources);
+					if (diagnosticScope === "provider") {
+						for (const [format, name] of [
+							["JSON", "fixture-json.json"],
+							["PDF", "fixture-pdf.pdf"],
+						]) {
+							try {
+								suite(
+									join(
+										reportDirectory,
+										`${alias}-${kind}-export-${format.toLowerCase()}.xcresult`,
+									),
+									"UIKitControl",
+									[`UIKitControlTests/testExport${format}()`],
+									"provider",
+								);
+								const exported = `exported-${name}`;
+								assert.deepEqual(
+									readFileSync(join(sources, exported)),
+									readFileSync(join(sources, name)),
+									"System export changed fixture bytes",
+								);
+								fingerprintNames.push(exported);
+								checked(`${alias}:${kind}:export-${format.toLowerCase()}`);
+							} catch (error) {
+								failures.push(
+									new Error(`${alias}/${kind} ${format} system export failed`, {
+										cause: error,
+									}),
+								);
+							}
+						}
+					}
+					before = sourceFingerprint(sources, fingerprintNames);
 					writeFileSync(
 						join(reportDirectory, `${alias}-${kind}-sources.json`),
 						JSON.stringify({ before }, null, 2),
@@ -637,8 +674,8 @@ export function verifyIosSimulator({
 					suite(result, "Chooser", selected.chooser);
 				}, [
 					() => {
-						if (diagnosticScope !== "all") return;
-						const after = sourceFingerprint(sources);
+						if (!["all", "provider"].includes(diagnosticScope)) return;
+						const after = sourceFingerprint(sources, fingerprintNames);
 						writeFileSync(
 							join(reportDirectory, `${alias}-${kind}-sources.json`),
 							JSON.stringify({ before, after }, null, 2),

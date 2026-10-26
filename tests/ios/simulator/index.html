@@ -4,10 +4,14 @@
 const report = text => window.webkit.messageHandlers.fixture.postMessage(text);
 const failed = error => report('error:' + String(error));
 document.addEventListener('deviceready', () => report('ready'), false);
-window.pick = (accept, reopen) => {
-  if (!reopen) return chooser.getFileMetadata(accept).then(file => {
+window.pick = (accept, reopen, method) => {
+  if (!reopen) return (method === 'uri' ? chooser.getFileUri({accept}) : chooser.getFileMetadata(accept)).then(async file => {
+    if (method === 'uri' && file !== undefined) {
+      if (typeof file.id !== 'string' || file.size <= 0) throw new Error('Invalid managed copy');
+      await chooser.releaseFile(file.id);
+    }
     report(file === undefined ? 'canceled:1' : 'selected:' + file.name);
-  }, failed);
+  }).catch(failed);
   const counts = [0, 0];
   function received(index, file) {
     counts[index]++;

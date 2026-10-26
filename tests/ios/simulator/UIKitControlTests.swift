@@ -39,4 +39,42 @@ final class UIKitControlTests: PickerUI {
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 30), .completed, "System-managed picker did not dismiss")
     }
+    func testImportOriginalJSON() { select("JSON", "fixture-json.json") }
+    func testOpenOriginalJSON() { select("JSON", "fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
+    func testImportExportedJSON() { select("JSON", "exported-fixture-json.json") }
+    func testOpenExportedJSON() { select("JSON", "exported-fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
+    func testImportOriginalPDF() { select("PDF", "fixture-pdf.pdf") }
+    func testOpenOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
+    func testImportExportedPDF() { select("PDF", "exported-fixture-pdf.pdf") }
+    func testOpenExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
+    func testExportJSON() { export("fixture-json.json") }
+    func testExportPDF() { export("fixture-pdf.pdf") }
+    private func export(_ filename: String) {
+        let app = launch(environment: ["CHOOSER_EXPORT_FILE": filename])
+        app.buttons["ExportFixture"].tap()
+        presented(app, serial: 1)
+        browseFixtures(app)
+        let buttons = app.navigationBars.buttons.matching(NSPredicate(format: "label IN %@", argumentArray: [["Export", "Save", "Copy", "Move"]]))
+        tapVisible(buttons)
+        expect(app, "selected:exported-\(filename)")
+    }
+    func testPageSheetSwipe() {
+        let app = launch(environment: ["CHOOSER_PRESENTATION": "pageSheet"])
+        app.buttons["Choose"].tap()
+        presented(app, serial: 1)
+        dismissSheet(app)
+        expect(app, "canceled:1")
+    }
+    func testFullScreenCancel() {
+        let app = launch(environment: ["CHOOSER_PRESENTATION": "fullScreen"])
+        app.buttons["Choose"].tap()
+        presented(app, serial: 1)
+        cancel(app)
+        expect(app, "canceled:1")
+    }
+    func testDefaultSwipeThenCancel() {
+        let app = launch()
+        app.buttons["SystemDelegate"].tap()
+        observeSwipeThenCancel(app)
+    }
 }

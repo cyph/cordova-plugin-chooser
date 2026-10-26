@@ -23,7 +23,7 @@ on:
       ios_diagnostic_scope:
         description: Cases to run in the focused diagnostic
         type: choice
-        options: [all, dismissal]
+        options: [all, dismissal, provider, presentation]
         default: all
 permissions:
   contents: read
@@ -233,9 +233,9 @@ jobs:
             if [ '${{ inputs.ios_diagnostic_device }}' = ipad ]; then
               task="$task-ipad"
             fi
-            if [ '${{ inputs.ios_diagnostic_scope }}' = dismissal ]; then
-              set -- --dismissal-only
-            fi
+            case '${{ inputs.ios_diagnostic_scope }}' in
+              dismissal|provider|presentation) set -- "--${{ inputs.ios_diagnostic_scope }}-only" ;;
+            esac
           else
             task=verify-ios-simulator
           fi

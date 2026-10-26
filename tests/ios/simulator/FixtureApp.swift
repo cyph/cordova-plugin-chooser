@@ -61,7 +61,8 @@ final class FixtureController: CDVViewController {
             button.accessibilityIdentifier = title
             button.addAction(UIAction { [weak self] _ in
                 let reopen = ProcessInfo.processInfo.environment["CHOOSER_REOPEN"] ?? ""
-                let argument = String(data: try! JSONSerialization.data(withJSONObject: [filter, reopen]), encoding: .utf8)!
+                let method = ProcessInfo.processInfo.environment["CHOOSER_METHOD"] ?? "metadata"
+                let argument = String(data: try! JSONSerialization.data(withJSONObject: [filter, reopen, method]), encoding: .utf8)!
                 (self?.webView as? WKWebView)?.evaluateJavaScript("window.pick.apply(null, \(argument))", completionHandler: nil)
             }, for: .touchUpInside)
             controls.addArrangedSubview(button)

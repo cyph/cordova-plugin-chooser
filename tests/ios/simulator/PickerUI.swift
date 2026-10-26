@@ -28,11 +28,12 @@ class PickerUI: XCTestCase {
         if files.state != .notRunning { files.terminate() }
         super.tearDown()
     }
-    func launch(sheet: Bool = false, reopen: String = "") -> XCUIApplication {
+    func launch(sheet: Bool = false, reopen: String = "", environment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["CHOOSER_TEST_SHEET"] = sheet ? "1" : "0"
         app.launchEnvironment["CHOOSER_REOPEN"] = reopen
         app.launchEnvironment["CHOOSER_CASE"] = name
+        for (key, value) in environment { app.launchEnvironment[key] = value }
         app.launch()
         XCTAssertTrue(app.staticTexts["Outcome"].waitForExistence(timeout: 20))
         expect(app, "ready")
@@ -154,8 +155,8 @@ class PickerUI: XCTestCase {
         }
         tapVisible(folder)
     }
-    func select(_ button: String, _ filename: String) {
-        let app = launch()
+    func select(_ button: String, _ filename: String, environment: [String: String] = [:]) {
+        let app = launch(environment: environment)
         app.buttons[button].tap()
         presented(app, serial: 1)
         browseFixtures(app)
@@ -183,5 +184,24 @@ class PickerUI: XCTestCase {
         let open = app.buttons["Open"].firstMatch
         if open.waitForExistence(timeout: 2) { open.tap() }
         expect(app, "selected:\(filename)")
+    }
+
+    func observeSwipeThenCancel(_ app: XCUIApplication) {
+        dismissSheet(app)
+        let completed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "canceled:1"), evaluatedWith: app.staticTexts["Outcome"])
+        let result = XCTWaiter.wait(for: [completed], timeout: 5)
+        let observed = "Swipe outcome=\(app.staticTexts["Outcome"].label) completed=\(result == .completed)"
+        print("CHOOSER_UI \(observed)")
+        let attachment = XCTAttachment(string: observed)
+        attachment.name = "Observed swipe outcome"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if result != .completed {
+            // A prevented gesture must leave the request pending. Verify that
+            // the real Cancel control can still finish it; do not invent a callback.
+            expect(app, "ready")
+            cancel(app)
+            expect(app, "canceled:1")
+        }
     }
 }

@@ -110,7 +110,29 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		"ChooserUITests/testSwipePromiseReopen()",
 		"ChooserUITests/testSwipeCallbackReopen()",
 	]);
-	assert.deepEqual(simulatorTestArguments(controlCases, "all"), []);
+	assert.equal(
+		simulatorTestArguments(controlCases, "all").length,
+		controlCases.length,
+	);
+	for (const scope of ["provider", "presentation"]) {
+		assert.deepEqual(simulatorOptions([`--${scope}-only`], true).scope, scope);
+		assert.throws(() => simulatorOptions([`--${scope}-only`], false));
+		assert.throws(() => simulatorSelection(false, scope));
+		const investigation = simulatorSelection(true, scope);
+		assert(
+			investigation.control.length > 0 && investigation.chooser.length > 0,
+		);
+		assert.equal(
+			simulatorTestArguments(investigation.control, scope).length,
+			investigation.control.length,
+		);
+		for (const id of [...investigation.control, ...investigation.chooser]) {
+			assert(![...controlCases, ...simulatorCases].includes(id));
+		}
+	}
+	assert.throws(() =>
+		simulatorOptions(["--provider-only", "--presentation-only"], true),
+	);
 	assert.deepEqual(simulatorTestArguments(focus.control, "dismissal"), [
 		"-only-testing:UIKitControlTests/UIKitControlTests/testCancel",
 		"-only-testing:UIKitControlTests/UIKitControlTests/testSwipe",

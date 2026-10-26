@@ -23,12 +23,39 @@ export const controlCases = [
 	"UIKitControlTests/testSystemDelegateSwipe()",
 ];
 
+const providerControlCases = [
+	"ImportOriginalJSON",
+	"OpenOriginalJSON",
+	"ImportExportedJSON",
+	"OpenExportedJSON",
+	"ImportOriginalPDF",
+	"OpenOriginalPDF",
+	"ImportExportedPDF",
+	"OpenExportedPDF",
+].map((name) => `UIKitControlTests/test${name}()`);
+const providerChooserCases = [
+	"MetadataOriginalPDF",
+	"UriOriginalPDF",
+	"MetadataExportedPDF",
+	"UriExportedPDF",
+].map((name) => `ChooserUITests/test${name}()`);
+const presentationControlCases = [
+	"PageSheetSwipe",
+	"FullScreenCancel",
+	"DefaultSwipeThenCancel",
+].map((name) => `UIKitControlTests/test${name}()`);
+
 export function simulatorOptions(args, diagnostic) {
 	if (!diagnostic)
 		assert.equal(args.length, 0, "Unexpected simulator arguments");
 	const switches = args.filter((arg) => arg.startsWith("--"));
 	assert(
-		switches.length <= 1 && switches.every((arg) => arg === "--dismissal-only"),
+		switches.length <= 1 &&
+			switches.every((arg) =>
+				["--dismissal-only", "--provider-only", "--presentation-only"].includes(
+					arg,
+				),
+			),
 		"Unexpected simulator switch",
 	);
 	const positionals = args.filter((arg) => !arg.startsWith("--"));
@@ -39,15 +66,32 @@ export function simulatorOptions(args, diagnostic) {
 		"Unexpected simulator profile",
 	);
 	assert(["iphone", "ipad"].includes(device), "Unexpected simulator device");
-	return { profile, device, scope: switches.length ? "dismissal" : "all" };
+	return {
+		profile,
+		device,
+		scope: switches.length ? switches[0].slice(2, -5) : "all",
+	};
 }
 
 export function simulatorSelection(diagnostic, scope = "all") {
-	assert(["all", "dismissal"].includes(scope), "Unexpected simulator scope");
+	assert(
+		["all", "dismissal", "provider", "presentation"].includes(scope),
+		"Unexpected simulator scope",
+	);
 	assert(
 		diagnostic || scope === "all",
 		"Qualification requires all simulator cases",
 	);
+	if (scope === "provider")
+		return {
+			control: [...providerControlCases],
+			chooser: [...providerChooserCases],
+		};
+	if (scope === "presentation")
+		return {
+			control: [...presentationControlCases],
+			chooser: ["ChooserUITests/testDefaultSwipeThenCancel()"],
+		};
 	const select = (cases) =>
 		scope === "all"
 			? [...cases]
@@ -60,8 +104,12 @@ export function simulatorSelection(diagnostic, scope = "all") {
 }
 
 export function simulatorTestArguments(required, scope) {
-	if (scope === "all") return [];
-	assert.equal(scope, "dismissal", "Unexpected simulator scope");
+	assert(
+		["all", "dismissal", "provider", "presentation"].includes(scope),
+		"Unexpected simulator scope",
+	);
+	// Select exact cases even for the full lane: exploratory cases live in the
+	// same bundles and must not silently change the release matrix.
 	return required.map(
 		(id) => `-only-testing:${id.split("/")[0]}/${id.replace(/\(\)$/, "")}`,
 	);
