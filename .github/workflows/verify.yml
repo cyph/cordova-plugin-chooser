@@ -191,7 +191,7 @@ jobs:
   ios-simulator:
     if: ${{ !github.event.repository.private }}
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       CHAINMAN_MODE: host-nix
     steps:

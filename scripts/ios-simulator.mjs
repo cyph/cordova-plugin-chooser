@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
 	cpSync,
-	existsSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
@@ -11,7 +10,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
-import { checkSimulatorResults } from "./simulator-results.mjs";
+import { controlCases } from "./simulator-results.mjs";
+import { runSimulatorSuite } from "./simulator-evidence.mjs";
+import { withFinalizers } from "./verification-lifecycle.mjs";
 
 const sourceNames = [
 	"fixture-csv.csv",
@@ -249,6 +250,7 @@ export function verifyIosSimulator({
 					sources: [
 						join(packed, "src/ios"),
 						"fixture/FixtureApp.swift",
+						"fixture/FixturePresentation.swift",
 						{ path: "www", type: "folder", buildPhase: "resources" },
 						{ path: "config.xml", buildPhase: "resources" },
 					],
@@ -280,6 +282,48 @@ export function verifyIosSimulator({
 						},
 					},
 				},
+				UIKitControl: {
+					...common,
+					type: "application",
+					sources: [
+						"fixture/UIKitControl.swift",
+						"fixture/FixturePresentation.swift",
+					],
+					settings: {
+						base: {
+							PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.uikit",
+							SWIFT_STRICT_CONCURRENCY: "complete",
+							SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
+						},
+					},
+					info: {
+						path: "UIKit-Info.plist",
+						properties: {
+							CFBundleDisplayName: "UIKit picker control",
+							UILaunchScreen: {},
+							UIApplicationSceneManifest: {
+								UIApplicationSupportsMultipleScenes: false,
+							},
+							LSSupportsOpeningDocumentsInPlace: true,
+							UISupportedInterfaceOrientations: [
+								"UIInterfaceOrientationPortrait",
+								"UIInterfaceOrientationLandscapeLeft",
+								"UIInterfaceOrientationLandscapeRight",
+							],
+						},
+					},
+				},
+				UIKitControlTests: {
+					...common,
+					type: "bundle.ui-testing",
+					sources: [
+						"fixture/PickerUI.swift",
+						"fixture/UIKitControlTests.swift",
+					],
+					dependencies: [{ target: "UIKitControl" }],
+					settings: { base: { GENERATE_INFOPLIST_FILE: "YES" } },
+				},
+
 				ChooserPickerTests: {
 					...common,
 					type: "bundle.unit-test",
@@ -302,13 +346,17 @@ export function verifyIosSimulator({
 				ChooserUITests: {
 					...common,
 					type: "bundle.ui-testing",
-					sources: ["fixture/ChooserUITests.swift"],
+					sources: ["fixture/PickerUI.swift", "fixture/ChooserUITests.swift"],
 					dependencies: [{ target: "ChooserHost" }],
 					settings: { base: { GENERATE_INFOPLIST_FILE: "YES" } },
 				},
 			},
 			schemes: {
 				ChooserVault: { build: { targets: { ChooserVault: "all" } } },
+				UIKitControl: {
+					build: { targets: { UIKitControl: "all" } },
+					test: { targets: ["UIKitControlTests"] },
+				},
 				Chooser: {
 					build: { targets: { ChooserHost: "all" } },
 					test: {
@@ -329,25 +377,26 @@ export function verifyIosSimulator({
 			false,
 			env,
 		);
-		run(
-			"/usr/bin/xcodebuild",
-			[
-				"build-for-testing",
-				"-project",
-				"ChooserSimulator.xcodeproj",
-				"-scheme",
-				"Chooser",
-				"-destination",
-				"generic/platform=iOS Simulator",
-				"-derivedDataPath",
-				join(directory, "derived"),
-				`ARCHS=${process.arch === "arm64" ? "arm64" : "x86_64"}`,
-				...signing,
-			],
-			directory,
-			false,
-			env,
-		);
+		for (const scheme of ["Chooser", "UIKitControl"])
+			run(
+				"/usr/bin/xcodebuild",
+				[
+					"build-for-testing",
+					"-project",
+					"ChooserSimulator.xcodeproj",
+					"-scheme",
+					scheme,
+					"-destination",
+					"generic/platform=iOS Simulator",
+					"-derivedDataPath",
+					join(directory, "derived"),
+					`ARCHS=${process.arch === "arm64" ? "arm64" : "x86_64"}`,
+					...signing,
+				],
+				directory,
+				false,
+				env,
+			);
 		checked(`${alias}:compile`);
 		fixtures.push({ alias, directory });
 	}
@@ -374,132 +423,175 @@ export function verifyIosSimulator({
 			try {
 				simctl(["boot", udid]);
 				simctl(["bootstatus", udid, "-b"]);
-				try {
-					const derived = join(directory, "derived");
-					run(
-						"/usr/bin/xcodebuild",
-						[
-							"build",
-							"-project",
-							"ChooserSimulator.xcodeproj",
-							"-scheme",
-							"ChooserVault",
-							"-configuration",
-							"Debug",
-							"-destination",
-							`platform=iOS Simulator,id=${udid}`,
-							"-derivedDataPath",
-							derived,
-							...signing,
-						],
-						directory,
-						false,
-						env,
-					);
-					simctl([
-						"install",
-						udid,
-						join(
-							derived,
-							"Build/Products/Debug-iphonesimulator/ChooserVault.app",
-						),
-					]);
-					simctl(["launch", udid, "com.cyph.chooser.fixtures"]);
-					const container = simctl([
-						"get_app_container",
-						udid,
-						"com.cyph.chooser.fixtures",
-						"data",
-					]);
-					run(
-						"python3",
-						[
-							"-c",
-							"import pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.read_text()=='ready', 'Fixture source did not become ready'",
-							join(container, "Library/Caches/chooser-fixture-ready"),
-						],
-						root,
-						false,
-						env,
-					);
-					simctl(["terminate", udid, "com.cyph.chooser.fixtures"]);
-					const sources = join(container, "Documents");
-					writeFileSync(
-						join(reportDirectory, `${alias}-${kind}-filesystem.json`),
-						run(inspector, [sources], root, true, env),
-					);
-					const before = sourceFingerprint(sources);
-					writeFileSync(
-						join(reportDirectory, `${alias}-${kind}-sources.json`),
-						JSON.stringify({ before }, null, 2),
-					);
-					const test = (bundle, selection = []) =>
-						run(
-							"/usr/bin/xcodebuild",
-							[
-								"test",
-								"-project",
-								"ChooserSimulator.xcodeproj",
-								"-scheme",
-								"Chooser",
-								"-destination",
-								`platform=iOS Simulator,id=${udid}`,
-								"-destination-timeout",
-								"120",
-								"-parallel-testing-enabled",
-								"NO",
-								"-resultBundlePath",
-								bundle,
-								"-derivedDataPath",
-								join(directory, "derived"),
-								...signing,
-								...selection,
-								"AppleLanguages=(en)",
-								"AppleLocale=en_US",
-							],
-							directory,
-							false,
-							env,
-						);
-					try {
-						try {
-							test(controlResult, [
-								"-only-testing:ChooserUITests/ChooserUITests/testNativeUIKitControl",
-							]);
-							const control = JSON.parse(
+				const derived = join(directory, "derived");
+				run(
+					"/usr/bin/xcodebuild",
+					[
+						"build",
+						"-project",
+						"ChooserSimulator.xcodeproj",
+						"-scheme",
+						"ChooserVault",
+						"-configuration",
+						"Debug",
+						"-destination",
+						`platform=iOS Simulator,id=${udid}`,
+						"-derivedDataPath",
+						derived,
+						...signing,
+					],
+					directory,
+					false,
+					env,
+				);
+				simctl([
+					"install",
+					udid,
+					join(
+						derived,
+						"Build/Products/Debug-iphonesimulator/ChooserVault.app",
+					),
+				]);
+				simctl(["launch", udid, "com.cyph.chooser.fixtures"]);
+				const container = simctl([
+					"get_app_container",
+					udid,
+					"com.cyph.chooser.fixtures",
+					"data",
+				]);
+				run(
+					"python3",
+					[
+						"-c",
+						"import pathlib,sys,time\np=pathlib.Path(sys.argv[1]); end=time.monotonic()+60\nwhile not p.is_file() and time.monotonic()<end: time.sleep(0.1)\nassert p.read_text()=='ready', 'Fixture source did not become ready'",
+						join(container, "Library/Caches/chooser-fixture-ready"),
+					],
+					root,
+					false,
+					env,
+				);
+				simctl(["terminate", udid, "com.cyph.chooser.fixtures"]);
+				const sources = join(container, "Documents");
+				writeFileSync(
+					join(reportDirectory, `${alias}-${kind}-filesystem.json`),
+					run(inspector, [sources], root, true, env),
+				);
+				const before = sourceFingerprint(sources);
+				writeFileSync(
+					join(reportDirectory, `${alias}-${kind}-sources.json`),
+					JSON.stringify({ before }, null, 2),
+				);
+
+				const suite = (bundle, scheme, required) =>
+					runSimulatorSuite({
+						execute: () =>
+							run(
+								"/usr/bin/xcodebuild",
+								[
+									"test-without-building",
+									"-project",
+									"ChooserSimulator.xcodeproj",
+									"-scheme",
+									scheme,
+									"-destination",
+									`platform=iOS Simulator,id=${udid}`,
+									"-destination-timeout",
+									"120",
+									"-parallel-testing-enabled",
+									"NO",
+									"-resultBundlePath",
+									bundle,
+									"-derivedDataPath",
+									join(directory, "derived"),
+									...signing,
+									"AppleLanguages=(en)",
+									"AppleLocale=en_US",
+								],
+								directory,
+								false,
+								env,
+							),
+						extract: (kind) =>
+							JSON.parse(
 								run(
 									"/usr/bin/xcrun",
 									[
 										"xcresulttool",
 										"get",
 										"test-results",
-										"summary",
+										kind,
 										"--path",
-										controlResult,
+										bundle,
 									],
 									root,
 									true,
 									env,
 								),
-							);
+							),
+						save: (kind, value) =>
 							writeFileSync(
-								join(reportDirectory, `${alias}-${kind}-control-summary.json`),
-								JSON.stringify(control, null, 2),
-							);
-							assert.equal(control.totalTestCount, 1, "Missing UIKit control");
-							assert.equal(control.passedTests, 1, "UIKit control failed");
-							assert.equal(control.failedTests, 0);
-							assert.equal(control.skippedTests, 0);
-							checked(`${alias}:${kind}:native-control`);
-						} catch (error) {
-							failures.push(
-								new Error(`${alias}/${kind} UIKit control failed`, {
-									cause: error,
-								}),
-							);
-						}
-						test(result);
-					} finally {
+								bundle.replace(/\.xcresult$/, `-${kind}.json`),
+								JSON.stringify(value, null, 2),
+							),
+						diagnostics: () =>
+							withFinalizers(() => {}, [
+								() =>
+									writeFileSync(
+										bundle.replace(/\.xcresult$/, "-provider.log"),
+										simctl([
+											"spawn",
+											udid,
+											"log",
+											"show",
+											"--last",
+											"20m",
+											"--style",
+											"compact",
+											"--info",
+											"--debug",
+											"--predicate",
+											'subsystem CONTAINS[c] "DocumentManager" OR subsystem CONTAINS[c] "FileProvider"',
+										]),
+									),
+								() => {
+									const destination = bundle.replace(
+										/\.xcresult$/,
+										"-attachments",
+									);
+									mkdirSync(destination, { recursive: true });
+									run(
+										"/usr/bin/xcrun",
+										[
+											"xcresulttool",
+											"export",
+											"attachments",
+											"--path",
+											bundle,
+											"--output-path",
+											destination,
+										],
+										root,
+										true,
+										env,
+									);
+								},
+							]),
+						required,
+					});
+				withFinalizers(() => {
+					try {
+						suite(controlResult, "UIKitControl", controlCases);
+						checked(`${alias}:${kind}:native-control`);
+					} catch (error) {
+						failures.push(
+							new Error(`${alias}/${kind} UIKit control failed`, {
+								cause: error,
+							}),
+						);
+					}
+					suite(result, "Chooser");
+				}, [
+					() => {
 						const after = sourceFingerprint(sources);
 						writeFileSync(
 							join(reportDirectory, `${alias}-${kind}-sources.json`),
@@ -510,95 +602,9 @@ export function verifyIosSimulator({
 							before,
 							"Picker selection changed the fixture provider's originals",
 						);
-					}
-				} catch (error) {
-					try {
-						const providerLog = simctl([
-							"spawn",
-							udid,
-							"log",
-							"show",
-							"--last",
-							"10m",
-							"--style",
-							"compact",
-							"--info",
-							"--debug",
-							"--predicate",
-							'subsystem CONTAINS[c] "DocumentManager" OR subsystem CONTAINS[c] "FileProvider"',
-						]);
-						writeFileSync(
-							join(reportDirectory, `${alias}-${kind}-provider.log`),
-							providerLog,
-						);
-					} catch {
-						console.error("Could not collect simulator provider logs.");
-					}
-					const failedResult = existsSync(result) ? result : controlResult;
-					if (existsSync(failedResult)) {
-						const attachments = join(
-							reportDirectory,
-							`${alias}-${kind}-attachments`,
-						);
-						mkdirSync(attachments, { recursive: true });
-						try {
-							run(
-								"/usr/bin/xcrun",
-								[
-									"xcresulttool",
-									"export",
-									"attachments",
-									"--path",
-									failedResult,
-									"--output-path",
-									attachments,
-								],
-								root,
-								true,
-								env,
-							);
-						} catch {
-							console.error(
-								"Could not export simulator failure attachments; the xcresult bundle is retained.",
-							);
-						}
-					}
-					throw error;
-				}
-				const summary = JSON.parse(
-					run(
-						"/usr/bin/xcrun",
-						[
-							"xcresulttool",
-							"get",
-							"test-results",
-							"summary",
-							"--path",
-							result,
-						],
-						root,
-						true,
-						env,
-					),
-				);
-				writeFileSync(
-					join(reportDirectory, `${alias}-${kind}-summary.json`),
-					JSON.stringify(summary, null, 2),
-				);
-				const tests = JSON.parse(
-					run(
-						"/usr/bin/xcrun",
-						["xcresulttool", "get", "test-results", "tests", "--path", result],
-						root,
-						true,
-						env,
-					),
-				);
-				writeFileSync(
-					join(reportDirectory, `${alias}-${kind}-tests.json`),
-					JSON.stringify(tests, null, 2),
-				);
-				checkSimulatorResults(summary, tests);
+					},
+				]);
+
 				checked(`${alias}:${kind}`);
 			} catch (error) {
 				failures.push(

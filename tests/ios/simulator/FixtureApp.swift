@@ -1,6 +1,5 @@
 import UIKit
 import WebKit
-import UniformTypeIdentifiers
 #if canImport(Cordova)
 import Cordova
 #endif
@@ -37,9 +36,10 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     }
 }
 
-final class FixtureController: CDVViewController, UIDocumentPickerDelegate {
+final class FixtureController: CDVViewController {
     let outcome = UILabel()
     private var messages: FixtureMessages?
+    private let probe = FixturePresentation()
     override func viewDidLoad() {
         startPage = "index.html"
         super.viewDidLoad()
@@ -57,12 +57,9 @@ final class FixtureController: CDVViewController, UIDocumentPickerDelegate {
             button.setTitle(title, for: .normal)
             button.accessibilityIdentifier = title
             button.addAction(UIAction { [weak self] _ in
-                if ProcessInfo.processInfo.environment["CHOOSER_NATIVE_CONTROL"] == "1" {
-                    self?.pickNative(filter)
-                    return
-                }
-                let argument = String(data: try! JSONSerialization.data(withJSONObject: [filter]), encoding: .utf8)!
-                (self?.webView as? WKWebView)?.evaluateJavaScript("window.pick(\(argument)[0])", completionHandler: nil)
+                let reopen = ProcessInfo.processInfo.environment["CHOOSER_REOPEN"] ?? ""
+                let argument = String(data: try! JSONSerialization.data(withJSONObject: [filter, reopen]), encoding: .utf8)!
+                (self?.webView as? WKWebView)?.evaluateJavaScript("window.pick.apply(null, \(argument))", completionHandler: nil)
             }, for: .touchUpInside)
             controls.addArrangedSubview(button)
         }
@@ -77,35 +74,11 @@ final class FixtureController: CDVViewController, UIDocumentPickerDelegate {
             controls.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
     }
-    private func pickNative(_ filter: String) {
-        let types: [String: UTType] = [
-            "application/json": .json, "text/csv": .commaSeparatedText,
-            "application/pdf": .pdf, "image/*": .image, "video/*": .movie
-        ]
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [types[filter] ?? .item], asCopy: true)
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else {
-            outcome.text = "error:empty native selection"
-            return
-        }
-        outcome.text = "selected:\(url.lastPathComponent)"
-    }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
-        if let picker = controller as? UIDocumentPickerViewController {
-            // Force the historical adaptive sheet route only in this fixture.
-            if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {
-                picker.modalPresentationStyle = .pageSheet
-                picker.isModalInPresentation = false
-                if let sheet = picker.sheetPresentationController {
-                    sheet.detents = [.medium(), .large()]
-                    sheet.selectedDetentIdentifier = .medium
-                    sheet.prefersGrabberVisible = true
-                }
-            }
+        if let picker = controller as? UIDocumentPickerViewController { probe.configure(picker) }
+        super.present(controller, animated: animated) {
+            completion?()
+            if let picker = controller as? UIDocumentPickerViewController { self.probe.presented(picker) }
         }
-        super.present(controller, animated: animated, completion: completion)
     }
 }
