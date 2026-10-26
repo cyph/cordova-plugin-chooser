@@ -32,20 +32,16 @@ final class FixturePresentation {
     private var serial = 0
 
     func configure(_ picker: UIViewController) {
-        if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {
-            // Keep document-picker policy and detents identical to production.
-            // Only the plain UIKit gesture control requests a custom sheet.
-            if !(picker is UIDocumentPickerViewController) {
-                picker.modalPresentationStyle = .pageSheet
-                picker.isModalInPresentation = false
-                if let sheet = picker.sheetPresentationController {
-                    sheet.detents = [.medium(), .large()]
-                    sheet.selectedDetentIdentifier = .medium
-                }
-            }
-            if let sheet = picker.sheetPresentationController {
-                sheet.prefersGrabberVisible = true
-            }
+        // Document pickers keep all production presentation defaults, including
+        // the system's choice of whether to show a grabber.
+        guard !(picker is UIDocumentPickerViewController),
+              ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" else { return }
+        picker.modalPresentationStyle = .pageSheet
+        picker.isModalInPresentation = false
+        if let sheet = picker.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.selectedDetentIdentifier = .medium
+            sheet.prefersGrabberVisible = true
         }
     }
 

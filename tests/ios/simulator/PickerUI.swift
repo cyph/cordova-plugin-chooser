@@ -58,7 +58,7 @@ class PickerUI: XCTestCase {
     }
     func dismissSheet(_ app: XCUIApplication) {
         // Presentation completion precedes the remote Files UI. Wait for an
-        // interactive navigation control before taking the grabber's geometry;
+        // interactive navigation control before taking gesture geometry;
         // otherwise the query can capture the host's placeholder sheet.
         let remoteReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             app.navigationBars.buttons.allElementsBoundByIndex.contains {
@@ -67,26 +67,33 @@ class PickerUI: XCTestCase {
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [remoteReady], timeout: 30), .completed, "Remote picker navigation did not become interactive")
         // The outer document-picker host can cover the screen while its remote
-        // Files view presents a half-height sheet. Use the visible UIKit handle.
+        // Files view presents a half-height sheet. Use its native handle when
+        // available, or its interactive navigation bar without adding a handle.
         let grabber = app.buttons["Sheet Grabber"].firstMatch
-        XCTAssertTrue(grabber.waitForExistence(timeout: 20), "Missing adaptive sheet grabber")
-        XCTAssertTrue(grabber.isHittable)
-        let probe = XCTAttachment(string: app.staticTexts["PickerReady"].value as? String ?? "Missing presentation probe")
-        probe.name = "Presentation before swipe"
-        probe.lifetime = .keepAlways
-        add(probe)
+        guard let target = grabber.exists && grabber.isHittable ? grabber : firstHittable(app.navigationBars) else {
+            XCTFail("Missing visible sheet grabber or navigation bar")
+            return
+        }
+        let marker = app.staticTexts["PickerReady"]
+        if marker.exists {
+            let probe = XCTAttachment(string: marker.value as? String ?? "Missing presentation value")
+            probe.name = "Presentation before swipe"
+            probe.lifetime = .keepAlways
+            add(probe)
+        }
         // Remote accessibility geometry can change between snapshot requests.
         // Capture each rectangle once, then synthesize input without re-querying it.
         let screen = app.frame
-        let bounds = grabber.frame
+        let bounds = target.frame
         XCTAssertGreaterThan(bounds.midY, screen.minY, "Expected an adaptive sheet")
         let origin = app.coordinate(withNormalizedOffset: .zero)
         let point = CGPoint(x: bounds.midX, y: bounds.midY)
-        XCTAssertTrue(screen.contains(point), "Sheet grabber outside the screen")
+        XCTAssertFalse(bounds.isEmpty, "Empty gesture target")
+        XCTAssertTrue(screen.contains(point), "Gesture target outside the screen")
         let end = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: screen.height - 8))
         let start = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: point.y - screen.minY))
         attachScreen("Immediately before swipe")
-        print("CHOOSER_UI dismiss screen=\(screen) grabber=\(bounds) point=\(point)")
+        print("CHOOSER_UI dismiss screen=\(screen) target=\(bounds) point=\(point)")
         start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
         attachScreen("Immediately after swipe")
     }

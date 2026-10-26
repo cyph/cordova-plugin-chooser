@@ -77,13 +77,19 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         showPicker(sheet)
     }
     private func showPicker(_ picker: UIViewController, observeDismissal: Bool = true) {
-        probe.configure(picker)
         current = picker
+        // This control must leave UIKit presentation completely untouched,
+        // including its adaptive delegate and view/accessibility hierarchy.
+        guard observeDismissal else {
+            present(picker, animated: true)
+            return
+        }
+        probe.configure(picker)
         recordedDismissalPermission = false
         present(picker, animated: true) {
             let original = picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"
             FixtureEvents.record("UIKit original presentation delegate=\(original) replaced=\(observeDismissal)")
-            if observeDismissal { picker.presentationController?.delegate = self }
+            picker.presentationController?.delegate = self
             self.probe.presented(picker)
         }
     }
