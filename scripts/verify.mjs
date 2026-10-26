@@ -229,6 +229,7 @@ function portable() {
 		"tests/tooling/package.test.cjs",
 		"tests/tooling/qualification.test.cjs",
 		"tests/tooling/verification-lifecycle.test.cjs",
+		"tests/tooling/verification-command.test.cjs",
 	]);
 	checked("tooling");
 	run("python3", [
