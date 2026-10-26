@@ -25,6 +25,7 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     private let outcome = UILabel()
     private let probe = FixturePresentation()
     private weak var current: UIDocumentPickerViewController?
+    private var recordedDismissalPermission = false
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -54,6 +55,7 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         picker.delegate = self
         probe.configure(picker)
         current = picker
+        recordedDismissalPermission = false
         present(picker, animated: true) {
             picker.presentationController?.delegate = self
             self.probe.presented(picker)
@@ -76,7 +78,12 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         FixtureEvents.record("UIKit adaptive dismissal will begin")
     }
     func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
-        FixtureEvents.record("UIKit permits adaptive dismissal: \(probe.dismissalPolicy(presentationController.presentedViewController))")
+        // UIKit may query this repeatedly while tracking a gesture. Keep policy
+        // inspection in the presentation observer, outside this callback.
+        if !recordedDismissalPermission {
+            recordedDismissalPermission = true
+            FixtureEvents.record("UIKit permits adaptive dismissal")
+        }
         return true
     }
     func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
