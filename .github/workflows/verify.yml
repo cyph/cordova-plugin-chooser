@@ -11,9 +11,9 @@ on:
         type: boolean
         default: false
       ios_diagnostic_profile:
-        description: Pinned Apple profile for the focused diagnostic
+        description: Apple profile and host for the focused diagnostic
         type: choice
-        options: [baseline, modern]
+        options: [baseline, baseline-intel, modern]
         default: baseline
       ios_diagnostic_device:
         description: Device for the focused diagnostic
@@ -206,7 +206,7 @@ jobs:
           if-no-files-found: error
   ios-simulator:
     if: ${{ !github.event.repository.private }}
-    runs-on: ${{ inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'modern' && 'xcode-27' || 'macos-26' }}
+    runs-on: ${{ inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'modern' && 'xcode-27' || inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'baseline-intel' && 'macos-26-intel' || 'macos-26' }}
     timeout-minutes: 180
     env:
       CHAINMAN_MODE: host-nix
