@@ -460,7 +460,6 @@ export function verifyIosSimulator({
 					false,
 					env,
 				);
-				simctl(["terminate", udid, "com.cyph.chooser.fixtures"]);
 				const sources = join(container, "Documents");
 				const before = sourceFingerprint(sources);
 				writeFileSync(
