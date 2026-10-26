@@ -61,14 +61,30 @@ class PickerUI: XCTestCase {
         let grabber = app.buttons["Sheet Grabber"].firstMatch
         XCTAssertTrue(grabber.waitForExistence(timeout: 20), "Missing adaptive sheet grabber")
         XCTAssertTrue(grabber.isHittable)
-        XCTAssertGreaterThan(grabber.frame.midY, app.frame.minY, "Expected an adaptive sheet")
+        let probe = XCTAttachment(string: app.staticTexts["PickerReady"].value as? String ?? "Missing presentation probe")
+        probe.name = "Presentation before swipe"
+        probe.lifetime = .keepAlways
+        add(probe)
+        // Remote accessibility geometry can change between snapshot requests.
+        // Capture each rectangle once, then synthesize input without re-querying it.
+        let screen = app.frame
+        let bounds = grabber.frame
+        XCTAssertGreaterThan(bounds.midY, screen.minY, "Expected an adaptive sheet")
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let point = CGPoint(x: grabber.frame.midX, y: grabber.frame.midY)
-        XCTAssertTrue(app.frame.contains(point), "Sheet grabber outside the screen")
-        let end = origin.withOffset(CGVector(dx: point.x - app.frame.minX, dy: app.frame.height - 8))
-        let start = origin.withOffset(CGVector(dx: point.x - app.frame.minX, dy: point.y - app.frame.minY))
-        print("CHOOSER_UI dismiss grabber=\(grabber.frame) point=\(point)")
+        let point = CGPoint(x: bounds.midX, y: bounds.midY)
+        XCTAssertTrue(screen.contains(point), "Sheet grabber outside the screen")
+        let end = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: screen.height - 8))
+        let start = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: point.y - screen.minY))
+        attachScreen("Immediately before swipe")
+        print("CHOOSER_UI dismiss screen=\(screen) grabber=\(bounds) point=\(point)")
         start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        attachScreen("Immediately after swipe")
+    }
+    private func attachScreen(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
     func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
         query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
