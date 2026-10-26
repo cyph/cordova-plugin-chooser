@@ -15,10 +15,10 @@ final class ChooserUITests: PickerUI {
     private func reopen(_ mode: String, swipe: Bool) {
         let app = launch(sheet: swipe, reopen: mode)
         app.buttons["Choose"].tap()
-        let frame = presented(app, serial: 1)
-        if swipe { dismissSheet(app, frame: frame) } else { cancel(app) }
+        presented(app, serial: 1)
+        if swipe { dismissSheet(app) } else { cancel(app) }
         // JavaScript itself opens request two from the first completion.
-        _ = presented(app, serial: 2)
+        presented(app, serial: 2)
         cancel(app)
         expect(app, "canceled:2;counts:1,1")
     }

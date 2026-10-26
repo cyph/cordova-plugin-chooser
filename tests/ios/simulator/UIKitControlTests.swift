@@ -10,14 +10,15 @@ final class UIKitControlTests: PickerUI {
     func testCancel() {
         let app = launch()
         app.buttons["Choose"].tap()
-        _ = presented(app, serial: 1)
+        presented(app, serial: 1)
         cancel(app)
         expect(app, "canceled:1")
     }
     func testSwipe() {
         let app = launch(sheet: true)
         app.buttons["Choose"].tap()
-        dismissSheet(app, frame: presented(app, serial: 1))
+        presented(app, serial: 1)
+        dismissSheet(app)
         expect(app, "canceled:1")
     }
 }

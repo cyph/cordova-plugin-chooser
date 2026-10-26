@@ -14,13 +14,8 @@ class PickerUI: XCTestCase {
         }
         let app = XCUIApplication()
         if app.state != .notRunning {
-            app.activate()
-            // A failed immediate-reopen test can have either request active.
-            for _ in 0..<2 {
-                let button = app.buttons["Cancel"].firstMatch
-                guard button.exists && button.isHittable else { break }
-                button.tap()
-            }
+            // Termination also closes a remote picker. Avoid synthesizing more
+            // input into an accessibility tree that has already failed.
             app.terminate()
         }
         let files = XCUIApplication(bundleIdentifier: "com.apple.DocumentsApp")
@@ -41,37 +36,30 @@ class PickerUI: XCTestCase {
         waitForExpectations(timeout: 30)
     }
     func cancel(_ app: XCUIApplication) {
-        let button = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 15))
-        button.tap()
+        tapVisible(app.navigationBars.buttons.matching(identifier: "Cancel"))
     }
-    func presented(_ app: XCUIApplication, serial: Int) -> CGRect {
+    func presented(_ app: XCUIApplication, serial: Int) {
         let marker = app.staticTexts["PickerReady"]
-        var details: [String: Any]?
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             guard marker.exists, let value = marker.value as? String,
                   let data = value.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   object["serial"] as? Int == serial, object["beingPresented"] as? Bool == false else { return false }
-            details = object
             return true
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed, "Picker presentation did not complete: \(serial)")
-        guard let d = details, let x = d["x"] as? Double, let y = d["y"] as? Double,
-              let width = d["width"] as? Double, let height = d["height"] as? Double else {
-            XCTFail("Missing picker presentation geometry")
-            return .zero
-        }
-        return CGRect(x: x, y: y, width: width, height: height)
     }
-    func dismissSheet(_ app: XCUIApplication, frame: CGRect) {
-        XCTAssertGreaterThan(frame.minY, app.frame.minY, "Expected an adaptive sheet")
+    func dismissSheet(_ app: XCUIApplication) {
+        // The outer document-picker host can cover the screen while its remote
+        // Files view presents a half-height sheet. Use the visible UIKit handle.
+        let grabber = app.buttons["Sheet Grabber"].firstMatch
+        XCTAssertTrue(grabber.waitForExistence(timeout: 20), "Missing adaptive sheet grabber")
+        XCTAssertTrue(grabber.isHittable)
+        XCTAssertGreaterThan(grabber.frame.midY, app.frame.minY, "Expected an adaptive sheet")
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let x = frame.midX - app.frame.minX
-        let top = origin.withOffset(CGVector(dx: x, dy: frame.minY - app.frame.minY + 8))
-        top.press(forDuration: 0.1, thenDragTo: origin.withOffset(
-            CGVector(dx: x, dy: frame.maxY - app.frame.minY - 8)),
-            withVelocity: .fast, thenHoldForDuration: 0)
+        let end = origin.withOffset(CGVector(dx: grabber.frame.midX - app.frame.minX, dy: app.frame.height - 8))
+        let start = grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
     }
     func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
         query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
@@ -123,7 +111,7 @@ class PickerUI: XCTestCase {
     func select(_ button: String, _ filename: String) {
         let app = launch()
         app.buttons[button].tap()
-        _ = presented(app, serial: 1)
+        presented(app, serial: 1)
         browseFixtures(app)
         let stem = (filename as NSString).deletingPathExtension
         let item = app.cells.matching(NSPredicate(
@@ -132,7 +120,12 @@ class PickerUI: XCTestCase {
         XCTAssertTrue(item.isEnabled)
         let interactive = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in item.exists && item.isHittable }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [interactive], timeout: 20), .completed, "Local fixture is not interactive: \(filename)")
-        item.tap()
+        // A Files cell's center can fall on the filename outside the thumbnail's
+        // activation region. Target the visible icon rather than the cell box.
+        let thumbnail = item.images.firstMatch
+        XCTAssertTrue(thumbnail.waitForExistence(timeout: 20), "Missing fixture thumbnail: \(filename)")
+        XCTAssertTrue(thumbnail.isHittable)
+        thumbnail.tap()
         let open = app.buttons["Open"].firstMatch
         if open.waitForExistence(timeout: 2) { open.tap() }
         expect(app, "selected:\(filename)")
