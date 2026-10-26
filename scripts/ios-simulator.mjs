@@ -14,6 +14,13 @@ import { controlCases, simulatorCaseRecords } from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
 
+const interfaceOrientations = [
+	"UIInterfaceOrientationPortrait",
+	"UIInterfaceOrientationPortraitUpsideDown",
+	"UIInterfaceOrientationLandscapeLeft",
+	"UIInterfaceOrientationLandscapeRight",
+];
+
 const sourceNames = [
 	"fixture-csv.csv",
 	"fixture-image.png",
@@ -228,11 +235,7 @@ export function verifyIosSimulator({
 									LSItemContentTypes: ["public.data"],
 								},
 							],
-							UISupportedInterfaceOrientations: [
-								"UIInterfaceOrientationPortrait",
-								"UIInterfaceOrientationLandscapeLeft",
-								"UIInterfaceOrientationLandscapeRight",
-							],
+							UISupportedInterfaceOrientations: interfaceOrientations,
 						},
 					},
 				},
@@ -265,11 +268,7 @@ export function verifyIosSimulator({
 								UIApplicationSupportsMultipleScenes: false,
 							},
 							LSSupportsOpeningDocumentsInPlace: true,
-							UISupportedInterfaceOrientations: [
-								"UIInterfaceOrientationPortrait",
-								"UIInterfaceOrientationLandscapeLeft",
-								"UIInterfaceOrientationLandscapeRight",
-							],
+							UISupportedInterfaceOrientations: interfaceOrientations,
 							NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
 						},
 					},
@@ -297,11 +296,7 @@ export function verifyIosSimulator({
 								UIApplicationSupportsMultipleScenes: false,
 							},
 							LSSupportsOpeningDocumentsInPlace: true,
-							UISupportedInterfaceOrientations: [
-								"UIInterfaceOrientationPortrait",
-								"UIInterfaceOrientationLandscapeLeft",
-								"UIInterfaceOrientationLandscapeRight",
-							],
+							UISupportedInterfaceOrientations: interfaceOrientations,
 						},
 					},
 				},
