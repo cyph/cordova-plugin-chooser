@@ -81,7 +81,18 @@ final class FixturePresentation {
             let detent = (controller as? UISheetPresentationController)?.selectedDetentIdentifier?.rawValue ?? "none"
             return "\(type(of: controller)) frame=\(controller.frameOfPresentedViewInContainerView) detent=\(detent) delegate=\(delegate)"
         }
-        return "same=\(original === active) original=[\(describe(original))] active=[\(describe(active))]"
+        return "same=\(original === active) original=[\(describe(original))] active=[\(describe(active))] policy=[\(dismissalPolicy(picker))]"
+    }
+
+    func dismissalPolicy(_ controller: UIViewController) -> String {
+        var visited = Set<ObjectIdentifier>()
+        func describe(_ value: UIViewController) -> String {
+            guard visited.insert(ObjectIdentifier(value)).inserted else { return "visited" }
+            let children = value.children.map(describe).joined(separator: "; ")
+            let presented = value.presentedViewController.map(describe) ?? "none"
+            return "\(type(of: value)) modal=\(value.isModalInPresentation) dismissing=\(value.isBeingDismissed) children=[\(children)] presented=[\(presented)]"
+        }
+        return describe(controller)
     }
 
     private func observe(_ picker: UIDocumentPickerViewController, serial current: Int, previous: String = "") {

@@ -75,8 +75,12 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
         FixtureEvents.record("UIKit adaptive dismissal will begin")
     }
+    func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
+        FixtureEvents.record("UIKit permits adaptive dismissal: \(probe.dismissalPolicy(presentationController.presentedViewController))")
+        return true
+    }
     func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
-        FixtureEvents.record("UIKit adaptive dismissal attempt was prevented")
+        FixtureEvents.record("UIKit adaptive dismissal attempt was prevented: \(probe.dismissalPolicy(presentationController.presentedViewController))")
     }
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         FixtureEvents.record("UIKit adaptive dismissal delegate")
