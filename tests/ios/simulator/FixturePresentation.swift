@@ -31,7 +31,7 @@ enum FixtureEvents {
 final class FixturePresentation {
     private var serial = 0
 
-    func configure(_ picker: UIDocumentPickerViewController) {
+    func configure(_ picker: UIViewController) {
         if ProcessInfo.processInfo.environment["CHOOSER_TEST_SHEET"] == "1" {
             picker.modalPresentationStyle = .pageSheet
             picker.isModalInPresentation = false
@@ -43,7 +43,7 @@ final class FixturePresentation {
         }
     }
 
-    func presented(_ picker: UIDocumentPickerViewController) {
+    func presented(_ picker: UIViewController) {
         serial += 1
         let current = serial
         let presented = picker.presentationController?.presentedView ?? picker.view!
@@ -52,7 +52,7 @@ final class FixturePresentation {
             "width": frame.width, "height": frame.height, "beingPresented": picker.isBeingPresented,
             "beingDismissed": picker.isBeingDismissed, "style": picker.modalPresentationStyle.rawValue, "modalInPresentation": picker.isModalInPresentation,
             "detent": picker.sheetPresentationController?.selectedDetentIdentifier?.rawValue ?? "none",
-            "delegate": picker.delegate.map { String(describing: type(of: $0)) } ?? "nil",
+            "delegate": (picker as? UIDocumentPickerViewController)?.delegate.map { String(describing: type(of: $0)) } ?? "nil",
             "presentationDelegate": picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil",
             "presentationControllers": presentationState(picker)]
         let value = String(data: try! JSONSerialization.data(withJSONObject: details, options: [.sortedKeys]), encoding: .utf8)!
@@ -70,7 +70,7 @@ final class FixturePresentation {
         observe(picker, serial: current)
     }
 
-    private func presentationState(_ picker: UIDocumentPickerViewController) -> String {
+    private func presentationState(_ picker: UIViewController) -> String {
         let original = picker.presentationController
         let active: UIPresentationController?
         if #available(iOS 16.0, *) { active = picker.activePresentationController }
@@ -95,7 +95,7 @@ final class FixturePresentation {
         return describe(controller)
     }
 
-    private func observe(_ picker: UIDocumentPickerViewController, serial current: Int, previous: String = "") {
+    private func observe(_ picker: UIViewController, serial current: Int, previous: String = "") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak picker] in
             guard let self = self, self.serial == current else { return }
             guard let picker = picker else {

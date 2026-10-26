@@ -21,4 +21,11 @@ final class UIKitControlTests: PickerUI {
         dismissSheet(app)
         expect(app, "canceled:1")
     }
+    func testPlainSheetSwipe() {
+        let app = launch(sheet: true)
+        app.buttons["PlainSheet"].tap()
+        presented(app, serial: 1)
+        dismissSheet(app)
+        expect(app, "canceled:1")
+    }
 }

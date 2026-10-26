@@ -19,7 +19,50 @@ export const controlCases = [
 	...formats.map((name) => `UIKitControlTests/test${name}()`),
 	"UIKitControlTests/testCancel()",
 	"UIKitControlTests/testSwipe()",
+	"UIKitControlTests/testPlainSheetSwipe()",
 ];
+
+export function simulatorOptions(args, diagnostic) {
+	if (!diagnostic)
+		assert.equal(args.length, 0, "Unexpected simulator arguments");
+	const switches = args.filter((arg) => arg.startsWith("--"));
+	assert(
+		switches.length <= 1 && switches.every((arg) => arg === "--dismissal-only"),
+		"Unexpected simulator switch",
+	);
+	const positionals = args.filter((arg) => !arg.startsWith("--"));
+	assert(positionals.length <= 2, "Unexpected simulator arguments");
+	const [profile = "baseline", device = "iphone"] = positionals;
+	assert(
+		["baseline", "modern"].includes(profile),
+		"Unexpected simulator profile",
+	);
+	assert(["iphone", "ipad"].includes(device), "Unexpected simulator device");
+	return { profile, device, scope: switches.length ? "dismissal" : "all" };
+}
+
+export function simulatorSelection(diagnostic, scope = "all") {
+	assert(["all", "dismissal"].includes(scope), "Unexpected simulator scope");
+	assert(
+		diagnostic || scope === "all",
+		"Qualification requires all simulator cases",
+	);
+	const select = (cases) =>
+		scope === "all"
+			? [...cases]
+			: cases.filter((id) => /\/test(?:Cancel|Swipe|PlainSheetSwipe)/.test(id));
+	const control = select(controlCases);
+	const chooser = select(simulatorCases);
+	return { control, chooser };
+}
+
+export function simulatorTestArguments(required, scope) {
+	if (scope === "all") return [];
+	assert.equal(scope, "dismissal", "Unexpected simulator scope");
+	return required.map(
+		(id) => `-only-testing:${id.split("/")[0]}/${id.replace(/\(\)$/, "")}`,
+	);
+}
 
 export function simulatorCaseRecords(tests) {
 	assert(Array.isArray(tests?.testNodes), "Missing simulator test tree");

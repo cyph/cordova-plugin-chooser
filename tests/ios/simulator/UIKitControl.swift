@@ -24,7 +24,7 @@ final class UIKitControlScene: UIResponder, UIWindowSceneDelegate {
 final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     private let outcome = UILabel()
     private let probe = FixturePresentation()
-    private weak var current: UIDocumentPickerViewController?
+    private weak var current: UIViewController?
     private var recordedDismissalPermission = false
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,6 +39,11 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
             button.addAction(UIAction { [weak self] _ in self?.pick(type) }, for: .touchUpInside)
             controls.addArrangedSubview(button)
         }
+        let sheet = UIButton(type: .system)
+        sheet.setTitle("Plain sheet", for: .normal)
+        sheet.accessibilityIdentifier = "PlainSheet"
+        sheet.addAction(UIAction { [weak self] _ in self?.plainSheet() }, for: .touchUpInside)
+        controls.addArrangedSubview(sheet)
         outcome.accessibilityIdentifier = "Outcome"
         outcome.text = "ready"
         controls.addArrangedSubview(outcome)
@@ -53,6 +58,20 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     private func pick(_ type: UTType) {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [type], asCopy: true)
         picker.delegate = self
+        showPicker(picker)
+    }
+    private func plainSheet() {
+        let content = UIViewController()
+        content.title = "Gesture control"
+        content.view.backgroundColor = .systemBackground
+        let sheet = UINavigationController(rootViewController: content)
+        content.navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Cancel", primaryAction: UIAction { [weak self, weak sheet] _ in
+            guard let self = self, let sheet = sheet else { return }
+            sheet.dismiss(animated: true) { self.settle(sheet, "canceled:1") }
+        })
+        showPicker(sheet)
+    }
+    private func showPicker(_ picker: UIViewController) {
         probe.configure(picker)
         current = picker
         recordedDismissalPermission = false
@@ -61,7 +80,7 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
             self.probe.presented(picker)
         }
     }
-    private func settle(_ picker: UIDocumentPickerViewController, _ value: String) {
+    private func settle(_ picker: UIViewController, _ value: String) {
         guard current === picker else { return }
         current = nil
         FixtureEvents.record("UIKit delegate \(value)")
@@ -93,6 +112,8 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         FixtureEvents.record("UIKit adaptive dismissal delegate")
         if let picker = presentationController.presentedViewController as? UIDocumentPickerViewController {
             documentPickerWasCancelled(picker)
+        } else {
+            settle(presentationController.presentedViewController, "canceled:1")
         }
     }
 }

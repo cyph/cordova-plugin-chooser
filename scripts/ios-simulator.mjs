@@ -11,7 +11,11 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
-import { controlCases, simulatorCaseRecords } from "./simulator-results.mjs";
+import {
+	simulatorSelection,
+	simulatorTestArguments,
+	simulatorCaseRecords,
+} from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
 
@@ -55,7 +59,15 @@ export function verifyIosSimulator({
 	diagnostic = false,
 	modern = false,
 	diagnosticDevice = "iphone",
+	diagnosticScope = "all",
 }) {
+	const selected = simulatorSelection(diagnostic, diagnosticScope);
+	if (diagnostic)
+		report.diagnostic = {
+			device: diagnosticDevice,
+			scope: diagnosticScope,
+			required: selected,
+		};
 	assert.equal(
 		process.platform,
 		"darwin",
@@ -488,6 +500,7 @@ export function verifyIosSimulator({
 									bundle,
 									"-derivedDataPath",
 									join(directory, "derived"),
+									...simulatorTestArguments(required, diagnosticScope),
 									...buildSettings,
 									"AppleLanguages=(en)",
 									"AppleLocale=en_US",
@@ -598,7 +611,7 @@ export function verifyIosSimulator({
 					});
 				withFinalizers(() => {
 					try {
-						suite(controlResult, "UIKitControl", controlCases);
+						suite(controlResult, "UIKitControl", selected.control);
 						checked(`${alias}:${kind}:native-control`);
 					} catch (error) {
 						failures.push(
@@ -607,7 +620,7 @@ export function verifyIosSimulator({
 							}),
 						);
 					}
-					suite(result, "Chooser");
+					suite(result, "Chooser", selected.chooser);
 				}, [
 					() => {
 						const after = sourceFingerprint(sources);

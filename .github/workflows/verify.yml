@@ -1,5 +1,5 @@
 name: Verify
-run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0}, {1})', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone') || 'Release qualification' }}
+run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0}, {1}, {2})', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone', inputs.ios_diagnostic_scope || 'all') || 'Release qualification' }}
 on:
   pull_request:
   push:
@@ -20,10 +20,15 @@ on:
         type: choice
         options: [iphone, ipad]
         default: iphone
+      ios_diagnostic_scope:
+        description: Cases to run in the focused diagnostic
+        type: choice
+        options: [all, dismissal]
+        default: all
 permissions:
   contents: read
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}-{1}', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone') || false }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}-{1}-{2}', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone', inputs.ios_diagnostic_scope || 'all') || false }}
   cancel-in-progress: true
 jobs:
   portable:
@@ -218,6 +223,7 @@ jobs:
       - name: Exercise iOS simulator
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+          set --
           if [ '${{ inputs.ios_diagnostic }}' = true ]; then
             if [ '${{ inputs.ios_diagnostic_profile }}' = modern ]; then
               task=diagnose-ios-simulator-modern
@@ -227,10 +233,13 @@ jobs:
             if [ '${{ inputs.ios_diagnostic_device }}' = ipad ]; then
               task="$task-ipad"
             fi
+            if [ '${{ inputs.ios_diagnostic_scope }}' = dismissal ]; then
+              set -- --dismissal-only
+            fi
           else
             task=verify-ios-simulator
           fi
-          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run "$task"
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run "$task" "$@"
       - name: Verify tracked files are unchanged
         run: |
           git diff --exit-code

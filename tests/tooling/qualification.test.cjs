@@ -20,7 +20,13 @@ test("captured xcresult trees retain exact case identities and failure outcomes"
 	} = await import("../../scripts/simulator-results.mjs");
 	for (const [label, required] of [
 		["chooser", simulatorCases],
-		["control", controlCases],
+		// This captured bundle predates the plain-sheet gesture control.
+		[
+			"control",
+			controlCases.filter(
+				(id) => id !== "UIKitControlTests/testPlainSheetSwipe()",
+			),
+		],
 	]) {
 		const read = (part) =>
 			JSON.parse(
@@ -47,6 +53,64 @@ test("captured xcresult trees retain exact case identities and failure outcomes"
 			/Unsuccessful case/,
 		);
 	}
+});
+
+test("focused simulator selection cannot narrow release qualification", async () => {
+	const {
+		simulatorOptions,
+		simulatorSelection,
+		simulatorTestArguments,
+		simulatorCases,
+		controlCases,
+	} = await import("../../scripts/simulator-results.mjs");
+	assert.deepEqual(simulatorOptions([], false), {
+		profile: "baseline",
+		device: "iphone",
+		scope: "all",
+	});
+	assert.deepEqual(simulatorOptions(["--dismissal-only"], true), {
+		profile: "baseline",
+		device: "iphone",
+		scope: "dismissal",
+	});
+	assert.deepEqual(
+		simulatorOptions(["modern", "ipad", "--dismissal-only"], true),
+		{ profile: "modern", device: "ipad", scope: "dismissal" },
+	);
+	for (const args of [["--dismissal-only"], ["modern"], ["baseline", "ipad"]])
+		assert.throws(() => simulatorOptions(args, false));
+	for (const args of [
+		["--unknown"],
+		["--dismissal-only", "--dismissal-only"],
+		["other"],
+		["baseline", "other"],
+		["baseline", "ipad", "extra"],
+	])
+		assert.throws(() => simulatorOptions(args, true));
+	assert.deepEqual(simulatorSelection(false), {
+		control: controlCases,
+		chooser: simulatorCases,
+	});
+	assert.throws(() => simulatorSelection(false, "dismissal"));
+	assert.throws(() => simulatorSelection(true, "other"));
+	const focus = simulatorSelection(true, "dismissal");
+	assert.deepEqual(focus.control, [
+		"UIKitControlTests/testCancel()",
+		"UIKitControlTests/testSwipe()",
+		"UIKitControlTests/testPlainSheetSwipe()",
+	]);
+	assert.deepEqual(focus.chooser, [
+		"ChooserUITests/testCancelPromiseReopen()",
+		"ChooserUITests/testCancelCallbackReopen()",
+		"ChooserUITests/testSwipePromiseReopen()",
+		"ChooserUITests/testSwipeCallbackReopen()",
+	]);
+	assert.deepEqual(simulatorTestArguments(controlCases, "all"), []);
+	assert.deepEqual(simulatorTestArguments(focus.control, "dismissal"), [
+		"-only-testing:UIKitControlTests/UIKitControlTests/testCancel",
+		"-only-testing:UIKitControlTests/UIKitControlTests/testSwipe",
+		"-only-testing:UIKitControlTests/UIKitControlTests/testPlainSheetSwipe",
+	]);
 });
 
 test("failed simulator case details remain available for diagnostic output", async () => {

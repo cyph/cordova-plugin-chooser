@@ -21,6 +21,7 @@ import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
 import { verifyIosSimulator } from "./ios-simulator.mjs";
+import { simulatorOptions } from "./simulator-results.mjs";
 import { verifyCapacitorAndroid, prepareCapacitor } from "./capacitor.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -596,7 +597,10 @@ function ios(modern = false) {
 }
 
 const diagnosticLane = "ios-simulator-diagnostic";
-const diagnosticDevice = process.argv[4] ?? "iphone";
+const simulatorConfiguration = [diagnosticLane, "ios-simulator"].includes(lane)
+	? simulatorOptions(process.argv.slice(3), lane === diagnosticLane)
+	: undefined;
+const diagnosticDevice = simulatorConfiguration?.device;
 const expectedChecks =
 	lane === diagnosticLane
 		? [
@@ -608,17 +612,6 @@ const expectedChecks =
 			]
 		: requiredChecks[lane];
 function simulator(diagnostic = false) {
-	if (diagnostic) {
-		assert(process.argv.length <= 5, "Unexpected simulator arguments");
-		assert(
-			["baseline", "modern"].includes(process.argv[3] ?? "baseline"),
-			"Unexpected simulator profile",
-		);
-		assert(
-			["iphone", "ipad"].includes(diagnosticDevice),
-			"Unexpected simulator device",
-		);
-	} else assert.equal(process.argv.length, 3, "Unexpected simulator arguments");
 	return verifyIosSimulator({
 		root,
 		output,
@@ -630,7 +623,8 @@ function simulator(diagnostic = false) {
 		checked,
 		diagnostic,
 		diagnosticDevice,
-		modern: process.argv[3] === "modern",
+		diagnosticScope: simulatorConfiguration.scope,
+		modern: simulatorConfiguration.profile === "modern",
 	});
 }
 
