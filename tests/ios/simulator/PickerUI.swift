@@ -14,6 +14,12 @@ class PickerUI: XCTestCase {
         }
         let app = XCUIApplication()
         if app.state != .notRunning {
+            if let run = testRun, run.failureCount > 0 {
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "Fixture UI hierarchy"
+                hierarchy.lifetime = .keepAlways
+                add(hierarchy)
+            }
             // Termination also closes a remote picker. Avoid synthesizing more
             // input into an accessibility tree that has already failed.
             app.terminate()
@@ -124,8 +130,16 @@ class PickerUI: XCTestCase {
         // activation region. Target the visible icon rather than the cell box.
         let thumbnail = item.images.firstMatch
         XCTAssertTrue(thumbnail.waitForExistence(timeout: 20), "Missing fixture thumbnail: \(filename)")
-        XCTAssertTrue(thumbnail.isHittable)
-        thumbnail.tap()
+        let bounds = thumbnail.frame
+        let point = CGPoint(x: bounds.midX, y: bounds.midY)
+        XCTAssertFalse(bounds.isEmpty, "Empty fixture thumbnail: \(filename)")
+        XCTAssertTrue(item.frame.contains(point), "Thumbnail outside its visible cell: \(filename)")
+        XCTAssertTrue(app.frame.contains(point), "Thumbnail outside the screen: \(filename)")
+        // Images inside the hittable file cell need not be accessibility hit
+        // targets themselves. Send a physical tap inside the visible thumbnail.
+        print("CHOOSER_UI select \(filename) cell=\(item.frame) thumbnail=\(bounds) point=\(point)")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+            dx: point.x - app.frame.minX, dy: point.y - app.frame.minY)).tap()
         let open = app.buttons["Open"].firstMatch
         if open.waitForExistence(timeout: 2) { open.tap() }
         expect(app, "selected:\(filename)")
