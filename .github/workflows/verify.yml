@@ -18,7 +18,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic || false }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}', inputs.ios_diagnostic_profile) || false }}
   cancel-in-progress: true
 jobs:
   portable:
