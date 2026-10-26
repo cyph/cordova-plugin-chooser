@@ -130,15 +130,21 @@ class PickerUI: XCTestCase {
         let browse = app.buttons.matching(identifier: "Browse")
         let folder = app.cells.matching(NSPredicate(
             format: "label BEGINSWITH %@", "Chooser Fixtures"))
+        // Export pickers can reopen directly inside the last destination.
+        // Observe the toolbar title without activating its folder menu.
+        let currentFolder = app.navigationBars.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH %@", "Chooser Fixtures"))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.firstHittable(folder) != nil || self.firstHittable(location) != nil || self.firstHittable(browse) != nil
+            self.firstHittable(currentFolder) != nil || self.firstHittable(folder) != nil || self.firstHittable(location) != nil || self.firstHittable(browse) != nil
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+        if firstHittable(currentFolder) != nil { return }
         if firstHittable(folder) == nil && firstHittable(location) == nil {
             tapVisible(browse)
             // Return through the actual navigation stack, including a folder
             // remembered by an earlier picker. Never inject a filesystem URL.
             for _ in 0..<4 {
+                if firstHittable(currentFolder) != nil { return }
                 if firstHittable(folder) != nil || firstHittable(location) != nil { break }
                 let names = ["BackButton", "Back", "Go Back"]
                 let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", argumentArray: [names, names]))
