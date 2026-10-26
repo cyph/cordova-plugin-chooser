@@ -12,20 +12,21 @@ export function runSimulatorSuite({
 	let tests;
 	let failed = true;
 	withFinalizers(() => {
-		execute();
+		withFinalizers(execute, [
+			() => {
+				summary = extract("summary");
+				save("summary", summary);
+			},
+			() => {
+				tests = extract("tests");
+				save("tests", tests);
+			},
+		]);
+		checkSimulatorResults(summary, tests, required);
 		failed = false;
 	}, [
 		() => {
 			if (failed) diagnostics();
 		},
-		() => {
-			summary = extract("summary");
-			save("summary", summary);
-		},
-		() => {
-			tests = extract("tests");
-			save("tests", tests);
-		},
 	]);
-	checkSimulatorResults(summary, tests, required);
 }

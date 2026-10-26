@@ -17,12 +17,22 @@ import {
 import { join } from "node:path";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import {
+	withFinalizers,
 	withAsyncFinalizers,
 	stopOwnedChild,
 } from "./verification-lifecycle.mjs";
 
 const pause = (milliseconds) =>
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+
+export function runInstrumentation(execute, results, destination) {
+	return withFinalizers(execute, [
+		() => {
+			if (existsSync(results))
+				cpSync(results, destination, { recursive: true });
+		},
+	]);
+}
 
 export function prepareCapacitor({ root, output, run, pack }) {
 	const packed = pack();
@@ -270,26 +280,25 @@ export async function verifyCapacitorAndroid(context) {
 			directory,
 			"android/app/build/outputs/androidTest-results/connected",
 		);
-		try {
-			run(
-				"gradle",
-				[
-					"--no-daemon",
-					"--dependency-verification",
-					"strict",
-					`-Pandroid.aapt2FromMavenOverride=${aapt2Path("36.0.0")}`,
-					":app:connectedDebugAndroidTest",
-				],
-				join(directory, "android"),
-				false,
-				{ ...env, ANDROID_SERIAL: serial },
-			);
-		} finally {
-			if (existsSync(results))
-				cpSync(results, join(reportDirectory, "instrumentation"), {
-					recursive: true,
-				});
-		}
+		runInstrumentation(
+			() => {
+				run(
+					"gradle",
+					[
+						"--no-daemon",
+						"--dependency-verification",
+						"strict",
+						`-Pandroid.aapt2FromMavenOverride=${aapt2Path("36.0.0")}`,
+						":app:connectedDebugAndroidTest",
+					],
+					join(directory, "android"),
+					false,
+					{ ...env, ANDROID_SERIAL: serial },
+				);
+			},
+			results,
+			join(reportDirectory, "instrumentation"),
+		);
 		run("python3", [
 			join(root, "scripts/android_reports.py"),
 			"instrumentation",
