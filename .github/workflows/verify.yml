@@ -124,7 +124,7 @@ jobs:
           if-no-files-found: error
   ios:
     if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     env:
       CHAINMAN_MODE: host-nix

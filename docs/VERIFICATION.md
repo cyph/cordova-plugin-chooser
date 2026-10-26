@@ -23,7 +23,7 @@ Use the supplied Node, pnpm, Java, Gradle, and browser tools. Node's major famil
 | Full Android verification | Linux x86_64 or supported macOS; host Nix |
 | iOS verification | macOS with the selected Xcode installation; host Nix |
 | Capacitor Android emulator | Linux x86_64 with readable/writable `/dev/kvm`; host Nix |
-| iOS simulator | macOS with the baseline Xcode and iOS 26.2 simulator runtime; host Nix |
+| iOS simulator | macOS with the baseline Xcode and iOS 26.5 simulator runtime; host Nix |
 
 Linux Android build tools are x86_64 executables. Dependency preparation is available on Linux ARM because it does not execute those tools. Full Android tasks reject that host before building.
 
