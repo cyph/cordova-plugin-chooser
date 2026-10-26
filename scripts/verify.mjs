@@ -22,6 +22,7 @@ import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
 import { verifyIosSimulator } from "./ios-simulator.mjs";
 import { simulatorOptions } from "./simulator-results.mjs";
+import { spawnVerified } from "./verification-command.mjs";
 import { verifyCapacitorAndroid, prepareCapacitor } from "./capacitor.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -66,7 +67,7 @@ const run = (
 	{ timeout = 20 * 60 * 1000 } = {},
 ) => {
 	console.log(`> ${command} ${args.join(" ")}`);
-	const result = spawnSync(command, args, {
+	const result = spawnVerified(command, args, {
 		cwd,
 		env: { ...process.env, ...env },
 		stdio: "pipe",

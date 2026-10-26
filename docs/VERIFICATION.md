@@ -131,6 +131,8 @@ Its final qualification job requires successful portable, Android, dependency-fa
 
 Reports and command logs live under `.verification/reports/`; Actions retains them for 14 days, including on failure. Check downloaded evidence with `just chainman run qualify`, supplying `CHOOSER_REPORTS_ROOT`, `GITHUB_SHA`, and the workflow's `CHOOSER_JOB_RESULTS` JSON. Keep per-run evidence in CI or the pull request.
 
+Verification commands run in their own process groups with bounded execution time and captured output. A timed-out command receives a termination signal, followed by a forced stop if needed; surviving group members are removed even when the parent exits first. Output-limit failures also terminate the owned group. Partial command output remains in the report directory so cleanup and result-extraction steps can explain the original failure.
+
 ## Interactive checks
 
 Use the [manual fixture app](https://github.com/cyph/cordova-plugin-chooser/tree/master/tests/fixture-app/www) and [native scenarios](https://github.com/cyph/cordova-plugin-chooser/blob/master/tests/native-cases.json) with disposable files. Copy the fixture's `www` contents into a Cordova app with the plugin installed.
