@@ -230,6 +230,7 @@ function portable() {
 		"tests/tooling/qualification.test.cjs",
 		"tests/tooling/verification-lifecycle.test.cjs",
 		"tests/tooling/verification-command.test.cjs",
+		"tests/tooling/simulator-policy.test.cjs",
 	]);
 	checked("tooling");
 	run("python3", [

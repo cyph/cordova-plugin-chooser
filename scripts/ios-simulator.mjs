@@ -18,6 +18,7 @@ import {
 } from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
+import { nativeSwipePolicy } from "./simulator-policy.mjs";
 
 const interfaceOrientations = [
 	"UIInterfaceOrientationPortrait",
@@ -141,6 +142,7 @@ export function verifyIosSimulator({
 	);
 	run(generator, [assets], root, false, env);
 	report.toolchain.simulators = [];
+	report.toolchain.nativeSwipePolicies = [];
 	const failures = [];
 	const fixtures = [];
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
@@ -430,6 +432,7 @@ export function verifyIosSimulator({
 			try {
 				simctl(["boot", udid]);
 				simctl(["bootstatus", udid, "-b"]);
+				let reference;
 				const suite = (bundle, scheme, required, scope = diagnosticScope) =>
 					runSimulatorSuite({
 						execute: () =>
@@ -458,7 +461,15 @@ export function verifyIosSimulator({
 								],
 								directory,
 								false,
-								env,
+								{
+									...env,
+									...(scheme === "Chooser" && reference
+										? {
+												TEST_RUNNER_CHOOSER_NATIVE_SWIPE_POLICY:
+													reference.policy,
+											}
+										: {}),
+								},
 							),
 						extract: (kind) =>
 							JSON.parse(
@@ -670,6 +681,32 @@ export function verifyIosSimulator({
 								cause: error,
 							}),
 						);
+					}
+					if (selected.control.includes("UIKitControlTests/testSwipe()")) {
+						const command = report.commands.find(
+							(item) =>
+								item.command === "/usr/bin/xcodebuild" &&
+								item.args.includes(controlResult),
+						);
+						assert(command, "Missing native control command evidence");
+						reference = nativeSwipePolicy({
+							tests: JSON.parse(
+								readFileSync(
+									controlResult.replace(/\.xcresult$/, "-tests.json"),
+									"utf8",
+								),
+							),
+							output: readFileSync(join(reportDirectory, command.log), "utf8"),
+							events: readFileSync(
+								controlResult.replace(/\.xcresult$/, "-events.log"),
+								"utf8",
+							),
+						});
+						report.toolchain.nativeSwipePolicies.push({
+							alias,
+							kind,
+							...reference,
+						});
 					}
 					suite(result, "Chooser", selected.chooser);
 				}, [

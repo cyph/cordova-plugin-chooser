@@ -18,8 +18,7 @@ final class UIKitControlTests: PickerUI {
         let app = launch(sheet: true)
         app.buttons["Choose"].tap()
         presented(app, serial: 1)
-        dismissSheet(app)
-        expect(app, "canceled:1")
+        nativeSwipe(app, identity: "UIKitControlTests/testSwipe()", hasAdaptiveDelegate: true)
     }
     func testPlainSheetSwipe() {
         let app = launch(sheet: true)
@@ -31,13 +30,7 @@ final class UIKitControlTests: PickerUI {
     func testSystemDelegateSwipe() {
         let app = launch()
         app.buttons["SystemDelegate"].tap()
-        dismissSheet(app)
-        // Observe the real transition without installing an adaptive delegate
-        // or treating a synthesized cancellation callback as dismissal.
-        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            app.navigationBars.count == 0 && app.buttons["Choose"].isHittable
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 30), .completed, "System-managed picker did not dismiss")
+        nativeSwipe(app, identity: "UIKitControlTests/testSystemDelegateSwipe()", hasAdaptiveDelegate: false)
     }
     func testImportOriginalJSON() { select("JSON", "fixture-json.json") }
     func testOpenOriginalJSON() { select("JSON", "fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }

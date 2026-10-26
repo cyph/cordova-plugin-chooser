@@ -210,4 +210,30 @@ class PickerUI: XCTestCase {
             expect(app, "canceled:1")
         }
     }
+
+    func pendingPicker(_ app: XCUIApplication) {
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "ready"), object: app.staticTexts["Outcome"])
+        settled.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 2), .completed, "A prevented swipe settled the request")
+        XCTAssertFalse(app.buttons["Choose"].isHittable, "The picker disappeared without completing the request")
+        XCTAssertNotNil(firstHittable(app.navigationBars.buttons.matching(identifier: "Cancel")), "Pending picker has no usable Cancel control")
+    }
+
+    func nativeSwipe(_ app: XCUIApplication, identity: String, hasAdaptiveDelegate: Bool) {
+        dismissSheet(app)
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.navigationBars.count == 0 && app.buttons["Choose"].isHittable
+        }, object: nil)
+        let dismissed = XCTWaiter.wait(for: [gone], timeout: 5) == .completed
+        if dismissed {
+            if hasAdaptiveDelegate { expect(app, "canceled:1") }
+        } else {
+            pendingPicker(app)
+            cancel(app)
+            expect(app, "canceled:1")
+        }
+        let value = ["case": identity, "outcome": dismissed ? "dismissed" : "prevented"]
+        let data = try! JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        print("CHOOSER_NATIVE_SWIPE \(String(data: data, encoding: .utf8)!)")
+    }
 }
