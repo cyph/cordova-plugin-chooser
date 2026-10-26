@@ -217,7 +217,6 @@ export function verifyIosSimulator({
 							UILaunchScreen: {},
 							UIFileSharingEnabled: true,
 							LSSupportsOpeningDocumentsInPlace: true,
-							UISupportsDocumentBrowser: true,
 							UIApplicationSceneManifest: {
 								UIApplicationSupportsMultipleScenes: false,
 							},
