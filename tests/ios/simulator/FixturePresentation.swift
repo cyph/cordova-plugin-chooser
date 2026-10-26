@@ -53,7 +53,8 @@ final class FixturePresentation {
             "beingDismissed": picker.isBeingDismissed, "style": picker.modalPresentationStyle.rawValue, "modalInPresentation": picker.isModalInPresentation,
             "detent": picker.sheetPresentationController?.selectedDetentIdentifier?.rawValue ?? "none",
             "delegate": picker.delegate.map { String(describing: type(of: $0)) } ?? "nil",
-            "presentationDelegate": picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"]
+            "presentationDelegate": picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil",
+            "presentationControllers": presentationState(picker)]
         let value = String(data: try! JSONSerialization.data(withJSONObject: details, options: [.sortedKeys]), encoding: .utf8)!
         FixtureEvents.record("presented \(value)")
         // The marker is attached only after UIKit and the plugin's presentation
@@ -69,6 +70,20 @@ final class FixturePresentation {
         observe(picker, serial: current)
     }
 
+    private func presentationState(_ picker: UIDocumentPickerViewController) -> String {
+        let original = picker.presentationController
+        let active: UIPresentationController?
+        if #available(iOS 16.0, *) { active = picker.activePresentationController }
+        else { active = original }
+        func describe(_ controller: UIPresentationController?) -> String {
+            guard let controller = controller else { return "nil" }
+            let delegate = controller.delegate.map { String(describing: type(of: $0)) } ?? "nil"
+            let detent = (controller as? UISheetPresentationController)?.selectedDetentIdentifier?.rawValue ?? "none"
+            return "\(type(of: controller)) frame=\(controller.frameOfPresentedViewInContainerView) detent=\(detent) delegate=\(delegate)"
+        }
+        return "same=\(original === active) original=[\(describe(original))] active=[\(describe(active))]"
+    }
+
     private func observe(_ picker: UIDocumentPickerViewController, serial current: Int, previous: String = "") {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak picker] in
             guard let self = self, self.serial == current else { return }
@@ -78,7 +93,7 @@ final class FixturePresentation {
             }
             let frame = picker.presentationController?.frameOfPresentedViewInContainerView ?? .null
             let delegate = picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"
-            let state = "frame=\(frame) detent=\(picker.sheetPresentationController?.selectedDetentIdentifier?.rawValue ?? "none") presenting=\(picker.presentingViewController != nil) dismissing=\(picker.isBeingDismissed) interactive=\(picker.transitionCoordinator?.isInteractive == true) delegate=\(delegate)"
+            let state = "frame=\(frame) detent=\(picker.sheetPresentationController?.selectedDetentIdentifier?.rawValue ?? "none") presenting=\(picker.presentingViewController != nil) dismissing=\(picker.isBeingDismissed) interactive=\(picker.transitionCoordinator?.isInteractive == true) delegate=\(delegate) \(self.presentationState(picker))"
             if state != previous { FixtureEvents.record("state serial=\(current) \(state)") }
             if picker.isBeingDismissed || picker.presentingViewController == nil {
                 FixtureEvents.record("dismissal serial=\(current) transitioning=\(picker.isBeingDismissed)")

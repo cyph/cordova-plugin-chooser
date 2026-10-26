@@ -72,6 +72,12 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         FixtureEvents.record("UIKit cancellation delegate")
         settle(controller, "canceled:1")
     }
+    func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+        FixtureEvents.record("UIKit adaptive dismissal will begin")
+    }
+    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+        FixtureEvents.record("UIKit adaptive dismissal attempt was prevented")
+    }
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         FixtureEvents.record("UIKit adaptive dismissal delegate")
         if let picker = presentationController.presentedViewController as? UIDocumentPickerViewController {
