@@ -155,7 +155,7 @@ class PickerUI: XCTestCase {
         }
         tapVisible(folder)
     }
-    func select(_ button: String, _ filename: String, environment: [String: String] = [:]) {
+    func select(_ button: String, _ filename: String, environment: [String: String] = [:], resultPrefix: String = "selected") {
         let app = launch(environment: environment)
         app.buttons[button].tap()
         presented(app, serial: 1)
@@ -183,7 +183,7 @@ class PickerUI: XCTestCase {
             dx: point.x - app.frame.minX, dy: point.y - app.frame.minY)).tap()
         let open = app.buttons["Open"].firstMatch
         if open.waitForExistence(timeout: 2) { open.tap() }
-        expect(app, "selected:\(filename)")
+        expect(app, "\(resultPrefix):\(filename)")
     }
 
     func observeSwipeThenCancel(_ app: XCUIApplication) {

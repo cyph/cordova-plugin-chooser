@@ -10,7 +10,7 @@ window.pick = (accept, reopen, method) => {
       if (typeof file.id !== 'string' || file.size <= 0) throw new Error('Invalid managed copy');
       await chooser.releaseFile(file.id);
     }
-    report(file === undefined ? 'canceled:1' : 'selected:' + file.name);
+    report(file === undefined ? 'canceled:1' : (method === 'uri' ? 'copied:' : 'selected:') + file.name);
   }).catch(failed);
   const counts = [0, 0];
   function received(index, file) {

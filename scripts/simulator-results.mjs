@@ -40,8 +40,8 @@ const providerChooserCases = [
 	"UriExportedPDF",
 ].map((name) => `ChooserUITests/test${name}()`);
 const presentationControlCases = [
-	"PageSheetSwipe",
-	"FullScreenCancel",
+	"RequestedPageSheetSwipe",
+	"RequestedFullScreenCancel",
 	"DefaultSwipeThenCancel",
 ].map((name) => `UIKitControlTests/test${name}()`);
 

@@ -13,8 +13,8 @@ final class ChooserUITests: PickerUI {
     func testSwipeCallbackReopen() { reopen("callback", swipe: true) }
     func testMetadataOriginalPDF() { select("PDF", "fixture-pdf.pdf") }
     func testMetadataExportedPDF() { select("PDF", "exported-fixture-pdf.pdf") }
-    func testUriOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"]) }
-    func testUriExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"]) }
+    func testUriOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"], resultPrefix: "copied") }
+    func testUriExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"], resultPrefix: "copied") }
     func testDefaultSwipeThenCancel() {
         let app = launch()
         app.buttons["Choose"].tap()
