@@ -60,32 +60,53 @@ private final class VaultBrowser: UIDocumentBrowserViewController {
         let documents = manager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try manager.createDirectory(at: documents, withIntermediateDirectories: true)
         let assets = Bundle.main.url(forResource: "Assets", withExtension: nil)!
+        let staging = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: staging) }
         for source in try manager.contentsOfDirectory(at: assets, includingPropertiesForKeys: nil).sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let destination = documents.appendingPathComponent(source.lastPathComponent)
-            if !manager.fileExists(atPath: destination.path) {
-                let document = VaultDocument(fileURL: destination, payload: try Data(contentsOf: source))
-                let saved = await withCheckedContinuation { continuation in
-                    document.save(to: destination, for: .forCreating) { continuation.resume(returning: $0) }
-                }
-                guard saved else { throw failure("Could not save \(source.lastPathComponent)") }
-                let closed = await withCheckedContinuation { continuation in
-                    document.close { continuation.resume(returning: $0) }
-                }
-                guard closed else { throw failure("Could not close \(source.lastPathComponent)") }
+            guard !manager.fileExists(atPath: destination.path) else {
+                throw failure("Unexpected existing fixture: \(source.lastPathComponent)")
             }
-            // A completed save proves the file exists. Also require the source
-            // browser to reveal it without importing or replacing the original.
-            let error: Error? = await withCheckedContinuation { continuation in
-                revealDocument(at: destination, importIfNeeded: false) { _, error in
-                    continuation.resume(returning: error)
+            let temporary = staging.appendingPathComponent(source.lastPathComponent)
+            let payload = try Data(contentsOf: source)
+            let document = VaultDocument(fileURL: temporary, payload: payload)
+            let saved = await withCheckedContinuation { continuation in
+                document.save(to: temporary, for: .forCreating) { continuation.resume(returning: $0) }
+            }
+            guard saved else { throw failure("Could not save \(source.lastPathComponent)") }
+            let closed = await withCheckedContinuation { continuation in
+                document.close { continuation.resume(returning: $0) }
+            }
+            guard closed else { throw failure("Could not close \(source.lastPathComponent)") }
+            // Let the document browser create the provider-managed source. Only
+            // generated staging files are imported; bundled assets stay intact.
+            let (imported, error): (URL?, Error?) = await withCheckedContinuation { continuation in
+                revealDocument(at: temporary, importIfNeeded: true) { url, error in
+                    continuation.resume(returning: (url, error))
                 }
             }
-            if let error = error { throw error }
-            NSLog("CHOOSER_VAULT revealed %@", source.lastPathComponent)
+            if let error = error { throw failure("Could not import \(source.lastPathComponent)", underlying: error) }
+            guard let imported = imported,
+                  imported.resolvingSymlinksInPath().standardizedFileURL == destination.resolvingSymlinksInPath().standardizedFileURL else {
+                throw failure("Fixture import did not return its expected private Documents URL: \(source.lastPathComponent)")
+            }
+            var coordinationError: NSError?
+            var contents: Result<Data, Error>?
+            NSFileCoordinator().coordinate(readingItemAt: imported, options: [], error: &coordinationError) { url in
+                contents = Result { try Data(contentsOf: url) }
+            }
+            if let error = coordinationError { throw failure("Could not coordinate imported fixture", underlying: error) }
+            guard let contents = contents, try contents.get() == payload else {
+                throw failure("Fixture import changed bytes: \(source.lastPathComponent)")
+            }
+            NSLog("CHOOSER_VAULT imported %@", source.lastPathComponent)
         }
     }
 
-    private func failure(_ message: String) -> Error {
-        NSError(domain: "ChooserFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    private func failure(_ message: String, underlying: Error? = nil) -> Error {
+        var info: [String: Any] = [NSLocalizedDescriptionKey: message]
+        if let underlying = underlying { info[NSUnderlyingErrorKey] = underlying }
+        return NSError(domain: "ChooserFixture", code: 1, userInfo: info)
     }
 }
