@@ -595,6 +595,37 @@ function ios(modern = false) {
 	}
 }
 
+const diagnosticLane = "ios-simulator-diagnostic";
+const expectedChecks =
+	lane === diagnosticLane
+		? [
+				"package",
+				"cordova-ios7:compile",
+				"cordova-ios8:compile",
+				"cordova-ios7:iphone:native-control",
+				"cordova-ios7:iphone",
+			]
+		: requiredChecks[lane];
+function simulator(diagnostic = false) {
+	assert(
+		process.argv[3] === undefined ||
+			(diagnostic && process.argv[3] === "modern"),
+		"Unexpected simulator profile",
+	);
+	return verifyIosSimulator({
+		root,
+		output,
+		reportDirectory,
+		report,
+		run,
+		pack,
+		app,
+		checked,
+		diagnostic,
+		modern: process.argv[3] === "modern",
+	});
+}
+
 const lanes = {
 	portable,
 	browser,
@@ -602,17 +633,8 @@ const lanes = {
 	"android-dependencies": androidDependencies,
 	ios,
 	"ios-modern": () => ios(true),
-	"ios-simulator": () =>
-		verifyIosSimulator({
-			root,
-			output,
-			reportDirectory,
-			report,
-			run,
-			pack,
-			app,
-			checked,
-		}),
+	"ios-simulator": () => simulator(),
+	"ios-simulator-diagnostic": () => simulator(true),
 	"capacitor-android": () =>
 		verifyCapacitorAndroid({
 			root,
@@ -665,13 +687,13 @@ assert(
 	"Select a declared verification lane.",
 );
 try {
-	if (Object.hasOwn(requiredChecks, lane)) {
+	if (expectedChecks) {
 		rmSync(reportDirectory, { recursive: true, force: true });
 		saveReport();
 	}
 	await lanes[lane]();
-	if (Object.hasOwn(requiredChecks, lane)) {
-		for (const check of requiredChecks[lane])
+	if (expectedChecks) {
+		for (const check of expectedChecks)
 			assert(
 				report.checks.includes(check),
 				`Missing qualification check: ${check}`,
@@ -680,7 +702,7 @@ try {
 		saveReport();
 	}
 } catch (error) {
-	if (Object.hasOwn(requiredChecks, lane)) {
+	if (expectedChecks) {
 		report.status = "failed";
 		report.failure = error.message;
 		const describe = (error) => ({

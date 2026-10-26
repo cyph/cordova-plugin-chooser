@@ -32,7 +32,10 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     weak var owner: FixtureController?
     init(owner: FixtureController) { self.owner = owner }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == "fixture" { owner?.outcome.text = message.body as? String }
+        if message.name == "fixture" {
+            owner?.outcome.text = message.body as? String
+            NSLog("CHOOSER_FIXTURE bridge %@", String(describing: message.body))
+        }
     }
 }
 

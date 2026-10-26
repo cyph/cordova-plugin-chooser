@@ -5,6 +5,40 @@ const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 const { version } = require("../../package.json");
 
+test("failed simulator case details remain available for diagnostic output", async () => {
+	const { simulatorCaseRecords } =
+		await import("../../scripts/simulator-results.mjs");
+	assert.deepEqual(
+		simulatorCaseRecords({
+			testNodes: [
+				{
+					nodeType: "Test Suite",
+					children: [
+						{
+							nodeType: "Test Case",
+							nodeIdentifier: "ChooserUITests/testCSV()",
+							result: "Failed",
+							children: [
+								{
+									nodeType: "Failure Message",
+									name: "Picker presentation did not complete: 2",
+								},
+							],
+						},
+					],
+				},
+			],
+		}),
+		[
+			{
+				id: "ChooserUITests/testCSV()",
+				result: "Failed",
+				failures: ["Picker presentation did not complete: 2"],
+			},
+		],
+	);
+});
+
 test("simulator evidence requires exact passing case identities and consistent totals", async () => {
 	const { checkSimulatorResults, simulatorCases, controlCases } =
 		await import("../../scripts/simulator-results.mjs");
@@ -78,7 +112,7 @@ test("simulator evidence requires exact passing case identities and consistent t
 });
 
 test("qualification requires every successful job, complete reports and the same package", async (t) => {
-	const { aggregateReports, requiredChecks } =
+	const { aggregateReports, requiredChecks, validateReport } =
 		await import("../../scripts/qualification.mjs");
 	const directory = mkdtempSync(join(tmpdir(), "chooser-qualification-"));
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -110,6 +144,11 @@ test("qualification requires every successful job, complete reports and the same
 			JSON.stringify(report),
 		);
 	};
+	assert.throws(
+		() =>
+			validateReport({ ...reports[0], lane: "ios-simulator-diagnostic" }, sha),
+		/Unknown qualification lane/,
+	);
 	reports.forEach(save);
 	assert.equal(aggregateReports(directory, sha, jobs).lanes.length, 8);
 	const simulator = reports.find((report) => report.lane === "ios-simulator");

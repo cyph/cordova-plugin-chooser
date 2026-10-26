@@ -1,17 +1,28 @@
 name: Verify
+run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0})', inputs.ios_diagnostic_profile) || 'Release qualification' }}
 on:
   pull_request:
   push:
     branches: [master, "candidate/**"]
   workflow_dispatch:
+    inputs:
+      ios_diagnostic:
+        description: Run the focused iOS diagnostic instead of release qualification
+        type: boolean
+        default: false
+      ios_diagnostic_profile:
+        description: Pinned Apple profile for the focused diagnostic
+        type: choice
+        options: [baseline, modern]
+        default: baseline
 permissions:
   contents: read
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic || false }}
   cancel-in-progress: true
 jobs:
   portable:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -44,7 +55,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   android:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -73,7 +84,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   android-failures:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -102,7 +113,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   ios:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -131,7 +142,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   ios-modern:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
     runs-on: xcode-27
     timeout-minutes: 60
     env:
@@ -160,7 +171,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   capacitor-android:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -199,26 +210,69 @@ jobs:
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
-      - name: Qualify ios-simulator
+      - name: Exercise iOS simulator
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
-          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-ios-simulator
+          if [ '${{ inputs.ios_diagnostic }}' = true ]; then
+            if [ '${{ inputs.ios_diagnostic_profile }}' = modern ]; then
+              task=diagnose-ios-simulator-modern
+            else
+              task=diagnose-ios-simulator
+            fi
+          else
+            task=verify-ios-simulator
+          fi
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run "$task"
       - name: Verify tracked files are unchanged
         run: |
           git diff --exit-code
           git diff --cached --exit-code
-      - name: Retain qualification reports
+      - name: Retain compact simulator diagnostics
         if: ${{ always() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-ios-simulator
+          name: diagnostics-ios-simulator-summary
+          path: |
+            .verification/reports/**/qualification.json
+            .verification/reports/**/*-summary.json
+            .verification/reports/**/*-tests.json
+            .verification/reports/**/*-sources.json
+            .verification/reports/**/*-filesystem.json
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error
+      - name: Retain simulator bundles
+        id: bundles
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || 'qualification-ios-simulator' }}
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
           overwrite: true
           if-no-files-found: error
+      - name: Retry simulator bundle upload
+        id: bundles_retry
+        if: ${{ always() && steps.bundles.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || 'qualification-ios-simulator' }}
+          path: .verification/reports/
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error
+      - name: Require retained simulator bundles
+        if: ${{ always() && steps.bundles.outcome != 'success' && steps.bundles_retry.outcome != 'success' }}
+        run: exit 1
+
   qualification:
-    if: ${{ always() && !github.event.repository.private }}
+    if: ${{ always() && !github.event.repository.private && !inputs.ios_diagnostic }}
     needs:
       [
         portable,

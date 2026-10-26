@@ -23,9 +23,10 @@ final class FixturePresentation {
         let frame = presented.convert(presented.bounds, to: nil)
         let details: [String: Any] = ["serial": current, "x": frame.minX, "y": frame.minY,
             "width": frame.width, "height": frame.height, "beingPresented": picker.isBeingPresented,
-            "beingDismissed": picker.isBeingDismissed, "style": picker.modalPresentationStyle.rawValue]
+            "beingDismissed": picker.isBeingDismissed, "style": picker.modalPresentationStyle.rawValue, "modalInPresentation": picker.isModalInPresentation,
+            "detent": picker.sheetPresentationController?.selectedDetentIdentifier?.rawValue ?? "none"]
         let value = String(data: try! JSONSerialization.data(withJSONObject: details, options: [.sortedKeys]), encoding: .utf8)!
-        print("CHOOSER_FIXTURE presented \(value)")
+        NSLog("CHOOSER_FIXTURE presented %@", value)
         // The marker is attached only after UIKit and the plugin's presentation
         // completions have run. It neither replaces delegates nor handles input.
         let marker = UILabel(frame: CGRect(x: picker.view.bounds.midX, y: picker.view.bounds.height - 12, width: 1, height: 1))
@@ -43,11 +44,11 @@ final class FixturePresentation {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak picker] in
             guard let self = self, self.serial == current else { return }
             guard let picker = picker else {
-                print("CHOOSER_FIXTURE released serial=\(current)")
+                NSLog("CHOOSER_FIXTURE released serial=%d", current)
                 return
             }
             if picker.isBeingDismissed || picker.presentingViewController == nil {
-                print("CHOOSER_FIXTURE dismissal serial=\(current) transitioning=\(picker.isBeingDismissed)")
+                NSLog("CHOOSER_FIXTURE dismissal serial=%d transitioning=%d", current, picker.isBeingDismissed ? 1 : 0)
             } else {
                 self.observe(picker, serial: current)
             }

@@ -62,7 +62,7 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     private func settle(_ picker: UIDocumentPickerViewController, _ value: String) {
         guard current === picker else { return }
         current = nil
-        print("CHOOSER_FIXTURE UIKit delegate \(value)")
+        NSLog("CHOOSER_FIXTURE UIKit delegate %@", value)
         outcome.text = value
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {

@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
-import { controlCases } from "./simulator-results.mjs";
+import { controlCases, simulatorCaseRecords } from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
 
@@ -44,6 +44,8 @@ export function verifyIosSimulator({
 	pack,
 	app,
 	checked,
+	diagnostic = false,
+	modern = false,
 }) {
 	assert.equal(
 		process.platform,
@@ -51,7 +53,10 @@ export function verifyIosSimulator({
 		"Simulator qualification requires macOS",
 	);
 	const apple = JSON.parse(
-		readFileSync(join(root, "chainman/apple.json"), "utf8"),
+		readFileSync(
+			join(root, modern ? "chainman/apple-modern.json" : "chainman/apple.json"),
+			"utf8",
+		),
 	);
 	const env = appleEnvironment(apple);
 	const signing = [
@@ -78,7 +83,7 @@ export function verifyIosSimulator({
 	report.toolchain.xcodegen = run("xcodegen", ["--version"], root, true, env);
 	const simctl = (args) =>
 		run("/usr/bin/xcrun", ["simctl", ...args], root, true, env);
-	const runtime = "com.apple.CoreSimulator.SimRuntime.iOS-26-2";
+	const runtime = `com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`;
 	const runtimes = JSON.parse(simctl(["list", "runtimes", "--json"])).runtimes;
 	assert(
 		runtimes.some((item) => item.identifier === runtime && item.isAvailable),
@@ -401,10 +406,12 @@ export function verifyIosSimulator({
 		fixtures.push({ alias, directory });
 	}
 	for (const { alias, directory } of fixtures) {
+		if (diagnostic && alias !== "cordova-ios7") continue;
 		for (const [kind, deviceName] of [
 			["iphone", "iPhone 17"],
 			["ipad", "iPad (A16)"],
 		]) {
+			if (diagnostic && kind !== "iphone") continue;
 			const type = devices.find((device) => device.name === deviceName);
 			assert(type, `Missing simulator device type: ${deviceName}`);
 			const udid = simctl([
@@ -528,11 +535,26 @@ export function verifyIosSimulator({
 									env,
 								),
 							),
-						save: (kind, value) =>
+						save: (part, value) => {
 							writeFileSync(
-								bundle.replace(/\.xcresult$/, `-${kind}.json`),
+								bundle.replace(/\.xcresult$/, `-${part}.json`),
 								JSON.stringify(value, null, 2),
-							),
+							);
+							const details =
+								part === "tests"
+									? simulatorCaseRecords(value)
+									: Object.fromEntries(
+											[
+												"totalTestCount",
+												"passedTests",
+												"failedTests",
+												"skippedTests",
+											].map((key) => [key, value[key]]),
+										);
+							process.stderr.write(
+								`CHOOSER_SIMULATOR ${alias}/${kind}/${scheme} ${part} ${JSON.stringify(details)}\n`,
+							);
+						},
 						diagnostics: () =>
 							withFinalizers(() => {}, [
 								() =>
@@ -550,7 +572,7 @@ export function verifyIosSimulator({
 											"--info",
 											"--debug",
 											"--predicate",
-											'subsystem CONTAINS[c] "DocumentManager" OR subsystem CONTAINS[c] "FileProvider"',
+											'subsystem CONTAINS[c] "DocumentManager" OR subsystem CONTAINS[c] "FileProvider" OR eventMessage CONTAINS "CHOOSER_FIXTURE"',
 										]),
 									),
 								() => {

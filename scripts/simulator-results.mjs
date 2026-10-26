@@ -21,13 +21,9 @@ export const controlCases = [
 	"UIKitControlTests/testSwipe()",
 ];
 
-export function checkSimulatorResults(
-	summary,
-	tests,
-	required = simulatorCases,
-) {
+export function simulatorCaseRecords(tests) {
 	assert(Array.isArray(tests?.testNodes), "Missing simulator test tree");
-	const cases = [];
+	const records = [];
 	function visit(nodes) {
 		for (const node of nodes) {
 			assert(node && typeof node === "object", "Malformed simulator node");
@@ -37,12 +33,15 @@ export function checkSimulatorResults(
 					"string",
 					"Missing test identity",
 				);
-				assert.equal(
-					node.result,
-					"Passed",
-					`Unsuccessful case: ${node.nodeIdentifier}`,
-				);
-				cases.push(node.nodeIdentifier);
+				records.push({
+					id: node.nodeIdentifier,
+					result: node.result,
+					failures: (node.children ?? [])
+						.filter((child) => child.nodeType === "Failure Message")
+						.map(
+							(child) => child.name ?? child.details ?? "Unspecified failure",
+						),
+				});
 			} else if (node.children !== undefined) {
 				assert(Array.isArray(node.children), "Malformed simulator children");
 				visit(node.children);
@@ -50,6 +49,18 @@ export function checkSimulatorResults(
 		}
 	}
 	visit(tests.testNodes);
+	return records;
+}
+
+export function checkSimulatorResults(
+	summary,
+	tests,
+	required = simulatorCases,
+) {
+	const records = simulatorCaseRecords(tests);
+	for (const record of records)
+		assert.equal(record.result, "Passed", `Unsuccessful case: ${record.id}`);
+	const cases = records.map((record) => record.id);
 	assert.equal(new Set(cases).size, cases.length, "Duplicate simulator case");
 	assert.deepEqual(
 		[...cases].sort(),

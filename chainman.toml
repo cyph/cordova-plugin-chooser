@@ -113,6 +113,27 @@ commands = [["node", "scripts/verify.mjs", "ios-simulator"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.diagnose-ios-simulator]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "ios-simulator-diagnostic"]]
+cleanup_children = true
+shutdown_seconds = 10
+
+[tasks.diagnose-ios-simulator-modern]
+profile = "ios-modern"
+setup = ["javascript"]
+commands = [
+  [
+    "node",
+    "scripts/verify.mjs",
+    "ios-simulator-diagnostic",
+    "modern",
+  ],
+]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.verify-capacitor-android]
 profile = "android-emulator"
 setup = ["javascript"]
