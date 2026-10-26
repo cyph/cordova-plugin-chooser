@@ -115,22 +115,6 @@ export function verifyIosSimulator({
 		env,
 	);
 	run(generator, [assets], root, false, env);
-	const inspector = join(output, "inspect-simulator-sources");
-	run(
-		"/usr/bin/xcrun",
-		[
-			"swiftc",
-			"-parse-as-library",
-			"-swift-version",
-			"5",
-			join(root, "tests/ios/simulator/InspectSources.swift"),
-			"-o",
-			inspector,
-		],
-		root,
-		false,
-		env,
-	);
 	report.toolchain.simulators = [];
 	const failures = [];
 	const fixtures = [];
@@ -481,10 +465,6 @@ export function verifyIosSimulator({
 				);
 				simctl(["terminate", udid, "com.cyph.chooser.fixtures"]);
 				const sources = join(container, "Documents");
-				writeFileSync(
-					join(reportDirectory, `${alias}-${kind}-filesystem.json`),
-					run(inspector, [sources], root, true, env),
-				);
 				const before = sourceFingerprint(sources);
 				writeFileSync(
 					join(reportDirectory, `${alias}-${kind}-sources.json`),

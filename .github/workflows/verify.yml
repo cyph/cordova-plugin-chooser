@@ -238,7 +238,6 @@ jobs:
             .verification/reports/**/*-summary.json
             .verification/reports/**/*-tests.json
             .verification/reports/**/*-sources.json
-            .verification/reports/**/*-filesystem.json
           include-hidden-files: true
           retention-days: 14
           overwrite: true
