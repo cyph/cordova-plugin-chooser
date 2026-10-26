@@ -274,6 +274,21 @@ test("qualification requires every successful job, complete reports and the same
 		() => aggregateReports(directory, sha, jobs),
 		/Missing ios-simulator check/,
 	);
+	for (const check of [
+		"cordova-ios7:iphone:provider-setup",
+		"cordova-ios7:ipad:provider-setup",
+		"cordova-ios8:iphone:provider-setup",
+		"cordova-ios8:ipad:provider-setup",
+	]) {
+		save({
+			...simulator,
+			checks: simulator.checks.filter((value) => value !== check),
+		});
+		assert.throws(
+			() => aggregateReports(directory, sha, jobs),
+			/Missing ios-simulator check/,
+		);
+	}
 	save(simulator);
 	for (const result of ["failure", "skipped", "cancelled"]) {
 		assert.throws(

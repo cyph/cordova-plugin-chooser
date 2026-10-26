@@ -33,6 +33,7 @@ export const requiredChecks = {
 		"cordova-ios8:compile",
 		...["cordova-ios7", "cordova-ios8"].flatMap((alias) =>
 			["iphone", "ipad"].flatMap((device) => [
+				`${alias}:${device}:provider-setup`,
 				`${alias}:${device}:native-control`,
 				`${alias}:${device}`,
 			]),
