@@ -34,7 +34,7 @@ private final class FixtureMessages: NSObject, WKScriptMessageHandler {
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "fixture" {
             owner?.outcome.text = message.body as? String
-            NSLog("CHOOSER_FIXTURE bridge %@", String(describing: message.body))
+            FixtureEvents.record("bridge \(String(describing: message.body))")
         }
     }
 }
@@ -78,7 +78,10 @@ final class FixtureController: CDVViewController {
         ])
     }
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
-        if let picker = controller as? UIDocumentPickerViewController { probe.configure(picker) }
+        if let picker = controller as? UIDocumentPickerViewController {
+            probe.configure(picker)
+            FixtureEvents.record("present invoked existing=\(presentedViewController != nil) transition=\(transitionCoordinator != nil)")
+        }
         super.present(controller, animated: animated) {
             completion?()
             if let picker = controller as? UIDocumentPickerViewController { self.probe.presented(picker) }

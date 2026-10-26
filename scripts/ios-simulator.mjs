@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
 	cpSync,
+	existsSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
@@ -532,6 +533,24 @@ export function verifyIosSimulator({
 							process.stderr.write(
 								`CHOOSER_SIMULATOR ${alias}/${kind}/${scheme} ${part} ${JSON.stringify(details)}\n`,
 							);
+							if (part === "tests") {
+								const container = simctl([
+									"get_app_container",
+									udid,
+									scheme === "UIKitControl"
+										? "com.cyph.chooser.uikit"
+										: "com.cyph.chooser.simulator",
+									"data",
+								]);
+								const trace = join(
+									container,
+									"Library/Caches/chooser-fixture-events.log",
+								);
+								const target = bundle.replace(/\.xcresult$/, "-events.log");
+								if (existsSync(trace)) cpSync(trace, target);
+								else
+									writeFileSync(target, "Fixture event trace unavailable.\n");
+							}
 						},
 						diagnostics: () =>
 							withFinalizers(() => {}, [

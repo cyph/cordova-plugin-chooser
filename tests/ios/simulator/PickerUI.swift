@@ -32,6 +32,7 @@ class PickerUI: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["CHOOSER_TEST_SHEET"] = sheet ? "1" : "0"
         app.launchEnvironment["CHOOSER_REOPEN"] = reopen
+        app.launchEnvironment["CHOOSER_CASE"] = name
         app.launch()
         XCTAssertTrue(app.staticTexts["Outcome"].waitForExistence(timeout: 20))
         expect(app, "ready")

@@ -62,16 +62,18 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     private func settle(_ picker: UIDocumentPickerViewController, _ value: String) {
         guard current === picker else { return }
         current = nil
-        NSLog("CHOOSER_FIXTURE UIKit delegate %@", value)
+        FixtureEvents.record("UIKit delegate \(value)")
         outcome.text = value
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         settle(controller, urls.first.map { "selected:\($0.lastPathComponent)" } ?? "error:empty native selection")
     }
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        FixtureEvents.record("UIKit cancellation delegate")
         settle(controller, "canceled:1")
     }
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        FixtureEvents.record("UIKit adaptive dismissal delegate")
         if let picker = presentationController.presentedViewController as? UIDocumentPickerViewController {
             documentPickerWasCancelled(picker)
         }
