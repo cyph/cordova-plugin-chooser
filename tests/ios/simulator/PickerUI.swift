@@ -57,6 +57,15 @@ class PickerUI: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed, "Picker presentation did not complete: \(serial)")
     }
     func dismissSheet(_ app: XCUIApplication) {
+        // Presentation completion precedes the remote Files UI. Wait for an
+        // interactive navigation control before taking the grabber's geometry;
+        // otherwise the query can capture the host's placeholder sheet.
+        let remoteReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.navigationBars.buttons.allElementsBoundByIndex.contains {
+                $0.exists && $0.isEnabled && $0.isHittable
+            }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [remoteReady], timeout: 30), .completed, "Remote picker navigation did not become interactive")
         // The outer document-picker host can cover the screen while its remote
         // Files view presents a half-height sheet. Use the visible UIKit handle.
         let grabber = app.buttons["Sheet Grabber"].firstMatch
