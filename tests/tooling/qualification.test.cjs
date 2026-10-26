@@ -1,9 +1,53 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require("node:fs");
+const {
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+	rmSync,
+} = require("node:fs");
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 const { version } = require("../../package.json");
+
+test("captured xcresult trees retain exact case identities and failure outcomes", async () => {
+	const {
+		checkSimulatorResults,
+		simulatorCaseRecords,
+		simulatorCases,
+		controlCases,
+	} = await import("../../scripts/simulator-results.mjs");
+	for (const [label, required] of [
+		["chooser", simulatorCases],
+		["control", controlCases],
+	]) {
+		const read = (part) =>
+			JSON.parse(
+				readFileSync(
+					join(__dirname, "fixtures", "xcresult", `${label}-${part}.json`),
+					"utf8",
+				),
+			);
+		const tests = read("tests");
+		const summary = read("summary");
+		const records = simulatorCaseRecords(tests);
+		assert.deepEqual(records.map(({ id }) => id).sort(), [...required].sort());
+		assert.equal(
+			records.filter(({ result }) => result === "Failed").length,
+			summary.failedTests,
+		);
+		assert(
+			records
+				.filter(({ result }) => result === "Failed")
+				.every(({ failures }) => failures.length > 0),
+		);
+		assert.throws(
+			() => checkSimulatorResults(summary, tests, required),
+			/Unsuccessful case/,
+		);
+	}
+});
 
 test("failed simulator case details remain available for diagnostic output", async () => {
 	const { simulatorCaseRecords } =

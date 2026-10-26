@@ -1,0 +1,103 @@
+{
+	"testNodes": [
+		{
+			"children": [
+				{
+					"children": [
+						{
+							"children": [
+								{
+									"name": "testCancel()",
+									"nodeIdentifier": "UIKitControlTests/testCancel()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"children": [
+										{
+											"name": "Asynchronous wait failed: Exceeded timeout of 30 seconds, with unfulfilled expectations: \"Expect predicate `label == \"selected:fixture-csv.csv\"` for object \"Outcome\" StaticText\".",
+											"nodeType": "Failure Message"
+										},
+										{
+											"name": "Failed to determine hittability of \"Cancel\" Button: Activation point invalid and no suggested hit points based on element frame",
+											"nodeType": "Failure Message"
+										}
+									],
+									"name": "testCSV()",
+									"nodeIdentifier": "UIKitControlTests/testCSV()",
+									"nodeType": "Test Case",
+									"result": "Failed"
+								},
+								{
+									"name": "testImage()",
+									"nodeIdentifier": "UIKitControlTests/testImage()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testJSON()",
+									"nodeIdentifier": "UIKitControlTests/testJSON()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testMOV()",
+									"nodeIdentifier": "UIKitControlTests/testMOV()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"children": [
+										{
+											"name": "Asynchronous wait failed: Exceeded timeout of 30 seconds, with unfulfilled expectations: \"Expect predicate `label == \"selected:fixture-mp4.mp4\"` for object \"Outcome\" StaticText\".",
+											"nodeType": "Failure Message"
+										},
+										{
+											"name": "Failed to determine hittability of \"Cancel\" Button: Activation point invalid and no suggested hit points based on element frame",
+											"nodeType": "Failure Message"
+										}
+									],
+									"name": "testMP4()",
+									"nodeIdentifier": "UIKitControlTests/testMP4()",
+									"nodeType": "Test Case",
+									"result": "Failed"
+								},
+								{
+									"name": "testPDF()",
+									"nodeIdentifier": "UIKitControlTests/testPDF()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"children": [
+										{
+											"name": "PickerUI.swift:68: XCTAssertGreaterThan failed: (\"0.0\") is not greater than (\"0.0\") - Expected an adaptive sheet",
+											"nodeType": "Failure Message"
+										},
+										{
+											"name": "Failed to determine hittability of \"Cancel\" Button: Activation point invalid and no suggested hit points based on element frame",
+											"nodeType": "Failure Message"
+										}
+									],
+									"name": "testSwipe()",
+									"nodeIdentifier": "UIKitControlTests/testSwipe()",
+									"nodeType": "Test Case",
+									"result": "Failed"
+								}
+							],
+							"name": "UIKitControlTests",
+							"nodeType": "Test Suite",
+							"result": "Failed"
+						}
+					],
+					"name": "UIKitControlTests",
+					"nodeType": "UI test bundle",
+					"result": "Failed"
+				}
+			],
+			"name": "UIKitControl",
+			"nodeType": "Test Plan",
+			"result": "Failed"
+		}
+	]
+}

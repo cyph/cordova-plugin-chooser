@@ -187,6 +187,7 @@ paths = [
   "package.json",
   "chainman/*.json",
   "tests/ios/privacy-plugin/package.json",
+  "tests/tooling/fixtures/xcresult/*.json",
 ]
 profile = "toolchain"
 write = ["prettier", "--write", "--"]

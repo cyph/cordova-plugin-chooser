@@ -1,0 +1,3 @@
+These fixtures preserve the nested test-plan, bundle, suite, case, and failure-message structures exported by `xcresulttool get test-results` with Xcode 26.3 (17C529). Run identifiers, device metadata, timings, and fields unused by the result validator have been removed. Case identities and outcomes are retained, including unsuccessful cases, to exercise parsing of real result trees.
+
+They are parser regression inputs, not qualification evidence for the current checkout. Refresh schema fixtures when changing the pinned Xcode or result-extraction commands; retain negative coverage for failed, skipped, duplicate, missing, and renamed cases.

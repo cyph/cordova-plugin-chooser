@@ -1,0 +1,139 @@
+{
+	"testNodes": [
+		{
+			"children": [
+				{
+					"children": [
+						{
+							"children": [
+								{
+									"name": "testAdaptiveDismissalAndStaleCallbacks()",
+									"nodeIdentifier": "ChooserPickerTests/testAdaptiveDismissalAndStaleCallbacks()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testMovieWildcardIncludesMP4AndQuickTime()",
+									"nodeIdentifier": "ChooserPickerTests/testMovieWildcardIncludesMP4AndQuickTime()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testResetAndDuplicateSelectionCannotSettleANewerRequest()",
+									"nodeIdentifier": "ChooserPickerTests/testResetAndDuplicateSelectionCannotSettleANewerRequest()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								}
+							],
+							"name": "ChooserPickerTests",
+							"nodeType": "Test Suite",
+							"result": "Passed"
+						}
+					],
+					"name": "ChooserPickerTests",
+					"nodeType": "Unit test bundle",
+					"result": "Passed"
+				},
+				{
+					"children": [
+						{
+							"children": [
+								{
+									"name": "testCancelCallbackReopen()",
+									"nodeIdentifier": "ChooserUITests/testCancelCallbackReopen()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testCancelPromiseReopen()",
+									"nodeIdentifier": "ChooserUITests/testCancelPromiseReopen()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testCSV()",
+									"nodeIdentifier": "ChooserUITests/testCSV()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testImage()",
+									"nodeIdentifier": "ChooserUITests/testImage()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testJSON()",
+									"nodeIdentifier": "ChooserUITests/testJSON()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"name": "testMOV()",
+									"nodeIdentifier": "ChooserUITests/testMOV()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"children": [
+										{
+											"name": "Asynchronous wait failed: Exceeded timeout of 30 seconds, with unfulfilled expectations: \"Expect predicate `label == \"selected:fixture-mp4.mp4\"` for object \"Outcome\" StaticText\".",
+											"nodeType": "Failure Message"
+										}
+									],
+									"name": "testMP4()",
+									"nodeIdentifier": "ChooserUITests/testMP4()",
+									"nodeType": "Test Case",
+									"result": "Failed"
+								},
+								{
+									"name": "testPDF()",
+									"nodeIdentifier": "ChooserUITests/testPDF()",
+									"nodeType": "Test Case",
+									"result": "Passed"
+								},
+								{
+									"children": [
+										{
+											"name": "PickerUI.swift:68: XCTAssertGreaterThan failed: (\"0.0\") is not greater than (\"0.0\") - Expected an adaptive sheet",
+											"nodeType": "Failure Message"
+										}
+									],
+									"name": "testSwipeCallbackReopen()",
+									"nodeIdentifier": "ChooserUITests/testSwipeCallbackReopen()",
+									"nodeType": "Test Case",
+									"result": "Failed"
+								},
+								{
+									"children": [
+										{
+											"name": "PickerUI.swift:68: XCTAssertGreaterThan failed: (\"0.0\") is not greater than (\"0.0\") - Expected an adaptive sheet",
+											"nodeType": "Failure Message"
+										},
+										{
+											"name": "Failed to determine hittability of \"Cancel\" Button: Activation point invalid and no suggested hit points based on element frame",
+											"nodeType": "Failure Message"
+										}
+									],
+									"name": "testSwipePromiseReopen()",
+									"nodeIdentifier": "ChooserUITests/testSwipePromiseReopen()",
+									"nodeType": "Test Case",
+									"result": "Failed"
+								}
+							],
+							"name": "ChooserUITests",
+							"nodeType": "Test Suite",
+							"result": "Failed"
+						}
+					],
+					"name": "ChooserUITests",
+					"nodeType": "UI test bundle",
+					"result": "Failed"
+				}
+			],
+			"name": "Chooser",
+			"nodeType": "Test Plan",
+			"result": "Failed"
+		}
+	]
+}
