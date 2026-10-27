@@ -149,18 +149,6 @@ class PickerUI: XCTestCase {
             dx: point.x - screen.minX, dy: point.y - screen.minY)).tap()
         attachScreen("After native action: \(label)")
     }
-    func tapVisible(_ query: XCUIElementQuery) {
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.namedControl(query) != nil
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
-        if let element = namedControl(query) {
-            XCTAssertTrue(element.isEnabled)
-            element.tap()
-        } else {
-            XCTFail("No hittable navigation target")
-        }
-    }
     func browseFixtures(_ app: XCUIApplication) {
         let location = app.cells.matching(NSPredicate(
             format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad"))
@@ -172,13 +160,29 @@ class PickerUI: XCTestCase {
         // Observe the toolbar title without activating its folder menu.
         let currentFolder = app.navigationBars.buttons.matching(NSPredicate(
             format: "label BEGINSWITH %@", "Chooser Fixtures"))
+        func inFolder() -> Bool { namedControl(currentFolder) != nil }
+        func navigate(_ query: XCUIElementQuery) {
+            // Files may restore its remembered destination during this wait.
+            // Reaching the folder supersedes input to the previous screen.
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                inFolder() || self.namedControl(query) != nil
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+            if inFolder() { return }
+            guard let element = namedControl(query) else {
+                XCTFail("No hittable navigation target")
+                return
+            }
+            XCTAssertTrue(element.isEnabled)
+            element.tap()
+        }
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             self.namedControl(currentFolder) != nil || self.namedControl(folder) != nil || self.namedControl(location) != nil || self.namedControl(browse) != nil
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed)
         if namedControl(currentFolder) != nil { return }
         if namedControl(folder) == nil && namedControl(location) == nil {
-            tapVisible(browse)
+            navigate(browse)
             // Return through the actual navigation stack, including a folder
             // remembered by an earlier picker. Never inject a filesystem URL.
             for _ in 0..<4 {
@@ -191,13 +195,16 @@ class PickerUI: XCTestCase {
             }
         }
         let destination = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.namedControl(folder) != nil || self.namedControl(location) != nil
+            inFolder() || self.namedControl(folder) != nil || self.namedControl(location) != nil
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [destination], timeout: 20), .completed)
+        if inFolder() { return }
         if namedControl(folder) == nil {
-            tapVisible(location)
+            navigate(location)
         }
-        tapVisible(folder)
+        navigate(folder)
+        let arrived = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in inFolder() }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [arrived], timeout: 20), .completed, "Fixture folder did not open")
     }
     func select(_ button: String, _ filename: String, environment: [String: String] = [:], resultPrefix: String = "selected") {
         let app = launch(environment: environment)
