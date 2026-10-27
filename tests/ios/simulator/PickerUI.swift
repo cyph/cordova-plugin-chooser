@@ -199,10 +199,11 @@ class PickerUI: XCTestCase {
     }
     private var lastNavigationSnapshot = "No Files navigation snapshot captured."
     private func filesNavigation(_ app: XCUIApplication, screen: CGRect) -> FilesNavigation? {
-        // Missing controls should not each cause a separate remote snapshot and
-        // resolution retry. Inspect all navigation candidates from one capture.
+        // Files lives in a remote accessibility context that an application
+        // snapshot can omit. Resolve its native browser before capturing all
+        // navigation candidates together, avoiding serial control lookups.
         let root: XCUIElementSnapshot
-        do { root = try app.snapshot() }
+        do { root = try app.otherElements.matching(identifier: "Browse View (Picker)").firstMatch.snapshot() }
         catch {
             lastNavigationSnapshot = "Files snapshot failed: \(error)"
             return nil
@@ -280,7 +281,7 @@ class PickerUI: XCTestCase {
         return FilesNavigation(screen: screen, arrived: arrived, target: target, signature: signature)
     }
     func browseFixtures(_ app: XCUIApplication) {
-        // Application snapshots need not carry the window's screen geometry.
+        // Screen coordinates are separate from the remote browser's frame.
         // Capture the application's visible frame once, outside the poll.
         let screen = app.frame
         XCTAssertFalse(screen.isEmpty, "Application has no visible frame")
