@@ -84,7 +84,12 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let prefix = ProcessInfo.processInfo.environment["CHOOSER_EXPORT_SEED"] == "1" ? "" : "exported-"
             let copy = directory.appendingPathComponent("\(prefix)\(name)")
-            if !FileManager.default.fileExists(atPath: copy.path) { try FileManager.default.copyItem(at: source, to: copy) }
+            if !FileManager.default.fileExists(atPath: copy.path) {
+                // Create a new document without inheriting bundle file metadata.
+                let bytes = try Data(contentsOf: source)
+                try bytes.write(to: copy, options: .withoutOverwriting)
+                FixtureEvents.record("UIKit export input \(copy.lastPathComponent) created from \(bytes.count) bytes")
+            }
             let picker = UIDocumentPickerViewController(forExporting: [copy], asCopy: true)
             picker.delegate = self
             showPicker(picker)
