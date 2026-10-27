@@ -197,11 +197,16 @@ class PickerUI: XCTestCase {
         let target: NavigationTarget?
         let signature: String
     }
-    private func filesNavigation(_ app: XCUIApplication) -> FilesNavigation? {
+    private var lastNavigationSnapshot = "No Files navigation snapshot captured."
+    private func filesNavigation(_ app: XCUIApplication, screen: CGRect) -> FilesNavigation? {
         // Missing controls should not each cause a separate remote snapshot and
         // resolution retry. Inspect all navigation candidates from one capture.
-        guard let root = try? app.snapshot() else { return nil }
-        let screen = root.frame
+        let root: XCUIElementSnapshot
+        do { root = try app.snapshot() }
+        catch {
+            lastNavigationSnapshot = "Files snapshot failed: \(error)"
+            return nil
+        }
         var folder: NavigationTarget?
         var location: NavigationTarget?
         var back: NavigationTarget?
@@ -209,6 +214,9 @@ class PickerUI: XCTestCase {
         var arrived = false
         var loadingDestination = false
         var titles: [String] = []
+        var details: [String] = []
+        var count = 0
+        var maximumDepth = 0
         let backNames = ["BackButton", "DOC.navBarButton.backInHistory", "Back", "Go Back"]
         func folderFrame(_ cell: XCUIElementSnapshot) -> CGRect {
             var pending = cell.children
@@ -224,10 +232,17 @@ class PickerUI: XCTestCase {
             }
             return icon ?? cell.frame
         }
-        func visit(_ node: XCUIElementSnapshot, inNavigation: Bool = false) {
+        func visit(_ node: XCUIElementSnapshot, inNavigation: Bool = false, depth: Int = 0) {
+            count += 1
+            maximumDepth = max(maximumDepth, depth)
             let navigation = node.elementType == .navigationBar || (inNavigation && node.elementType != .cell)
             let bounds = node.frame
-            if node.isEnabled && bounds.width >= 20 && bounds.height >= 20 && screen.contains(bounds) {
+            if node.elementType == .window || node.elementType == .navigationBar || node.elementType == .cell || navigation {
+                details.append("\(node.elementType) enabled=\(node.isEnabled) frame=\(bounds) identifier=\(node.identifier) label=\(node.label)")
+            }
+            // Observing a title does not require an enabled menu or a touch
+            // target's minimum size. Only controls receiving input do.
+            if !bounds.isEmpty && screen.contains(bounds) {
                 if navigation && (node.elementType == .button || node.elementType == .staticText) {
                     titles.append(node.label)
                     if node.label.hasPrefix("Chooser Fixtures") { arrived = true }
@@ -236,13 +251,13 @@ class PickerUI: XCTestCase {
                         loadingDestination = true
                     }
                 }
-                if node.elementType == .cell {
+                if node.isEnabled && bounds.width >= 20 && bounds.height >= 20 && node.elementType == .cell {
                     if node.label.hasPrefix("Chooser Fixtures") {
                         folder = NavigationTarget(kind: "folder", label: node.label, identifier: node.identifier, frame: folderFrame(node))
                     } else if node.label.hasPrefix("On My iPhone") || node.label.hasPrefix("On My iPad") {
                         location = NavigationTarget(kind: "location", label: node.label, identifier: node.identifier, frame: bounds)
                     }
-                } else if node.elementType == .button {
+                } else if node.isEnabled && bounds.width >= 20 && bounds.height >= 20 && node.elementType == .button {
                     if navigation && (backNames.contains(node.identifier) || backNames.contains(node.label)) {
                         back = NavigationTarget(kind: "back", label: node.label, identifier: node.identifier, frame: bounds)
                     }
@@ -251,9 +266,10 @@ class PickerUI: XCTestCase {
                     }
                 }
             }
-            for child in node.children { visit(child, inNavigation: navigation) }
+            for child in node.children { visit(child, inNavigation: navigation, depth: depth + 1) }
         }
         visit(root)
+        lastNavigationSnapshot = "screen=\(screen) root=\(root.frame) nodes=\(count) depth=\(maximumDepth) titles=\(titles) arrived=\(arrived)\n" + details.joined(separator: "\n")
         guard !titles.isEmpty else { return nil }
         // Only a title inside the actual navigation bar confirms arrival. A
         // folder cell with the same name is still a destination to open.
@@ -264,22 +280,36 @@ class PickerUI: XCTestCase {
         return FilesNavigation(screen: screen, arrived: arrived, target: target, signature: signature)
     }
     func browseFixtures(_ app: XCUIApplication) {
+        // Application snapshots need not carry the window's screen geometry.
+        // Capture the application's visible frame once, outside the poll.
+        let screen = app.frame
+        XCTAssertFalse(screen.isEmpty, "Application has no visible frame")
         var previous: String?
         var backCount = 0
         for step in 0...7 {
             var observed: FilesNavigation?
             let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                guard let state = self.filesNavigation(app) else { return false }
+                guard let state = self.filesNavigation(app, screen: screen) else { return false }
                 guard state.arrived || (state.target != nil && state.signature != previous) else { return false }
                 observed = state
                 return true
             }, object: nil)
-            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: step == 0 ? 60 : 20), .completed, "Files navigation did not reach its next destination")
+            let result = XCTWaiter.wait(for: [ready], timeout: step == 0 ? 60 : 20)
+            if result != .completed {
+                let attachment = XCTAttachment(string: lastNavigationSnapshot)
+                attachment.name = "Files navigation snapshot state"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            XCTAssertEqual(result, .completed, "Files navigation did not reach its next destination")
             guard let state = observed else {
                 XCTFail("Missing Files navigation snapshot")
                 return
             }
-            if state.arrived { return }
+            if state.arrived {
+                print("CHOOSER_UI navigation arrived \(lastNavigationSnapshot.split(separator: "\n").first ?? "")")
+                return
+            }
             guard step < 7 else {
                 XCTFail("Fixture folder did not open within the navigation limit")
                 return
