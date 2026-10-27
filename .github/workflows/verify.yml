@@ -10,11 +10,6 @@ on:
         description: Run the focused iOS diagnostic instead of release qualification
         type: boolean
         default: false
-      ios_simulator_host:
-        description: Host for the full simulator matrix using the baseline Apple pin
-        type: choice
-        options: [baseline-intel, baseline]
-        default: baseline-intel
       ios_diagnostic_profile:
         description: Apple profile and host for the focused diagnostic
         type: choice
@@ -33,7 +28,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}-{1}-{2}', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone', inputs.ios_diagnostic_scope || 'all') || format('qualification-{0}', inputs.ios_simulator_host || 'baseline-intel') }}
+  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}-{1}-{2}', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone', inputs.ios_diagnostic_scope || 'all') || false }}
   cancel-in-progress: true
 jobs:
   portable:
@@ -216,7 +211,7 @@ jobs:
           if-no-files-found: error
   ios-simulator:
     if: ${{ !github.event.repository.private }}
-    runs-on: ${{ inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'modern' && 'xcode-27' || (inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'baseline-intel' || !inputs.ios_diagnostic && (inputs.ios_simulator_host || 'baseline-intel') == 'baseline-intel') && 'macos-26-intel' || 'macos-26' }}
+    runs-on: ${{ inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'modern' && 'xcode-27' || inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'baseline-intel' && 'macos-26-intel' || 'macos-26' }}
     timeout-minutes: 180
     env:
       CHAINMAN_MODE: host-nix
