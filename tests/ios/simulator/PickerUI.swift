@@ -137,10 +137,15 @@ class PickerUI: XCTestCase {
         let point = CGPoint(x: bounds.midX, y: hasGrabber ? bounds.midY : bounds.minY - 8)
         XCTAssertFalse(bounds.isEmpty, "Empty gesture target")
         XCTAssertTrue(screen.contains(point), "Gesture target outside the screen")
-        let end = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: screen.height - 8))
+        // Keep the release above the rounded sheet edge and system gesture
+        // area. Ending on that boundary can cancel an interactive dismissal.
+        let endPoint = CGPoint(x: point.x, y: screen.maxY - 44)
+        XCTAssertGreaterThan(endPoint.y, point.y, "Gesture has no downward travel")
+        XCTAssertTrue(screen.contains(endPoint), "Gesture endpoint outside the screen")
+        let end = origin.withOffset(CGVector(dx: endPoint.x - screen.minX, dy: endPoint.y - screen.minY))
         let start = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: point.y - screen.minY))
         attachScreen("Immediately before swipe")
-        print("CHOOSER_UI dismiss screen=\(screen) target=\(bounds) point=\(point)")
+        print("CHOOSER_UI dismiss screen=\(screen) target=\(bounds) point=\(point) end=\(endPoint)")
         start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
         attachScreen("Immediately after swipe")
     }
