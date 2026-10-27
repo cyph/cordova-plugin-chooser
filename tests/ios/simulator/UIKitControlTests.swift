@@ -32,6 +32,12 @@ final class UIKitControlTests: PickerUI {
         app.buttons["SystemDelegate"].tap()
         nativeSwipe(app, identity: "UIKitControlTests/testSystemDelegateSwipe()", hasAdaptiveDelegate: false)
     }
+    func testSystemDelegateJSON() { select("JSON", "fixture-json.json", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
+    func testSystemDelegateCSV() { select("CSV", "fixture-csv.csv", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
+    func testSystemDelegatePDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
+    func testSystemDelegateImage() { select("Image", "fixture-image.png", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
+    func testSystemDelegateMP4() { select("Video", "fixture-mp4.mp4", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
+    func testSystemDelegateMOV() { select("Video", "fixture-mov.mov", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
     func testImportOriginalJSON() { select("JSON", "fixture-json.json") }
     func testOpenOriginalJSON() { select("JSON", "fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testImportExportedJSON() { select("JSON", "exported-fixture-json.json") }

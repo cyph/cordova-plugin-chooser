@@ -344,7 +344,7 @@ class PickerUI: XCTestCase {
     func select(_ button: String, _ filename: String, environment: [String: String] = [:], resultPrefix: String = "selected") {
         let app = launch(environment: environment)
         app.buttons[button].tap()
-        presented(app, serial: 1)
+        if environment["CHOOSER_SYSTEM_PROVIDER"] != "1" { presented(app, serial: 1) }
         browseFixtures(app)
         let stem = (filename as NSString).deletingPathExtension
         let item = app.cells.matching(NSPredicate(

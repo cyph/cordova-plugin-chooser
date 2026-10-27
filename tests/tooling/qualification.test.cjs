@@ -96,6 +96,22 @@ test("focused simulator selection cannot narrow release qualification", async ()
 		control: controlCases,
 		chooser: simulatorCases,
 	});
+	const completeDiagnostic = simulatorSelection(true);
+	assert.deepEqual(completeDiagnostic.chooser, simulatorCases);
+	assert.deepEqual(
+		completeDiagnostic.control.slice(0, controlCases.length),
+		controlCases,
+	);
+	assert.deepEqual(
+		completeDiagnostic.control.slice(controlCases.length),
+		["JSON", "CSV", "PDF", "Image", "MP4", "MOV"].map(
+			(format) => `UIKitControlTests/testSystemDelegate${format}()`,
+		),
+	);
+	assert.equal(
+		new Set(completeDiagnostic.control).size,
+		completeDiagnostic.control.length,
+	);
 	assert.throws(() => simulatorSelection(false, "dismissal"));
 	assert.throws(() => simulatorSelection(true, "other"));
 	const focus = simulatorSelection(true, "dismissal");

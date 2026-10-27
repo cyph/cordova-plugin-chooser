@@ -95,6 +95,12 @@ export function simulatorSelection(diagnostic, scope = "all") {
 					/\/test(?:Cancel|Swipe|PlainSheetSwipe|SystemDelegateSwipe)/.test(id),
 				);
 	const control = select(controlCases);
+	if (diagnostic && scope === "all")
+		control.push(
+			...formats.map(
+				(format) => `UIKitControlTests/testSystemDelegate${format}()`,
+			),
+		);
 	const chooser = select(simulatorCases);
 	return { control, chooser };
 }

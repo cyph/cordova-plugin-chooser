@@ -110,7 +110,8 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         current = picker
         // This control must leave UIKit presentation completely untouched,
         // including its adaptive delegate and view/accessibility hierarchy.
-        guard observeDismissal else {
+        guard observeDismissal, ProcessInfo.processInfo.environment["CHOOSER_SYSTEM_PROVIDER"] != "1" else {
+            FixtureEvents.record("UIKit presentation observation disabled")
             present(picker, animated: true)
             return
         }
