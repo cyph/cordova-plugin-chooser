@@ -12,8 +12,8 @@ reason = "Keep the JavaScript and Android bridge on identical releases."
 range = ">=11.1.1"
 reason = "GHSA-w5hq-g745-h8pq; xcode uses the retained CommonJS uuid.v4 API."
 [constraints."npm:qs"]
-range = ">=6.16.0"
-reason = "GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g."
+range = ">=6.16.1"
+reason = "Retain the patched query parser and serializer in the Cordova tooling graph."
 [constraints."npm:ip-address"]
 range = ">=10.7.4"
 reason = "GHSA-j6r3-76f7-8jcv, GHSA-h3mg-xc3c-68pw and GHSA-rxp7-6hxx-x8q5."
@@ -40,7 +40,7 @@ reason = "GHSA-vc2v-76pw-4v95."
 range = "^11.1.1"
 reason = "xcode's uuid.v4 call retains CommonJS support with the advisory fix."
 [javascript.override_constraints.qs]
-range = "^6.16.0"
+range = "^6.16.1"
 reason = "Use the advisory fix even when Express retains an older minor bound."
 [javascript.override_constraints.ip-address]
 range = "^10.7.4"
@@ -58,6 +58,13 @@ reason = "Patch minimatch's legacy callable export without changing its major AP
 range = "^5.0.12"
 reason = "Patch the named-export family without substituting the legacy API."
 
+[[exceptions]]
+package = "npm:qs"
+version = "6.16.1"
+minimum_safe = "6.16.1"
+reason = "Permit the exact serializer fix before its maturity window completes."
+advisory = "https://github.com/advisories/GHSA-6pq8-jhm2-2vcw"
+expires = "2026-11-13T22:06:17.002Z"
 [[exceptions]]
 package = "npm:ip-address"
 version = "10.7.4"
