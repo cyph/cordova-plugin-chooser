@@ -42,12 +42,24 @@ class PickerUI: XCTestCase {
     func expect(_ app: XCUIApplication, _ text: String, timeout: TimeInterval = 30) {
         var observed = "unavailable"
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            let outcome = app.staticTexts["Outcome"]
-            // The host label can be absent while the remote picker dismisses.
-            // Checking existence avoids resolving a hidden element's label.
-            guard outcome.exists else { return false }
-            observed = outcome.label
-            return observed == text
+            // Resolving a descendant while Files dismisses can block inside
+            // XCTest even after the host has received its real callback. Read
+            // one application snapshot and inspect its immutable nodes instead.
+            guard let root = try? app.snapshot() else { return false }
+            var pending = [root]
+            var labels: [String] = []
+            while let element = pending.popLast() {
+                pending.append(contentsOf: element.children)
+                if element.elementType == .staticText && element.identifier == "Outcome" {
+                    labels.append(element.label)
+                }
+            }
+            let value = labels.count == 1 ? labels[0] : "unavailable (\(labels.count) outcome labels)"
+            if value != observed {
+                print("CHOOSER_UI outcome snapshot=\(value)")
+                observed = value
+            }
+            return labels.count == 1 && labels[0] == text
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: timeout), .completed,
                        "Expected fixture outcome \(text); last observed \(observed)")
