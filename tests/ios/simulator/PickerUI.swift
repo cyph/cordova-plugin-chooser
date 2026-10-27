@@ -39,9 +39,9 @@ class PickerUI: XCTestCase {
         expect(app, "ready")
         return app
     }
-    func expect(_ app: XCUIApplication, _ text: String) {
+    func expect(_ app: XCUIApplication, _ text: String, timeout: TimeInterval = 30) {
         expectation(for: NSPredicate(format: "label == %@", text), evaluatedWith: app.staticTexts["Outcome"])
-        waitForExpectations(timeout: 30)
+        waitForExpectations(timeout: timeout)
     }
     func cancel(_ app: XCUIApplication) {
         tapPickerButton(app, app.navigationBars.buttons.matching(identifier: "Cancel"))

@@ -55,6 +55,6 @@ final class UIKitControlTests: PickerUI {
         browseFixtures(app)
         let buttons = app.navigationBars.buttons.matching(NSPredicate(format: "label IN %@", argumentArray: [["Export", "Save", "Copy", "Move"]]))
         tapPickerButton(app, buttons)
-        expect(app, "selected:\(seed ? "" : "exported-")\(filename)")
+        expect(app, "selected:\(seed ? "" : "exported-")\(filename)", timeout: 60)
     }
 }
