@@ -44,7 +44,7 @@ class PickerUI: XCTestCase {
         waitForExpectations(timeout: 30)
     }
     func cancel(_ app: XCUIApplication) {
-        tapVisible(app.navigationBars.buttons.matching(identifier: "Cancel"), timeout: 60)
+        tapPickerButton(app, app.navigationBars.buttons.matching(identifier: "Cancel"))
     }
     func presented(_ app: XCUIApplication, serial: Int) {
         let marker = app.staticTexts["PickerReady"]
@@ -111,12 +111,50 @@ class PickerUI: XCTestCase {
     func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
         query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
     }
-    func tapVisible(_ query: XCUIElementQuery, timeout: TimeInterval = 20) {
+    func namedControl(_ query: XCUIElementQuery) -> XCUIElement? {
+        // Named fixture controls are unique. Avoid binding every element in
+        // the remote Files accessibility tree while its hierarchy is changing.
+        let element = query.firstMatch
+        return element.exists && element.isEnabled && element.isHittable ? element : nil
+    }
+    private func pickerButtonFrame(_ button: XCUIElement, in app: XCUIApplication) -> CGRect? {
+        guard button.exists, button.isEnabled else { return nil }
+        let bounds = button.frame
+        // Discard placeholder geometry before the native toolbar finishes layout.
+        guard bounds.width >= 20, bounds.height >= 20, app.frame.contains(bounds) else { return nil }
+        return bounds
+    }
+    func tapPickerButton(_ app: XCUIApplication, _ query: XCUIElementQuery) {
+        let button = query.firstMatch
+        let deadline = ProcessInfo.processInfo.systemUptime + 60
+        XCTAssertTrue(button.waitForExistence(timeout: 60), "Missing native picker action")
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.firstHittable(query) != nil
+            self.pickerButtonFrame(button, in: app) != nil
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: timeout), .completed)
-        if let element = firstHittable(query) {
+        let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: remaining), .completed, "Native picker action did not finish layout")
+        let screen = app.frame
+        guard let bounds = pickerButtonFrame(button, in: app) else {
+            XCTFail("Native picker action lost its visible geometry")
+            return
+        }
+        let point = CGPoint(x: bounds.midX, y: bounds.midY)
+        let label = button.label
+        XCTAssertTrue(screen.contains(point), "Native picker action is outside the screen")
+        attachScreen("Before native action: \(label)")
+        print("CHOOSER_UI native action=\(label) screen=\(screen) target=\(bounds) point=\(point)")
+        // Send physical input to the captured visible button center. The
+        // caller verifies the real delegate or bridge outcome.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+            dx: point.x - screen.minX, dy: point.y - screen.minY)).tap()
+        attachScreen("After native action: \(label)")
+    }
+    func tapVisible(_ query: XCUIElementQuery) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.namedControl(query) != nil
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+        if let element = namedControl(query) {
             XCTAssertTrue(element.isEnabled)
             element.tap()
         } else {
@@ -135,28 +173,28 @@ class PickerUI: XCTestCase {
         let currentFolder = app.navigationBars.buttons.matching(NSPredicate(
             format: "label BEGINSWITH %@", "Chooser Fixtures"))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.firstHittable(currentFolder) != nil || self.firstHittable(folder) != nil || self.firstHittable(location) != nil || self.firstHittable(browse) != nil
+            self.namedControl(currentFolder) != nil || self.namedControl(folder) != nil || self.namedControl(location) != nil || self.namedControl(browse) != nil
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed)
-        if firstHittable(currentFolder) != nil { return }
-        if firstHittable(folder) == nil && firstHittable(location) == nil {
+        if namedControl(currentFolder) != nil { return }
+        if namedControl(folder) == nil && namedControl(location) == nil {
             tapVisible(browse)
             // Return through the actual navigation stack, including a folder
             // remembered by an earlier picker. Never inject a filesystem URL.
             for _ in 0..<4 {
-                if firstHittable(currentFolder) != nil { return }
-                if firstHittable(folder) != nil || firstHittable(location) != nil { break }
+                if namedControl(currentFolder) != nil { return }
+                if namedControl(folder) != nil || namedControl(location) != nil { break }
                 let names = ["BackButton", "Back", "Go Back"]
                 let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", argumentArray: [names, names]))
-                guard let back = firstHittable(buttons), back.isEnabled else { break }
+                guard let back = namedControl(buttons), back.isEnabled else { break }
                 back.tap()
             }
         }
         let destination = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.firstHittable(folder) != nil || self.firstHittable(location) != nil
+            self.namedControl(folder) != nil || self.namedControl(location) != nil
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [destination], timeout: 20), .completed)
-        if firstHittable(folder) == nil {
+        if namedControl(folder) == nil {
             tapVisible(location)
         }
         tapVisible(folder)
@@ -197,7 +235,7 @@ class PickerUI: XCTestCase {
         settled.isInverted = true
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 2), .completed, "A prevented swipe settled the request")
         XCTAssertFalse(app.buttons["Choose"].isHittable, "The picker disappeared without completing the request")
-        XCTAssertNotNil(firstHittable(app.navigationBars.buttons.matching(identifier: "Cancel")), "Pending picker has no usable Cancel control")
+        XCTAssertNotNil(pickerButtonFrame(app.navigationBars.buttons.matching(identifier: "Cancel").firstMatch, in: app), "Pending picker has no visible enabled Cancel control")
     }
 
     func nativeSwipe(_ app: XCUIApplication, identity: String, hasAdaptiveDelegate: Bool) {
