@@ -40,8 +40,17 @@ class PickerUI: XCTestCase {
         return app
     }
     func expect(_ app: XCUIApplication, _ text: String, timeout: TimeInterval = 30) {
-        expectation(for: NSPredicate(format: "label == %@", text), evaluatedWith: app.staticTexts["Outcome"])
-        waitForExpectations(timeout: timeout)
+        var observed = "unavailable"
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let outcome = app.staticTexts["Outcome"]
+            // The host label can be absent while the remote picker dismisses.
+            // Checking existence avoids resolving a hidden element's label.
+            guard outcome.exists else { return false }
+            observed = outcome.label
+            return observed == text
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: timeout), .completed,
+                       "Expected fixture outcome \(text); last observed \(observed)")
     }
     func cancel(_ app: XCUIApplication) {
         let buttons = app.navigationBars.buttons
