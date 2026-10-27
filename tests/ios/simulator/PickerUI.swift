@@ -47,25 +47,44 @@ class PickerUI: XCTestCase {
         let buttons = app.navigationBars.buttons
         let cancel = buttons.matching(identifier: "Cancel")
         let names = ["BackButton", "DOC.navBarButton.backInHistory", "Back", "Go Back"]
-        let back = buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", argumentArray: [names, names]))
+        let screen = app.frame
         let deadline = ProcessInfo.processInfo.systemUptime + 60
         // Files can restore a folder whose toolbar exposes Back and More but
         // no Cancel button. Navigate through visible native controls rather
         // than tapping a hidden accessibility placeholder behind that toolbar.
         for _ in 0..<4 {
+            var action: (cancel: Bool, frame: CGRect, identifier: String, label: String)?
             let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                cancel.firstMatch.exists || self.namedControl(back) != nil
+                // Reading attributes separately can re-resolve a Back button
+                // after navigation has already replaced it with Cancel. Capture
+                // the toolbar once, then inspect only its immutable snapshots.
+                guard let toolbar = try? app.navigationBars.firstMatch.snapshot() else { return false }
+                var pending = toolbar.children
+                var candidates: [XCUIElementSnapshot] = []
+                while let element = pending.popLast() {
+                    pending.append(contentsOf: element.children)
+                    let frame = element.frame
+                    if element.elementType == .button && element.isEnabled &&
+                        frame.width >= 20 && frame.height >= 20 && screen.contains(frame) {
+                        candidates.append(element)
+                    }
+                }
+                let close = candidates.first { $0.identifier == "Cancel" || $0.label == "Cancel" }
+                guard let target = close ?? candidates.first(where: { names.contains($0.identifier) || names.contains($0.label) }) else { return false }
+                action = (close != nil, target.frame, target.identifier, target.label)
+                return true
             }, object: nil)
             let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)
             XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: remaining), .completed, "Missing native cancellation or back navigation")
-            if cancel.firstMatch.exists { break }
-            guard let previous = namedControl(back) else {
-                XCTFail("Native back navigation disappeared before cancellation")
+            guard let target = action else {
+                XCTFail("Missing native cancellation navigation snapshot")
                 return
             }
+            if target.cancel { break }
             attachScreen("Navigate back to native Cancel")
-            print("CHOOSER_UI cancellation back=\(previous.identifier) label=\(previous.label)")
-            previous.tap()
+            print("CHOOSER_UI cancellation back=\(target.identifier) label=\(target.label) frame=\(target.frame)")
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: target.frame.midX - screen.minX, dy: target.frame.midY - screen.minY)).tap()
         }
         tapPickerButton(app, cancel)
     }
