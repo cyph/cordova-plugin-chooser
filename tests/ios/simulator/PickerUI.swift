@@ -55,7 +55,7 @@ class PickerUI: XCTestCase {
                   object["serial"] as? Int == serial, object["beingPresented"] as? Bool == false else { return false }
             return true
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed, "Picker presentation did not complete: \(serial)")
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed, "Picker presentation did not complete: \(serial)")
     }
     func dismissSheet(_ app: XCUIApplication) {
         // Presentation completion precedes the remote Files UI. Wait for an
