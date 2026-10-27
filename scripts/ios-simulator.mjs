@@ -569,6 +569,7 @@ export function verifyIosSimulator({
 					});
 				let sources;
 				let before;
+				let beforeRestart;
 				let fingerprintNames = [...sourceNames];
 				if (["all", "provider"].includes(diagnosticScope)) {
 					const derived = join(directory, "derived");
@@ -679,10 +680,22 @@ export function verifyIosSimulator({
 							}
 						}
 					}
+					beforeRestart = sourceFingerprint(sources, fingerprintNames);
+					// Start selection against persisted documents with fresh provider
+					// processes, rather than the sessions that registered the sources.
+					simctl(["shutdown", udid]);
+					simctl(["boot", udid]);
+					simctl(["bootstatus", udid, "-b"]);
 					before = sourceFingerprint(sources, fingerprintNames);
+					assert.deepEqual(
+						before,
+						beforeRestart,
+						"Simulator restart changed the fixture provider's originals",
+					);
+					checked(`${alias}:${kind}:source-restart`);
 					writeFileSync(
 						join(reportDirectory, `${alias}-${kind}-sources.json`),
-						JSON.stringify({ before }, null, 2),
+						JSON.stringify({ beforeRestart, before }, null, 2),
 					);
 				}
 
@@ -730,7 +743,7 @@ export function verifyIosSimulator({
 						const after = sourceFingerprint(sources, fingerprintNames);
 						writeFileSync(
 							join(reportDirectory, `${alias}-${kind}-sources.json`),
-							JSON.stringify({ before, after }, null, 2),
+							JSON.stringify({ beforeRestart, before, after }, null, 2),
 						);
 						assert.deepEqual(
 							after,
