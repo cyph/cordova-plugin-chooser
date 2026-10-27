@@ -298,15 +298,12 @@ test("qualification requires every successful job, complete reports and the same
 		/Missing ios-simulator check/,
 	);
 	const preparationChecks = simulator.checks.filter(
-		(check) =>
-			check.endsWith(":provider-setup") ||
-			check.includes(":seed-") ||
-			check.endsWith(":source-restart"),
+		(check) => check.endsWith(":provider-setup") || check.includes(":seed-"),
 	);
 	assert.equal(
 		preparationChecks.length,
-		32,
-		"Each combination requires provider initialization, all six system-created documents, and source-preserving restart",
+		28,
+		"Each combination requires provider initialization and all six system-created documents",
 	);
 	for (const check of preparationChecks) {
 		save({

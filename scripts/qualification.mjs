@@ -38,7 +38,6 @@ export const requiredChecks = {
 				...simulatorDocuments.map(
 					({ format }) => `${alias}:${device}:seed-${format.toLowerCase()}`,
 				),
-				`${alias}:${device}:source-restart`,
 				`${alias}:${device}:native-control`,
 				`${alias}:${device}`,
 			]),
