@@ -380,15 +380,23 @@ export function verifyIosSimulator({
 			false,
 			env,
 		);
-		for (const scheme of ["Chooser", "UIKitControl"])
+		const schemes = [
+			["Chooser", "build-for-testing"],
+			["UIKitControl", "build-for-testing"],
+		];
+		if (["all", "provider"].includes(diagnosticScope))
+			schemes.push(["ChooserVault", "build"]);
+		for (const [scheme, action] of schemes)
 			run(
 				"/usr/bin/xcodebuild",
 				[
-					"build-for-testing",
+					action,
 					"-project",
 					"ChooserSimulator.xcodeproj",
 					"-scheme",
 					scheme,
+					"-configuration",
+					"Debug",
 					"-destination",
 					"generic/platform=iOS Simulator",
 					"-derivedDataPath",
@@ -572,26 +580,6 @@ export function verifyIosSimulator({
 				let fingerprintNames = [...sourceNames];
 				if (["all", "provider"].includes(diagnosticScope)) {
 					const derived = join(directory, "derived");
-					run(
-						"/usr/bin/xcodebuild",
-						[
-							"build",
-							"-project",
-							"ChooserSimulator.xcodeproj",
-							"-scheme",
-							"ChooserVault",
-							"-configuration",
-							"Debug",
-							"-destination",
-							`platform=iOS Simulator,id=${udid}`,
-							"-derivedDataPath",
-							derived,
-							...buildSettings,
-						],
-						directory,
-						false,
-						env,
-					);
 					simctl([
 						"install",
 						udid,
