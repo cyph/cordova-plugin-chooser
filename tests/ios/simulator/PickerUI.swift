@@ -200,10 +200,14 @@ class PickerUI: XCTestCase {
     private var lastNavigationSnapshot = "No Files navigation snapshot captured."
     private func filesNavigation(_ app: XCUIApplication, screen: CGRect) -> FilesNavigation? {
         // Files lives in a remote accessibility context that an application
-        // snapshot can omit. Resolve its native browser before capturing all
-        // navigation candidates together, avoiding serial control lookups.
+        // snapshot can omit. Recents has no Browse container, so include its
+        // native mode tabs when resolving the navigation snapshot.
         let root: XCUIElementSnapshot
-        do { root = try app.otherElements.matching(identifier: "Browse View (Picker)").firstMatch.snapshot() }
+        do {
+            root = try app.descendants(matching: .any).matching(NSPredicate(
+                format: "identifier IN %@", argumentArray: [["Browse View (Picker)", "DOC.browsingModeTabBar"]]
+            )).firstMatch.snapshot()
+        }
         catch {
             lastNavigationSnapshot = "Files snapshot failed: \(error)"
             return nil
@@ -233,23 +237,26 @@ class PickerUI: XCTestCase {
             }
             return icon ?? cell.frame
         }
-        func visit(_ node: XCUIElementSnapshot, inNavigation: Bool = false, depth: Int = 0) {
+        func visit(_ node: XCUIElementSnapshot, inNavigation: Bool = false, inTabs: Bool = false, depth: Int = 0) {
             count += 1
             maximumDepth = max(maximumDepth, depth)
             let navigation = node.elementType == .navigationBar || (inNavigation && node.elementType != .cell)
+            let tabs = node.elementType == .tabBar || (inTabs && node.elementType != .cell)
             let bounds = node.frame
-            if node.elementType == .window || node.elementType == .navigationBar || node.elementType == .cell || navigation {
+            if node.elementType == .window || node.elementType == .navigationBar || node.elementType == .tabBar || node.elementType == .cell || navigation || tabs {
                 details.append("\(node.elementType) enabled=\(node.isEnabled) frame=\(bounds) identifier=\(node.identifier) label=\(node.label)")
             }
             // Observing a title does not require an enabled menu or a touch
             // target's minimum size. Only controls receiving input do.
             if !bounds.isEmpty && screen.contains(bounds) {
-                if navigation && (node.elementType == .button || node.elementType == .staticText) {
+                if (navigation || tabs) && (node.elementType == .button || node.elementType == .staticText) {
                     titles.append(node.label)
-                    if node.label.hasPrefix("Chooser Fixtures") { arrived = true }
-                    let isBack = backNames.contains(node.identifier) || backNames.contains(node.label)
-                    if !isBack && (node.label.hasPrefix("On My iPhone") || node.label.hasPrefix("On My iPad") || node.label == "Browse") {
-                        loadingDestination = true
+                    if navigation {
+                        if node.label.hasPrefix("Chooser Fixtures") { arrived = true }
+                        let isBack = backNames.contains(node.identifier) || backNames.contains(node.label)
+                        if !isBack && (node.label.hasPrefix("On My iPhone") || node.label.hasPrefix("On My iPad") || node.label == "Browse") {
+                            loadingDestination = true
+                        }
                     }
                 }
                 if node.isEnabled && bounds.width >= 20 && bounds.height >= 20 && node.elementType == .cell {
@@ -267,10 +274,10 @@ class PickerUI: XCTestCase {
                     }
                 }
             }
-            for child in node.children { visit(child, inNavigation: navigation, depth: depth + 1) }
+            for child in node.children { visit(child, inNavigation: navigation, inTabs: tabs, depth: depth + 1) }
         }
         visit(root)
-        lastNavigationSnapshot = "screen=\(screen) root=\(root.frame) nodes=\(count) depth=\(maximumDepth) titles=\(titles) arrived=\(arrived)\n" + details.joined(separator: "\n")
+        lastNavigationSnapshot = "screen=\(screen) root=\(root.elementType):\(root.identifier) \(root.frame) nodes=\(count) depth=\(maximumDepth) titles=\(titles) arrived=\(arrived)\n" + details.joined(separator: "\n")
         guard !titles.isEmpty else { return nil }
         // Only a title inside the actual navigation bar confirms arrival. A
         // folder cell with the same name is still a destination to open.
