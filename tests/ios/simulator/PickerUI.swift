@@ -44,7 +44,30 @@ class PickerUI: XCTestCase {
         waitForExpectations(timeout: timeout)
     }
     func cancel(_ app: XCUIApplication) {
-        tapPickerButton(app, app.navigationBars.buttons.matching(identifier: "Cancel"))
+        let buttons = app.navigationBars.buttons
+        let cancel = buttons.matching(identifier: "Cancel")
+        let names = ["BackButton", "DOC.navBarButton.backInHistory", "Back", "Go Back"]
+        let back = buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", argumentArray: [names, names]))
+        let deadline = ProcessInfo.processInfo.systemUptime + 60
+        // Files can restore a folder whose toolbar exposes Back and More but
+        // no Cancel button. Navigate through visible native controls rather
+        // than tapping a hidden accessibility placeholder behind that toolbar.
+        for _ in 0..<4 {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                cancel.firstMatch.exists || self.namedControl(back) != nil
+            }, object: nil)
+            let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: remaining), .completed, "Missing native cancellation or back navigation")
+            if cancel.firstMatch.exists { break }
+            guard let previous = namedControl(back) else {
+                XCTFail("Native back navigation disappeared before cancellation")
+                return
+            }
+            attachScreen("Navigate back to native Cancel")
+            print("CHOOSER_UI cancellation back=\(previous.identifier) label=\(previous.label)")
+            previous.tap()
+        }
+        tapPickerButton(app, cancel)
     }
     func presented(_ app: XCUIApplication, serial: Int) {
         let marker = app.staticTexts["PickerReady"]
