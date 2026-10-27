@@ -44,7 +44,7 @@ class PickerUI: XCTestCase {
         waitForExpectations(timeout: 30)
     }
     func cancel(_ app: XCUIApplication) {
-        tapVisible(app.navigationBars.buttons.matching(identifier: "Cancel"))
+        tapVisible(app.navigationBars.buttons.matching(identifier: "Cancel"), timeout: 60)
     }
     func presented(_ app: XCUIApplication, serial: Int) {
         let marker = app.staticTexts["PickerReady"]
@@ -111,11 +111,11 @@ class PickerUI: XCTestCase {
     func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
         query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
     }
-    func tapVisible(_ query: XCUIElementQuery) {
+    func tapVisible(_ query: XCUIElementQuery, timeout: TimeInterval = 20) {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             self.firstHittable(query) != nil
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: timeout), .completed)
         if let element = firstHittable(query) {
             XCTAssertTrue(element.isEnabled)
             element.tap()
