@@ -16,12 +16,20 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { aggregateReports, requiredChecks } from "./qualification.mjs";
+import {
+	aggregateReports,
+	requiredChecks,
+	simulatorPartitionChecks,
+} from "./qualification.mjs";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import { checkPackedFiles } from "./package.mjs";
 import { verifyIosSimulator } from "./ios-simulator.mjs";
-import { simulatorOptions, simulatorDocuments } from "./simulator-results.mjs";
+import {
+	simulatorOptions,
+	simulatorDocuments,
+	simulatorPartitionOptions,
+} from "./simulator-results.mjs";
 import { spawnVerified } from "./verification-command.mjs";
 import { verifyCapacitorAndroid, prepareCapacitor } from "./capacitor.mjs";
 
@@ -29,8 +37,19 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(root, ".verification");
 const readJSON = (path) => JSON.parse(readFileSync(path, "utf8"));
 const pkg = readJSON(join(root, "package.json"));
-const lane = process.argv[2];
-const reportDirectory = join(output, "reports", lane || "unknown");
+const commandLane = process.argv[2];
+const partition =
+	commandLane === "ios-simulator-part"
+		? simulatorPartitionOptions(process.argv.slice(3))
+		: undefined;
+const lane = partition ? "ios-simulator" : commandLane;
+const reportDirectory = join(
+	output,
+	"reports",
+	partition
+		? `${lane}-${partition.framework}-${partition.device}`
+		: lane || "unknown",
+);
 const report = {
 	schema: 1,
 	lane,
@@ -602,7 +621,10 @@ function ios(modern = false) {
 
 const diagnosticLane = "ios-simulator-diagnostic";
 const simulatorConfiguration = [diagnosticLane, "ios-simulator"].includes(lane)
-	? simulatorOptions(process.argv.slice(3), lane === diagnosticLane)
+	? simulatorOptions(
+			partition ? [] : process.argv.slice(3),
+			lane === diagnosticLane,
+		)
 	: undefined;
 const diagnosticDevice = simulatorConfiguration?.device;
 const expectedChecks =
@@ -629,7 +651,9 @@ const expectedChecks =
 				`cordova-ios7:${diagnosticDevice}:native-control`,
 				`cordova-ios7:${diagnosticDevice}`,
 			]
-		: requiredChecks[lane];
+		: partition
+			? simulatorPartitionChecks(partition)
+			: requiredChecks[lane];
 function simulator(diagnostic = false) {
 	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
 	run("node", ["--test", "tests/tooling/verification-command.test.cjs"]);
@@ -643,6 +667,7 @@ function simulator(diagnostic = false) {
 		app,
 		checked,
 		diagnostic,
+		partition,
 		diagnosticDevice,
 		diagnosticScope: simulatorConfiguration.scope,
 		modern: simulatorConfiguration.profile === "modern",
@@ -657,6 +682,7 @@ const lanes = {
 	ios,
 	"ios-modern": () => ios(true),
 	"ios-simulator": () => simulator(),
+	"ios-simulator-part": () => simulator(),
 	"ios-simulator-diagnostic": () => simulator(true),
 	"capacitor-android": () =>
 		verifyCapacitorAndroid({
@@ -714,7 +740,7 @@ try {
 		rmSync(reportDirectory, { recursive: true, force: true });
 		saveReport();
 	}
-	await lanes[lane]();
+	await lanes[commandLane]();
 	if (expectedChecks) {
 		for (const check of expectedChecks)
 			assert(

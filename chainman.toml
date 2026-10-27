@@ -113,6 +113,13 @@ commands = [["node", "scripts/verify.mjs", "ios-simulator"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.verify-ios-simulator-part]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "ios-simulator-part"]]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.diagnose-ios-simulator]
 profile = "ios"
 setup = ["javascript"]

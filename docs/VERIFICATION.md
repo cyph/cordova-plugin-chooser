@@ -43,6 +43,7 @@ Xcode is an external prerequisite. [apple.json](https://github.com/cyph/cordova-
 | `just verify-ios-modern` | Both iOS generations on the modern Apple profile, plus Foundation address/thread sanitizers |
 | `just chainman run diagnose-ios-simulator` / `diagnose-ios-simulator-modern` | Focused Cordova iOS 7/iPhone picker diagnostic with either Apple pin; append `-ipad` for iPad (A16). Requires the corresponding simulator runtime |
 | `just verify-ios-simulator` | App-hosted XCTest and Files UI tests on fresh iPhone 17 and iPad (A16) simulators, for both Cordova iOS generations |
+| `just chainman run verify-ios-simulator-part cordova-ios7 iphone` | One complete framework/device combination; accepts `cordova-ios7`/`cordova-ios8` and `iphone`/`ipad`. All four partitions are required together for qualification |
 | `just verify-capacitor-android` | Packed plugin through Capacitor 8.5.2's real WebView/native bridge on an Android 13 emulator |
 | `just verify-native` | Android and baseline iOS tasks; host must satisfy both profiles |
 | `just clean` | Remove generated verification apps, reports, and Android fixture build output |
@@ -131,7 +132,9 @@ Run `just chainman deps-audit --targets js` for published dependency advisories.
 
 The [Verify workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/verify.yml) runs on public-repository pull requests, pushes to `master` or `candidate/**`, and manual dispatch. It invokes the same tasks with read-only repository permissions, pinned Actions, and finite timeouts.
 
-Its final qualification job requires successful portable, Android, dependency-failure, baseline iOS, modern iOS, iOS simulator, and Capacitor Android jobs. It validates eight lane reports, including the browser report, for matching commit, package version, and package integrity. Missing reports, skipped lanes, missing required native cases, or failed commands reject qualification.
+Its final qualification job requires successful portable, Android, dependency-failure, baseline iOS, modern iOS, iOS simulator, and Capacitor Android jobs. It validates eight verification lanes, including the browser lane, for matching commit, package version, and package integrity. The partitioned simulator lane supplies four reports, so an Actions run must retain eleven reports in total. Missing reports, skipped lanes, missing required native cases, or failed commands reject qualification.
+
+Actions isolates each Cordova iOS framework/device combination on a separate runner, with matrix fail-fast disabled. Each partition compiles both Cordova fixtures and executes the same complete set of selection, lifecycle, provider-preparation, and native-control cases for its device. Qualification requires all four successful partitions, matching Apple pins and package identity, distinct owned simulators, and every original matrix check. A single partition, missing or duplicate partitions, mixed complete/partial simulator reports, and diagnostic reports cannot satisfy the aggregate. The local `verify-ios-simulator` task still runs the complete matrix in one invocation.
 
 Reports and command logs live under `.verification/reports/`; Actions retains them for 14 days, including on failure. Check downloaded evidence with `just chainman run qualify`, supplying `CHOOSER_REPORTS_ROOT`, `GITHUB_SHA`, and the workflow's `CHOOSER_JOB_RESULTS` JSON. Keep per-run evidence in CI or the pull request.
 

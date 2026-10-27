@@ -211,6 +211,11 @@ jobs:
           if-no-files-found: error
   ios-simulator:
     if: ${{ !github.event.repository.private }}
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(inputs.ios_diagnostic && '["cordova-ios7"]' || '["cordova-ios7","cordova-ios8"]') }}
+        device: ${{ fromJSON(inputs.ios_diagnostic && format('["{0}"]', inputs.ios_diagnostic_device || 'iphone') || '["iphone","ipad"]') }}
     runs-on: ${{ inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'modern' && 'xcode-27' || inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'baseline-intel' && 'macos-26-intel' || 'macos-26' }}
     timeout-minutes: 180
     env:
@@ -237,7 +242,8 @@ jobs:
               dismissal|provider) set -- "--${{ inputs.ios_diagnostic_scope }}-only" ;;
             esac
           else
-            task=verify-ios-simulator
+            task=verify-ios-simulator-part
+            set -- '${{ matrix.framework }}' '${{ matrix.device }}'
           fi
           nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run "$task" "$@"
       - name: Verify tracked files are unchanged
@@ -249,7 +255,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: diagnostics-ios-simulator-summary
+          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-summary' || format('diagnostics-ios-simulator-{0}-{1}-summary', matrix.framework, matrix.device) }}
           path: |
             .verification/reports/**/qualification.json
             .verification/reports/**/*-summary.json
@@ -266,7 +272,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || 'qualification-ios-simulator' }}
+          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || format('qualification-ios-simulator-{0}-{1}', matrix.framework, matrix.device) }}
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
@@ -278,7 +284,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || 'qualification-ios-simulator' }}
+          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || format('qualification-ios-simulator-{0}-{1}', matrix.framework, matrix.device) }}
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14

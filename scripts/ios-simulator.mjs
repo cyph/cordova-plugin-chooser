@@ -55,7 +55,13 @@ export function verifyIosSimulator({
 	modern = false,
 	diagnosticDevice = "iphone",
 	diagnosticScope = "all",
+	partition,
 }) {
+	assert(
+		!partition || (!diagnostic && !modern && diagnosticScope === "all"),
+		"Release partitions require the complete baseline suite",
+	);
+	if (partition) report.partition = partition;
 	const selected = simulatorSelection(diagnostic, diagnosticScope);
 	if (diagnostic)
 		report.diagnostic = {
@@ -413,11 +419,13 @@ export function verifyIosSimulator({
 	}
 	for (const { alias, directory } of fixtures) {
 		if (diagnostic && alias !== "cordova-ios7") continue;
+		if (partition && alias !== partition.framework) continue;
 		for (const [kind, deviceName] of [
 			["iphone", "iPhone 17"],
 			["ipad", "iPad (A16)"],
 		]) {
 			if (diagnostic && kind !== diagnosticDevice) continue;
+			if (partition && kind !== partition.device) continue;
 			const type = devices.find((device) => device.name === deviceName);
 			assert(type, `Missing simulator device type: ${deviceName}`);
 			const udid = simctl([

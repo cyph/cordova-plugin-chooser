@@ -9,6 +9,26 @@ export const simulatorDocuments = [
 	{ format: "MOV", name: "fixture-mov.mov" },
 ];
 const formats = simulatorDocuments.map(({ format }) => format);
+export const simulatorPartitions = ["cordova-ios7", "cordova-ios8"].flatMap(
+	(framework) => ["iphone", "ipad"].map((device) => ({ framework, device })),
+);
+
+export function simulatorPartitionOptions(args) {
+	assert.equal(
+		args.length,
+		2,
+		"A simulator partition requires framework and device",
+	);
+	const [framework, device] = args;
+	assert(
+		simulatorPartitions.some(
+			(part) => part.framework === framework && part.device === device,
+		),
+		"Unexpected simulator partition",
+	);
+	return { framework, device };
+}
+
 export const simulatorCases = [
 	...[
 		"testAdaptiveDismissalAndStaleCallbacks",
