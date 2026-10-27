@@ -112,7 +112,7 @@ class PickerUI: XCTestCase {
         query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
     }
     func namedControl(_ query: XCUIElementQuery) -> XCUIElement? {
-        // Named fixture controls are unique. Avoid binding every element in
+        // Match named navigation controls without binding every element in
         // the remote Files accessibility tree while its hierarchy is changing.
         let element = query.firstMatch
         return element.exists && element.isEnabled && element.isHittable ? element : nil
@@ -153,7 +153,10 @@ class PickerUI: XCTestCase {
         let location = app.cells.matching(NSPredicate(
             format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad"))
         // Files uses a top segmented control on iPad and a tab bar on iPhone.
-        let browse = app.buttons.matching(identifier: "Browse")
+        // The iPhone back button retains its identifier when Files restores a
+        // folder and changes the displayed label from Browse to its parent.
+        let browse = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR identifier == %@ OR label == %@", "Browse", "BackButton", "Browse"))
         let folder = app.cells.matching(NSPredicate(
             format: "label BEGINSWITH %@", "Chooser Fixtures"))
         // Export pickers can reopen directly inside the last destination.
