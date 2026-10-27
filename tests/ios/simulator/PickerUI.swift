@@ -153,12 +153,6 @@ class PickerUI: XCTestCase {
     func firstHittable(_ query: XCUIElementQuery) -> XCUIElement? {
         query.allElementsBoundByIndex.first { $0.exists && $0.isHittable }
     }
-    func namedControl(_ query: XCUIElementQuery) -> XCUIElement? {
-        // Match named navigation controls without binding every element in
-        // the remote Files accessibility tree while its hierarchy is changing.
-        let element = query.firstMatch
-        return element.exists && element.isEnabled && element.isHittable ? element : nil
-    }
     private func pickerButtonFrame(_ button: XCUIElement, in app: XCUIApplication) -> CGRect? {
         guard button.exists, button.isEnabled else { return nil }
         let bounds = button.frame
@@ -191,65 +185,123 @@ class PickerUI: XCTestCase {
             dx: point.x - screen.minX, dy: point.y - screen.minY)).tap()
         attachScreen("After native action: \(label)")
     }
+    private struct NavigationTarget {
+        let kind: String
+        let label: String
+        let identifier: String
+        let frame: CGRect
+    }
+    private struct FilesNavigation {
+        let screen: CGRect
+        let arrived: Bool
+        let target: NavigationTarget?
+        let signature: String
+    }
+    private func filesNavigation(_ app: XCUIApplication) -> FilesNavigation? {
+        // Missing controls should not each cause a separate remote snapshot and
+        // resolution retry. Inspect all navigation candidates from one capture.
+        guard let root = try? app.snapshot() else { return nil }
+        let screen = root.frame
+        var folder: NavigationTarget?
+        var location: NavigationTarget?
+        var back: NavigationTarget?
+        var browse: NavigationTarget?
+        var arrived = false
+        var loadingDestination = false
+        var titles: [String] = []
+        let backNames = ["BackButton", "DOC.navBarButton.backInHistory", "Back", "Go Back"]
+        func folderFrame(_ cell: XCUIElementSnapshot) -> CGRect {
+            var pending = cell.children
+            var icon: CGRect?
+            while let child = pending.popLast() {
+                pending.append(contentsOf: child.children)
+                let bounds = child.frame
+                if child.elementType == .image && bounds.width >= 20 && bounds.height >= 20 &&
+                    cell.frame.contains(bounds) && screen.contains(bounds) &&
+                    bounds.width * bounds.height > (icon.map { $0.width * $0.height } ?? 0) {
+                    icon = bounds
+                }
+            }
+            return icon ?? cell.frame
+        }
+        func visit(_ node: XCUIElementSnapshot, inNavigation: Bool = false) {
+            let navigation = node.elementType == .navigationBar || (inNavigation && node.elementType != .cell)
+            let bounds = node.frame
+            if node.isEnabled && bounds.width >= 20 && bounds.height >= 20 && screen.contains(bounds) {
+                if navigation && (node.elementType == .button || node.elementType == .staticText) {
+                    titles.append(node.label)
+                    if node.label.hasPrefix("Chooser Fixtures") { arrived = true }
+                    let isBack = backNames.contains(node.identifier) || backNames.contains(node.label)
+                    if !isBack && (node.label.hasPrefix("On My iPhone") || node.label.hasPrefix("On My iPad") || node.label == "Browse") {
+                        loadingDestination = true
+                    }
+                }
+                if node.elementType == .cell {
+                    if node.label.hasPrefix("Chooser Fixtures") {
+                        folder = NavigationTarget(kind: "folder", label: node.label, identifier: node.identifier, frame: folderFrame(node))
+                    } else if node.label.hasPrefix("On My iPhone") || node.label.hasPrefix("On My iPad") {
+                        location = NavigationTarget(kind: "location", label: node.label, identifier: node.identifier, frame: bounds)
+                    }
+                } else if node.elementType == .button {
+                    if navigation && (backNames.contains(node.identifier) || backNames.contains(node.label)) {
+                        back = NavigationTarget(kind: "back", label: node.label, identifier: node.identifier, frame: bounds)
+                    }
+                    if node.identifier == "Browse" || node.label == "Browse" {
+                        browse = NavigationTarget(kind: "browse", label: node.label, identifier: node.identifier, frame: bounds)
+                    }
+                }
+            }
+            for child in node.children { visit(child, inNavigation: navigation) }
+        }
+        visit(root)
+        guard !titles.isEmpty else { return nil }
+        // Only a title inside the actual navigation bar confirms arrival. A
+        // folder cell with the same name is still a destination to open.
+        let signature = titles.sorted().joined(separator: "|") + ";folder=\(folder != nil);location=\(location != nil)"
+        // At a known parent, wait for its contents instead of immediately
+        // navigating away while the provider is still populating the view.
+        let target = folder ?? location ?? (loadingDestination ? nil : back ?? browse)
+        return FilesNavigation(screen: screen, arrived: arrived, target: target, signature: signature)
+    }
     func browseFixtures(_ app: XCUIApplication) {
-        let location = app.cells.matching(NSPredicate(
-            format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "On My iPhone", "On My iPad"))
-        // Files uses a top segmented control on iPad and a tab bar on iPhone.
-        // The iPhone back button retains its identifier when Files restores a
-        // folder and changes the displayed label from Browse to its parent.
-        let browse = app.buttons.matching(NSPredicate(
-            format: "identifier == %@ OR identifier == %@ OR label == %@", "Browse", "BackButton", "Browse"))
-        let folder = app.cells.matching(NSPredicate(
-            format: "label BEGINSWITH %@", "Chooser Fixtures"))
-        // Export pickers can reopen directly inside the last destination.
-        // Observe the toolbar title without activating its folder menu.
-        let currentFolder = app.navigationBars.buttons.matching(NSPredicate(
-            format: "label BEGINSWITH %@", "Chooser Fixtures"))
-        func inFolder() -> Bool { namedControl(currentFolder) != nil }
-        func navigate(_ query: XCUIElementQuery) {
-            // Files may restore its remembered destination during this wait.
-            // Reaching the folder supersedes input to the previous screen.
+        var previous: String?
+        var backCount = 0
+        for step in 0...7 {
+            var observed: FilesNavigation?
             let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                inFolder() || self.namedControl(query) != nil
+                guard let state = self.filesNavigation(app) else { return false }
+                guard state.arrived || (state.target != nil && state.signature != previous) else { return false }
+                observed = state
+                return true
             }, object: nil)
-            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
-            if inFolder() { return }
-            guard let element = namedControl(query) else {
-                XCTFail("No hittable navigation target")
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: step == 0 ? 60 : 20), .completed, "Files navigation did not reach its next destination")
+            guard let state = observed else {
+                XCTFail("Missing Files navigation snapshot")
                 return
             }
-            XCTAssertTrue(element.isEnabled)
-            element.tap()
-        }
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            self.namedControl(currentFolder) != nil || self.namedControl(folder) != nil || self.namedControl(location) != nil || self.namedControl(browse) != nil
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed)
-        if namedControl(currentFolder) != nil { return }
-        if namedControl(folder) == nil && namedControl(location) == nil {
-            navigate(browse)
-            // Return through the actual navigation stack, including a folder
-            // remembered by an earlier picker. Never inject a filesystem URL.
-            for _ in 0..<4 {
-                if namedControl(currentFolder) != nil { return }
-                if namedControl(folder) != nil || namedControl(location) != nil { break }
-                let names = ["BackButton", "Back", "Go Back"]
-                let buttons = app.buttons.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", argumentArray: [names, names]))
-                guard let back = namedControl(buttons), back.isEnabled else { break }
-                back.tap()
+            if state.arrived { return }
+            guard step < 7 else {
+                XCTFail("Fixture folder did not open within the navigation limit")
+                return
             }
+            guard let target = state.target else {
+                XCTFail("Missing visible native Files navigation control")
+                return
+            }
+            if target.kind == "back" {
+                backCount += 1
+                XCTAssertLessThanOrEqual(backCount, 4, "Files navigation exceeded the back stack limit")
+            }
+            previous = state.signature
+            attachScreen("Before Files navigation: \(target.kind)")
+            print("CHOOSER_UI navigate kind=\(target.kind) label=\(target.label) identifier=\(target.identifier) frame=\(target.frame)")
+            // Touch the visible control captured above. Wait for a different
+            // navigation state before sending another input to the remote UI.
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+                dx: target.frame.midX - state.screen.minX, dy: target.frame.midY - state.screen.minY)).tap()
+            attachScreen("After Files navigation: \(target.kind)")
         }
-        let destination = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            inFolder() || self.namedControl(folder) != nil || self.namedControl(location) != nil
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [destination], timeout: 20), .completed)
-        if inFolder() { return }
-        if namedControl(folder) == nil {
-            navigate(location)
-        }
-        navigate(folder)
-        let arrived = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in inFolder() }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [arrived], timeout: 20), .completed, "Fixture folder did not open")
+        XCTFail("Fixture folder did not open within the navigation limit")
     }
     func select(_ button: String, _ filename: String, environment: [String: String] = [:], resultPrefix: String = "selected") {
         let app = launch(environment: environment)
