@@ -600,15 +600,6 @@ export function verifyIosSimulator({
 							"Build/Products/Debug-iphonesimulator/ChooserVault.app",
 						),
 					]);
-					// Start the local provider through a real picker interaction before
-					// the shared source container is populated.
-					suite(
-						join(reportDirectory, `${alias}-${kind}-provider-setup.xcresult`),
-						"UIKitControl",
-						["UIKitControlTests/testCancel()"],
-						"dismissal",
-					);
-					checked(`${alias}:${kind}:provider-setup`);
 					simctl(["launch", udid, "com.cyph.chooser.fixtures"]);
 					const container = simctl([
 						"get_app_container",
@@ -628,6 +619,15 @@ export function verifyIosSimulator({
 						env,
 					);
 					sources = join(container, "Documents");
+					// Initialize the shared folder before Files enumerates it. The
+					// selection fixtures are still created by the real export picker.
+					suite(
+						join(reportDirectory, `${alias}-${kind}-provider-setup.xcresult`),
+						"UIKitControl",
+						["UIKitControlTests/testCancel()"],
+						"dismissal",
+					);
+					checked(`${alias}:${kind}:provider-setup`);
 					if (diagnosticScope === "all") {
 						for (const { format, name } of simulatorDocuments) {
 							suite(
