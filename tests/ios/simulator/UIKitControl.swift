@@ -21,11 +21,18 @@ final class UIKitControlScene: UIResponder, UIWindowSceneDelegate {
     }
 }
 
-final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+private final class FixtureSheet: UINavigationController, UIAdaptivePresentationControllerDelegate {
+    var onDismissal: (@MainActor (UIViewController) -> Void)?
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        onDismissal?(self)
+    }
+}
+
+final class UIKitControlController: UIViewController, UIDocumentPickerDelegate {
     private let outcome = UILabel()
     private let probe = FixturePresentation()
     private weak var current: UIViewController?
-    private var recordedDismissalPermission = false
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -99,7 +106,8 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         let content = UIViewController()
         content.title = "Gesture control"
         content.view.backgroundColor = .systemBackground
-        let sheet = UINavigationController(rootViewController: content)
+        let sheet = FixtureSheet(rootViewController: content)
+        sheet.onDismissal = { [weak self] controller in self?.settle(controller, "canceled:1") }
         content.navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Cancel", primaryAction: UIAction { [weak self, weak sheet] _ in
             guard let self = self, let sheet = sheet else { return }
             sheet.dismiss(animated: true) { self.settle(sheet, "canceled:1") }
@@ -116,14 +124,13 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
             return
         }
         probe.configure(picker)
-        recordedDismissalPermission = false
         present(picker, animated: true) {
             let original = picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"
             // The native document-picker reference preserves UIKit's delegate.
             // The plain sheet needs our delegate to report its own dismissal.
-            let replace = !(picker is UIDocumentPickerViewController)
+            let replace = picker is FixtureSheet
             FixtureEvents.record("UIKit original presentation delegate=\(original) replaced=\(replace)")
-            if replace { picker.presentationController?.delegate = self }
+            if let sheet = picker as? FixtureSheet { sheet.presentationController?.delegate = sheet }
             self.probe.presented(picker)
         }
     }
@@ -140,28 +147,5 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         FixtureEvents.record("UIKit cancellation delegate")
         settle(controller, "canceled:1")
-    }
-    func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
-        FixtureEvents.record("UIKit adaptive dismissal will begin")
-    }
-    func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
-        // UIKit may query this repeatedly while tracking a gesture. Keep policy
-        // inspection in the presentation observer, outside this callback.
-        if !recordedDismissalPermission {
-            recordedDismissalPermission = true
-            FixtureEvents.record("UIKit permits adaptive dismissal")
-        }
-        return true
-    }
-    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
-        FixtureEvents.record("UIKit adaptive dismissal attempt was prevented: \(probe.dismissalPolicy(presentationController.presentedViewController))")
-    }
-    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        FixtureEvents.record("UIKit adaptive dismissal delegate")
-        if let picker = presentationController.presentedViewController as? UIDocumentPickerViewController {
-            documentPickerWasCancelled(picker)
-        } else {
-            settle(presentationController.presentedViewController, "canceled:1")
-        }
     }
 }

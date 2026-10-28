@@ -58,42 +58,10 @@ final class FixturePresentation {
 
     func presented(_ picker: UIViewController) {
         serial += 1
-        let current = serial
-        let presented = picker.presentationController?.presentedView ?? picker.view!
-        let frame = presented.convert(presented.bounds, to: nil)
-        let details: [String: Any] = ["serial": current, "x": frame.minX, "y": frame.minY,
-            "width": frame.width, "height": frame.height, "beingPresented": picker.isBeingPresented,
-            "beingDismissed": picker.isBeingDismissed, "style": picker.modalPresentationStyle.rawValue, "modalInPresentation": picker.isModalInPresentation,
-            "detent": picker.sheetPresentationController?.selectedDetentIdentifier?.rawValue ?? "none",
+        let details: [String: Any] = ["serial": serial,
             "delegate": (picker as? UIDocumentPickerViewController)?.delegate.map { String(describing: type(of: $0)) } ?? "nil",
-            "presentationDelegate": picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil",
-            "presentationControllers": presentationState(picker)]
+            "presentationDelegate": picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"]
         let value = String(data: try! JSONSerialization.data(withJSONObject: details, options: [.sortedKeys]), encoding: .utf8)!
         FixtureEvents.record("presented \(value)")
-    }
-
-    private func presentationState(_ picker: UIViewController) -> String {
-        let original = picker.presentationController
-        let active: UIPresentationController?
-        if #available(iOS 16.0, *) { active = picker.activePresentationController }
-        else { active = original }
-        func describe(_ controller: UIPresentationController?) -> String {
-            guard let controller = controller else { return "nil" }
-            let delegate = controller.delegate.map { String(describing: type(of: $0)) } ?? "nil"
-            let detent = (controller as? UISheetPresentationController)?.selectedDetentIdentifier?.rawValue ?? "none"
-            return "\(type(of: controller)) frame=\(controller.frameOfPresentedViewInContainerView) detent=\(detent) delegate=\(delegate)"
-        }
-        return "same=\(original === active) original=[\(describe(original))] active=[\(describe(active))] policy=[\(dismissalPolicy(picker))]"
-    }
-
-    func dismissalPolicy(_ controller: UIViewController) -> String {
-        var visited = Set<ObjectIdentifier>()
-        func describe(_ value: UIViewController) -> String {
-            guard visited.insert(ObjectIdentifier(value)).inserted else { return "visited" }
-            let children = value.children.map(describe).joined(separator: "; ")
-            let presented = value.presentedViewController.map(describe) ?? "none"
-            return "\(type(of: value)) modal=\(value.isModalInPresentation) dismissing=\(value.isBeingDismissed) children=[\(children)] presented=[\(presented)]"
-        }
-        return describe(controller)
     }
 }
