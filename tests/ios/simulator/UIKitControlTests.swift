@@ -18,7 +18,7 @@ final class UIKitControlTests: PickerUI {
         let app = launch(sheet: true)
         app.buttons["Choose"].tap()
         presented(app, serial: 1)
-        nativeSwipe(app, identity: "UIKitControlTests/testSwipe()", hasAdaptiveDelegate: true)
+        nativeSwipe(app, identity: "UIKitControlTests/testSwipe()")
     }
     func testPlainSheetSwipe() {
         let app = launch(sheet: true)
@@ -30,7 +30,7 @@ final class UIKitControlTests: PickerUI {
     func testSystemDelegateSwipe() {
         let app = launch()
         app.buttons["SystemDelegate"].tap()
-        nativeSwipe(app, identity: "UIKitControlTests/testSystemDelegateSwipe()", hasAdaptiveDelegate: false)
+        nativeSwipe(app, identity: "UIKitControlTests/testSystemDelegateSwipe()")
     }
     func testSystemDelegateJSON() { select("JSON", "fixture-json.json", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
     func testSystemDelegateCSV() { select("CSV", "fixture-csv.csv", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }

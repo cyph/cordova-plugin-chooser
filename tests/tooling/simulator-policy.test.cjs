@@ -23,13 +23,22 @@ test("native swipe references require successful independent controls and matchi
 						`CHOOSER_NATIVE_SWIPE ${JSON.stringify({ case: `UIKitControlTests/${name}()`, outcome })}`,
 				)
 				.join("\n"),
-			events: JSON.stringify({
-				case: "-[UIKitControlTests testSwipe]",
-				message:
-					outcome === "prevented"
-						? "UIKit adaptive dismissal attempt was prevented: policy"
-						: "UIKit adaptive dismissal delegate",
-			}),
+			events: [
+				...[
+					"UIKit original presentation delegate=UIDocumentPickerViewController replaced=false",
+					`presented ${JSON.stringify({ presentationDelegate: "UIDocumentPickerViewController" })}`,
+				].map((message) => ({
+					case: "-[UIKitControlTests testSwipe]",
+					message,
+				})),
+				...["testSwipe", "testSystemDelegateSwipe"].flatMap((name) =>
+					["UIKit cancellation delegate", "UIKit delegate canceled:1"].map(
+						(message) => ({ case: `-[UIKitControlTests ${name}]`, message }),
+					),
+				),
+			]
+				.map((event) => JSON.stringify(event))
+				.join("\n"),
 		};
 	}
 	for (const outcome of ["dismissed", "prevented"]) {
@@ -80,6 +89,42 @@ test("native swipe references require successful independent controls and matchi
 		},
 		(value) => {
 			value.events = value.events.replace("testSwipe", "testCancel");
+		},
+		(value) => {
+			value.events = value.events.replace("replaced=false", "replaced=true");
+		},
+		(value) => {
+			value.events = value.events.replace(
+				"delegate=UIDocumentPickerViewController",
+				"delegate=nil",
+			);
+		},
+		(value) => {
+			const events = value.events.split("\n").map((line) => JSON.parse(line));
+			events.find((event) => event.message.startsWith("presented ")).message =
+				`presented ${JSON.stringify({ presentationDelegate: "OtherDelegate" })}`;
+			value.events = events.map((event) => JSON.stringify(event)).join("\n");
+		},
+		(value) => {
+			value.events = value.events
+				.split("\n")
+				.filter((line) => !line.includes("testSystemDelegateSwipe"))
+				.join("\n");
+		},
+		(value) => {
+			value.events += "\n" + value.events.split("\n").at(-1);
+		},
+		(value) => {
+			value.events = value.events
+				.split("\n")
+				.filter((line) => !line.includes("UIKit cancellation delegate"))
+				.join("\n");
+		},
+		(value) => {
+			value.events = value.events.replace(
+				"UIKit delegate canceled:1",
+				"UIKit delegate selected:fixture-csv.csv",
+			);
 		},
 	]) {
 		const value = fixture("prevented");

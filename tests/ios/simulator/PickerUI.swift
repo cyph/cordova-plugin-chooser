@@ -406,14 +406,14 @@ class PickerUI: XCTestCase {
         XCTAssertNotNil(pickerButtonFrame(app.navigationBars.buttons.matching(identifier: "Cancel").firstMatch, in: app), "Pending picker has no visible enabled Cancel control")
     }
 
-    func nativeSwipe(_ app: XCUIApplication, identity: String, hasAdaptiveDelegate: Bool) {
+    func nativeSwipe(_ app: XCUIApplication, identity: String) {
         dismissSheet(app)
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             app.navigationBars.count == 0 && app.buttons["Choose"].isHittable
         }, object: nil)
         let dismissed = XCTWaiter.wait(for: [gone], timeout: 5) == .completed
         if dismissed {
-            if hasAdaptiveDelegate { expect(app, "canceled:1") }
+            expect(app, "canceled:1")
         } else {
             pendingPicker(app)
             cancel(app)

@@ -62,18 +62,42 @@ export function nativeSwipePolicy({ tests, output, events }) {
 		.split(/\r?\n/)
 		.filter(Boolean)
 		.map((line) => JSON.parse(line));
-	assert(
-		evidence.some(
-			(event) =>
-				event.case === "-[UIKitControlTests testSwipe]" &&
-				(outcome === "prevented"
-					? event.message.startsWith(
-							"UIKit adaptive dismissal attempt was prevented:",
-						)
-					: event.message === "UIKit adaptive dismissal delegate"),
-		),
-		"Native swipe observation lacks its adaptive delegate evidence",
+	const observed = evidence.filter(
+		(event) => event.case === "-[UIKitControlTests testSwipe]",
 	);
+	const owners = observed.flatMap((event) => {
+		const match =
+			/^UIKit original presentation delegate=(.+) replaced=false$/.exec(
+				event.message,
+			);
+		return match ? [match[1]] : [];
+	});
+	assert.equal(owners.length, 1, "Missing preserved UIKit delegate evidence");
+	assert.notEqual(owners[0], "nil", "Missing original UIKit delegate");
+	const presentations = observed
+		.filter((event) => event.message.startsWith("presented "))
+		.map((event) => JSON.parse(event.message.slice("presented ".length)));
+	assert.equal(presentations.length, 1, "Missing reference presentation");
+	assert.equal(
+		presentations[0].presentationDelegate,
+		owners[0],
+		"Reference changed UIKit delegate ownership",
+	);
+	for (const id of swipeCases) {
+		const method = id.split("/")[1].replace(/\(\)$/, "");
+		const messages = evidence
+			.filter((event) => event.case === `-[UIKitControlTests ${method}]`)
+			.map((event) => event.message);
+		assert(
+			messages.includes("UIKit cancellation delegate"),
+			`Native swipe lacks its document-picker cancellation callback: ${id}`,
+		);
+		assert.deepEqual(
+			messages.filter((message) => message.startsWith("UIKit delegate ")),
+			["UIKit delegate canceled:1"],
+			`Native swipe must complete once through its document-picker delegate: ${id}`,
+		);
+	}
 	return {
 		policy: outcome === "dismissed" ? "allowed" : "prevented",
 		observations,
