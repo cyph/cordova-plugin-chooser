@@ -10,20 +10,20 @@ final class UIKitControlTests: PickerUI {
     func testCancel() {
         let app = launch()
         app.buttons["Choose"].tap()
-        presented(app, serial: 1)
+        waitForPicker(app)
         cancel(app)
         expect(app, "canceled:1")
     }
     func testSwipe() {
         let app = launch(sheet: true)
         app.buttons["Choose"].tap()
-        presented(app, serial: 1)
+        waitForPicker(app)
         nativeSwipe(app, identity: "UIKitControlTests/testSwipe()")
     }
     func testPlainSheetSwipe() {
         let app = launch(sheet: true)
         app.buttons["PlainSheet"].tap()
-        presented(app, serial: 1)
+        waitForPicker(app)
         dismissSheet(app)
         expect(app, "canceled:1")
     }
@@ -57,7 +57,7 @@ final class UIKitControlTests: PickerUI {
     private func export(_ filename: String, seed: Bool = false) {
         let app = launch(environment: ["CHOOSER_EXPORT_FILE": filename, "CHOOSER_EXPORT_SEED": seed ? "1" : "0"])
         app.buttons["ExportFixture"].tap()
-        presented(app, serial: 1)
+        waitForPicker(app)
         browseFixtures(app)
         let buttons = app.navigationBars.buttons.matching(NSPredicate(format: "label IN %@", argumentArray: [["Export", "Save", "Copy", "Move"]]))
         tapPickerButton(app, buttons)

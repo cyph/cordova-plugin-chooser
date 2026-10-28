@@ -59,6 +59,10 @@ final class ChooserPickerTests: XCTestCase {
         defer { h.close() }
         let plugin = h.plugin
         let first = h.open("first")
+        let views = first.view.subviews.map { ObjectIdentifier($0) }
+        FixturePresentation().presented(first)
+        XCTAssertEqual(first.view.subviews.map { ObjectIdentifier($0) }, views,
+                       "Presentation diagnostics must preserve the system picker's view hierarchy")
         XCTAssertTrue(first.presentationController?.delegate === plugin)
         plugin.presentationControllerDidDismiss(first.presentationController!)
         plugin.documentPickerWasCancelled(first)

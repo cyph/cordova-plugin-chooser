@@ -24,13 +24,13 @@ final class ChooserUITests: PickerUI {
         }
         let app = launch(sheet: swipe, reopen: mode)
         app.buttons["Choose"].tap()
-        presented(app, serial: 1)
+        waitForPicker(app)
         if swipe {
             dismissSheet(app)
             if policy == "prevented" { pendingPicker(app); cancel(app) }
         } else { cancel(app) }
         // JavaScript itself opens request two from the first completion.
-        presented(app, serial: 2)
+        waitForPicker(app)
         // Half-height Files sheets can omit their navigation-bar Cancel button.
         // Exercise the same cancellation route on both requests.
         if swipe {

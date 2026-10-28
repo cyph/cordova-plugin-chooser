@@ -109,16 +109,21 @@ class PickerUI: XCTestCase {
         }
         tapPickerButton(app, cancel)
     }
-    func presented(_ app: XCUIApplication, serial: Int) {
-        let marker = app.staticTexts["PickerReady"]
+    func waitForPicker(_ app: XCUIApplication) {
+        let screen = app.frame
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            guard marker.exists, let value = marker.value as? String,
-                  let data = value.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  object["serial"] as? Int == serial, object["beingPresented"] as? Bool == false else { return false }
-            return true
+            guard let navigation = try? app.navigationBars.firstMatch.snapshot() else { return false }
+            var pending = navigation.children
+            while let element = pending.popLast() {
+                pending.append(contentsOf: element.children)
+                if element.elementType == .button && element.isEnabled &&
+                    element.frame.width >= 20 && element.frame.height >= 20 && screen.contains(element.frame) {
+                    return true
+                }
+            }
+            return false
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed, "Picker presentation did not complete: \(serial)")
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed, "Native picker navigation did not become available")
     }
     func dismissSheet(_ app: XCUIApplication) {
         // Presentation completion precedes the remote Files UI. Wait for an
@@ -139,13 +144,6 @@ class PickerUI: XCTestCase {
         guard let target = hasGrabber ? grabber : navigation else {
             XCTFail("Missing visible sheet grabber or navigation bar")
             return
-        }
-        let marker = app.staticTexts["PickerReady"]
-        if marker.exists {
-            let probe = XCTAttachment(string: marker.value as? String ?? "Missing presentation value")
-            probe.name = "Presentation before swipe"
-            probe.lifetime = .keepAlways
-            add(probe)
         }
         // Remote accessibility geometry can change between snapshot requests.
         // Capture each rectangle once, then synthesize input without re-querying it.
@@ -370,7 +368,7 @@ class PickerUI: XCTestCase {
     func select(_ button: String, _ filename: String, environment: [String: String] = [:], resultPrefix: String = "selected") {
         let app = launch(environment: environment)
         app.buttons[button].tap()
-        if environment["CHOOSER_SYSTEM_PROVIDER"] != "1" { presented(app, serial: 1) }
+        waitForPicker(app)
         browseFixtures(app)
         let stem = (filename as NSString).deletingPathExtension
         let item = app.cells.matching(NSPredicate(
