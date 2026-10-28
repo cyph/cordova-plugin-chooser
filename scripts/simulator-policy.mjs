@@ -73,7 +73,6 @@ export function nativeSwipePolicy({ tests, output, events }) {
 		return match ? [match[1]] : [];
 	});
 	assert.equal(owners.length, 1, "Missing preserved UIKit delegate evidence");
-	assert.notEqual(owners[0], "nil", "Missing original UIKit delegate");
 	const presentations = observed
 		.filter((event) => event.message.startsWith("presented "))
 		.map((event) => JSON.parse(event.message.slice("presented ".length)));

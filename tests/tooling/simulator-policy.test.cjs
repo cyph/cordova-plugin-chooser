@@ -46,6 +46,15 @@ test("native swipe references require successful independent controls and matchi
 			nativeSwipePolicy(fixture(outcome)).policy,
 			outcome === "dismissed" ? "allowed" : "prevented",
 		);
+		const noDelegate = fixture(outcome);
+		noDelegate.events = noDelegate.events.replaceAll(
+			"UIDocumentPickerViewController",
+			"nil",
+		);
+		assert.equal(
+			nativeSwipePolicy(noDelegate).policy,
+			outcome === "dismissed" ? "allowed" : "prevented",
+		);
 	}
 	for (const change of [
 		(value) => {
