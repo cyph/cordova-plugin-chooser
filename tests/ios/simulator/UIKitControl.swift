@@ -119,8 +119,11 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
         recordedDismissalPermission = false
         present(picker, animated: true) {
             let original = picker.presentationController?.delegate.map { String(describing: type(of: $0)) } ?? "nil"
-            FixtureEvents.record("UIKit original presentation delegate=\(original) replaced=\(observeDismissal)")
-            picker.presentationController?.delegate = self
+            // The native document-picker reference preserves UIKit's delegate.
+            // The plain sheet needs our delegate to report its own dismissal.
+            let replace = !(picker is UIDocumentPickerViewController)
+            FixtureEvents.record("UIKit original presentation delegate=\(original) replaced=\(replace)")
+            if replace { picker.presentationController?.delegate = self }
             self.probe.presented(picker)
         }
     }
