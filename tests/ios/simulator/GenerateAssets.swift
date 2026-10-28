@@ -14,6 +14,16 @@ private func require(_ condition: @autoclosure () -> Bool, _ message: String) th
 @main
 struct GenerateAssets {
     static func main() async throws {
+        try require(CommandLine.arguments.count > 1, "Expected an asset directory or --identities")
+        if CommandLine.arguments[1] == "--identities" {
+            let records = CommandLine.arguments.dropFirst(2).map(identity)
+            let result: [String: Any] = [
+                "schema": 1, "time": Date().timeIntervalSince1970, "files": records
+            ]
+            let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
         let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("{\"fixture\":true}".utf8).write(to: directory.appendingPathComponent("fixture-json.json"))
@@ -23,6 +33,46 @@ struct GenerateAssets {
         try await movie(directory.appendingPathComponent("fixture-mp4.mp4"), type: .mp4)
         try await movie(directory.appendingPathComponent("fixture-mov.mov"), type: .mov)
         print("Generated and decoded PNG, PDF, MP4, and MOV fixtures.")
+    }
+
+    private static func identity(_ path: String) -> [String: Any] {
+        let manager = FileManager.default
+        let url = URL(fileURLWithPath: path)
+        let exists = manager.fileExists(atPath: path)
+        var record: [String: Any] = ["path": path, "exists": exists]
+        guard exists else { return record }
+        // These are host filesystem observations, not provider identifiers.
+        // Preserve opaque values and large integers without JSON rounding.
+        func describe(_ value: Any?) -> Any {
+            guard let value = value else { return NSNull() }
+            if let data = value as? Data { return data.base64EncodedString() }
+            if let number = value as? NSNumber { return number.stringValue }
+            return String(describing: value)
+        }
+        do {
+            let attributes = try manager.attributesOfItem(atPath: path)
+            for (name, key) in [
+                ("device", FileAttributeKey.systemNumber),
+                ("inode", .systemFileNumber), ("size", .size),
+                ("permissions", .posixPermissions), ("type", .type)
+            ] {
+                record[name] = describe(attributes[key])
+            }
+        } catch { record["attributesError"] = String(describing: error) }
+        do {
+            let keys: [(String, URLResourceKey)] = [
+                ("documentIdentifier", .documentIdentifierKey),
+                ("fileResourceIdentifier", .fileResourceIdentifierKey),
+                ("volumeIdentifier", .volumeIdentifierKey),
+                ("volumeUUID", .volumeUUIDStringKey),
+                ("volumeFormat", .volumeLocalizedFormatDescriptionKey),
+                ("volumeIsLocal", .volumeIsLocalKey),
+                ("volumeIsReadOnly", .volumeIsReadOnlyKey)
+            ]
+            let values = try url.resourceValues(forKeys: Set(keys.map { $0.1 })).allValues
+            for (name, key) in keys { record[name] = describe(values[key]) }
+        } catch { record["resourceError"] = String(describing: error) }
+        return record
     }
 
     private static func image(_ url: URL) throws {

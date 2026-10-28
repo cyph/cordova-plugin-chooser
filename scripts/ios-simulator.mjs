@@ -586,6 +586,43 @@ export function verifyIosSimulator({
 				let sources;
 				let before;
 				let fingerprintNames = [...sourceNames];
+				const recordIdentities = (phase) => {
+					if (!diagnostic || !sources) return;
+					const input = simctl([
+						"get_app_container",
+						udid,
+						"com.cyph.chooser.uikit",
+						"data",
+					]);
+					const groups = [
+						["source", sources, fingerprintNames],
+						[
+							"export-input",
+							join(input, "tmp/chooser-export"),
+							fingerprintNames,
+						],
+						["generated", assets, sourceNames],
+					].map(([role, folder, names]) => {
+						const paths = names.map((name) => join(folder, name));
+						const snapshot = JSON.parse(
+							run(generator, ["--identities", ...paths], root, true, env),
+						);
+						assert.equal(snapshot.schema, 1);
+						assert.deepEqual(
+							snapshot.files.map((file) => file.path),
+							paths,
+							"Incomplete filesystem identity evidence",
+						);
+						return { role, ...snapshot };
+					});
+					writeFileSync(
+						join(
+							reportDirectory,
+							[alias, kind, "source-identities", phase].join("-") + ".json",
+						),
+						JSON.stringify({ phase, groups }, null, 2),
+					);
+				};
 				if (["all", "provider"].includes(diagnosticScope)) {
 					const derived = join(directory, "derived");
 					simctl([
@@ -683,6 +720,7 @@ export function verifyIosSimulator({
 				}
 
 				withFinalizers(() => {
+					recordIdentities("before-control");
 					try {
 						suite(controlResult, "UIKitControl", selected.control);
 						checked(`${alias}:${kind}:native-control`);
@@ -692,6 +730,8 @@ export function verifyIosSimulator({
 								cause: error,
 							}),
 						);
+					} finally {
+						recordIdentities("after-control");
 					}
 					if (selected.control.includes("UIKitControlTests/testSwipe()")) {
 						const command = report.commands.find(
@@ -721,6 +761,7 @@ export function verifyIosSimulator({
 					}
 					suite(result, "Chooser", selected.chooser);
 				}, [
+					() => recordIdentities("after-suites"),
 					() => {
 						if (!["all", "provider"].includes(diagnosticScope)) return;
 						const after = sourceFingerprint(sources, fingerprintNames);
