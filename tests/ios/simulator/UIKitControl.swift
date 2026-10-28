@@ -130,8 +130,9 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate, 
     private func settle(_ picker: UIViewController, _ value: String) {
         guard current === picker else { return }
         current = nil
-        FixtureEvents.record("UIKit delegate \(value)")
-        outcome.text = value
+        FixtureEvents.record("UIKit delegate \(value)") { [weak self] recorded in
+            self?.outcome.text = recorded ? value : "error:fixture event recording failed"
+        }
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         settle(controller, urls.first.map { "selected:\($0.lastPathComponent)" } ?? "error:empty native selection")

@@ -4,16 +4,20 @@ import UIKit
 enum FixtureEvents {
     private static let output = DispatchQueue(label: "com.cyph.chooser.fixture-events", qos: .utility)
 
-    static func record(_ message: String) {
+    static func record(_ message: String, completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
         NSLog("CHOOSER_FIXTURE %@", message)
         let fields: [String: Any] = ["case": ProcessInfo.processInfo.environment["CHOOSER_CASE"] ?? "native",
             "time": Date().timeIntervalSince1970, "message": message]
         guard let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
-              let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]) else { return }
+              let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]) else {
+            completion?(false)
+            return
+        }
         let path = cache.appendingPathComponent("chooser-fixture-events.log")
         let line = data + Data([10])
         // Disk writes must not serialize UI callbacks or immediate reopening.
         output.async {
+            let recorded: Bool
             do {
                 let manager = FileManager.default
                 try manager.createDirectory(at: cache, withIntermediateDirectories: true)
@@ -22,7 +26,14 @@ enum FixtureEvents {
                 defer { try? handle.close() }
                 _ = try handle.seekToEnd()
                 try handle.write(contentsOf: line)
-            } catch { NSLog("CHOOSER_FIXTURE event recording failed: %@", String(describing: error)) }
+                recorded = true
+            } catch {
+                NSLog("CHOOSER_FIXTURE event recording failed: %@", String(describing: error))
+                recorded = false
+            }
+            if let completion = completion {
+                DispatchQueue.main.async { completion(recorded) }
+            }
         }
     }
 }
