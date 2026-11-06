@@ -105,13 +105,6 @@ reason = "Permit the exact client fixes before maturity while retaining node-gyp
 advisory = "https://github.com/advisories/GHSA-xjj6-f33q-929c"
 expires = "2026-11-14T14:20:00Z"
 [[exceptions]]
-package = "npm:http-cache-semantics"
-version = "4.3.0"
-minimum_safe = "4.3.0"
-reason = "Permit the exact cache poisoning fix before maturity."
-advisory = "https://github.com/advisories/GHSA-ch52-4w7c-c8xp"
-expires = "2026-11-04T03:00:00Z"
-[[exceptions]]
 package = "npm:systeminformation"
 version = "5.33.16"
 minimum_safe = "5.33.16"
