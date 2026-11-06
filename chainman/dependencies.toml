@@ -72,6 +72,9 @@ reason = "Use the cancellation fix in the modern promise/named-export API family
 [javascript.override_constraints."minimatch@>=7"]
 range = "^11.0.1"
 reason = "Use the patched named-export matcher while retaining legacy callers."
+[javascript.override_constraints.systeminformation]
+range = "^5.33.16"
+reason = "Select patched Cordova environment checks within the existing major API."
 
 [[exceptions]]
 package = "npm:qs"
