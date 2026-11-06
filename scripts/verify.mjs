@@ -241,15 +241,16 @@ function portable() {
 	checked("contracts");
 	run("pnpm", ["test:types"]);
 	checked("types");
+	const toolingTests = readdirSync(join(root, "tests/tooling"), {
+		withFileTypes: true,
+	})
+		.filter((entry) => entry.isFile() && entry.name.endsWith(".test.cjs"))
+		.map((entry) => entry.name)
+		.sort();
+	assert(toolingTests.length > 0, "Missing tooling regression tests");
 	run("node", [
 		"--test",
-		"tests/tooling/platforms.test.cjs",
-		"tests/tooling/verification.test.cjs",
-		"tests/tooling/package.test.cjs",
-		"tests/tooling/qualification.test.cjs",
-		"tests/tooling/verification-lifecycle.test.cjs",
-		"tests/tooling/verification-command.test.cjs",
-		"tests/tooling/simulator-policy.test.cjs",
+		...toolingTests.map((name) => join("tests/tooling", name)),
 	]);
 	checked("tooling");
 	run("python3", [
