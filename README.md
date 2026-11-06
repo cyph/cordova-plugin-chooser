@@ -1,42 +1,36 @@
 # Cordova Plugin Chooser
 
-Choose files on Android, iOS, and the Cordova browser platform. Read a small file into JavaScript, inspect metadata, or obtain a temporary reference for a larger file.
-
-Chooser supports single and multiple selection, Promises and callbacks, and TypeScript. It exposes the global `chooser` after Cordova's `deviceready` event.
+Let people choose files in a Cordova app on Android, iOS, or the browser platform. Read a small file into JavaScript, inspect its metadata, or give a temporary file reference to another consumer. Single and multiple selection, Promises, callbacks, and TypeScript are supported.
 
 ## Installation
 
-The current release candidate is **2.0.0-rc.1**. Review the [known limitations](docs/KNOWN-ISSUES.md) before testing it in your application. Install RC1 explicitly from your Cordova application:
+From your Cordova application, install version 2.0.0-rc.1:
 
 ```sh
 cordova plugin add cordova-plugin-chooser@2.0.0-rc.1
 ```
 
-An unversioned installation follows npm's `latest` tag, which may point to a stable 1.x release. If you are upgrading, start with the [migration guide](docs/MIGRATION.md). Historical changes are in the [changelog](CHANGELOG.md).
+Review the [known limitations of 2.0.0-rc.1](docs/KNOWN-ISSUES.md), including iOS Files intermittently remaining open after selection in simulator tests. The impact on physical devices has not been established.
 
-| Platform | Installation requirement | Maintained families |
-| --- | --- | --- |
-| Android | `cordova-android >=14.0.0` | 14.x and 15.x |
-| iOS | `cordova-ios >=7.0.0` | 7.x and 8.x |
-| Browser | Cordova Browser and the required browser APIs | Cordova Browser 7.x |
+The plugin requires `cordova-android >=14.0.0` or `cordova-ios >=7.0.0` on native platforms. Browser use requires Cordova Browser and supported browser APIs. See [platform setup](docs/PLATFORMS.md) for requirements and configuration. Installing the npm package alone does not provide a standalone web or Node.js picker.
 
-See [platform setup](docs/PLATFORMS.md) for OS requirements, Swift configuration, and browser features. The plugin requires no blanket Android storage permissions or additional Swift-support plugin. Installing this npm package alone does not initialize Cordova or provide a standalone web or Node.js picker.
+Upgrading from an earlier release? See the [migration guide](docs/MIGRATION.md) and [changelog](CHANGELOG.md).
 
 ## Choose a method
 
-| What your application needs | One file | Multiple files |
+| Need | One file | Multiple files |
 | --- | --- | --- |
-| Complete contents in JavaScript | `getFile()` | `getFiles()` |
-| Name, type, URI, and reported size | `getFileMetadata()` | `getFilesMetadata()` |
-| A temporary reference with optional selection limits | `getFileUri()` | `getFilesUri()` |
+| Contents in JavaScript | `getFile()` | `getFiles()` |
+| Metadata without a full read by the plugin | `getFileMetadata()` | `getFilesMetadata()` |
+| Temporary reference with optional size and count limits | `getFileUri()` | `getFilesUri()` |
 
-Cancellation resolves to `undefined`. Successful multiple-selection calls return an array, including when only one file is selected.
+Data methods read the whole file into memory and offer no configurable size limits. For larger or unknown inputs, use a URI method with limits and a consumer that can handle the reference. Native URI methods create private cache copies; browser results use managed Blob URLs. Release an ID after all consumers finish. Every browser result has an ID, including metadata and data results; on native platforms only URI results have one.
 
-Data methods load complete contents into memory. Prefer a URI method with explicit limits for large files or unknown sizes. Native URI methods make an app-private cache copy; browser methods return Blob URLs. Release managed references with `releaseFile(id)` after their consumers finish. **Every browser result has an ID to release**, including data and metadata results.
+Cancellation resolves to `undefined`. A successful multiple selection returns a nonempty array. MIME filters guide the picker, but do not validate the selected contents.
 
 ## Quick start
 
-Add a selection button and status area, then load Cordova's generated script and your application script:
+Add these elements to your Cordova app's HTML:
 
 ```html
 <button id="choose-file" type="button" disabled>Choose a file</button>
@@ -45,7 +39,7 @@ Add a selection button and status area, then load Cordova's generated script and
 <script src="app.js"></script>
 ```
 
-In `app.js`, display metadata without loading the file's complete contents:
+In `app.js`, wait for Cordova and select a file when the button is clicked:
 
 ```js
 document.addEventListener('deviceready', () => {
@@ -62,13 +56,13 @@ document.addEventListener('deviceready', () => {
         ? `${file.name}: ${file.size === null ? 'unknown size' : file.size + ' bytes'}`
         : 'Selection canceled.';
     } catch (error) {
-      output.textContent = 'Could not select a file. Please try again.';
+      output.textContent = 'Could not select a file.';
     } finally {
       if (file && file.id) {
         try {
           await chooser.releaseFile(file.id);
         } catch (error) {
-          console.error('Could not release the file reference.');
+          console.error('Could not release the file reference.', error);
         }
       }
       button.disabled = false;
@@ -77,18 +71,16 @@ document.addEventListener('deviceready', () => {
 });
 ```
 
-Browser pickers must open directly from a user interaction, before awaiting unrelated work. Disable selection controls while a request is active. MIME filters guide the picker; validate selected contents in the component that consumes them.
+Browsers require the picker call directly from a user interaction and file-input `cancel` event support. Only one request can be active at a time, including processing after selection. See [platform behavior](docs/PLATFORMS.md).
 
 ## Documentation
 
-- [API reference](docs/API.md): methods, overloads, result types, options, and TypeScript.
-- [File handling](docs/FILE-HANDLING.md): large files, consumption, ownership, and cleanup.
-- [Platforms](docs/PLATFORMS.md): setup, providers, permissions, and lifecycle behavior.
-- [Migration](docs/MIGRATION.md): upgrading from 1.3.2.
-- [Troubleshooting](docs/TROUBLESHOOTING.md): symptoms and practical checks.
-- [Known limitations](docs/KNOWN-ISSUES.md): unresolved behavior and release-candidate coverage.
-- [Contributing](CONTRIBUTING.md) and [verification](docs/VERIFICATION.md): development and maintenance.
-- [Changelog](CHANGELOG.md): current and historical releases.
+- [API reference](docs/API.md): calls, results, options, errors, and TypeScript.
+- [File handling](docs/FILE-HANDLING.md): consumption, cleanup, memory, CSP, and parsing.
+- [Platforms](docs/PLATFORMS.md): setup, providers, and lifecycle behavior.
+- [Migration](docs/MIGRATION.md) and [troubleshooting](docs/TROUBLESHOOTING.md).
+- [Known limitations](docs/KNOWN-ISSUES.md).
+- [Contributing](CONTRIBUTING.md), [verification](docs/VERIFICATION.md), and [changelog](CHANGELOG.md).
 
 ## License
 

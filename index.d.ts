@@ -31,7 +31,7 @@ declare namespace chooser {
 		maxFiles?: number;
 		/** Aggregate byte limit across the selection. Zero/omitted is unlimited. */
 		maxTotalSize?: number;
-		/** Android only: restrict the chooser to local providers. Default false. */
+		/** Android only: ask the picker to show local providers. Default false. */
 		localOnly?: boolean;
 	}
 

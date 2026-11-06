@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with the installed plugin and Cordova platform versions:
+First check the installed plugin and Cordova platform versions:
 
 ```sh
 cordova plugin ls
@@ -8,78 +8,72 @@ cordova platform ls
 cordova requirements
 ```
 
-Match the documentation to the package you installed. Reproduce the problem with a small, nonprivate local file before adding cloud-provider or large-file complexity.
-
-For RC1, also review the [known limitations](KNOWN-ISSUES.md), especially if iOS Files stays open after selecting a document.
+Reproduce with a small, nonprivate local file where possible. For method signatures and result fields, see the [API reference](API.md).
 
 ## Chooser or a method is undefined
 
-Load Cordova's generated `cordova.js`, install the plugin into the Cordova application, and wait for `deviceready`. An npm dependency by itself does not install the native integration.
+Install the plugin in the Cordova app, load the generated `cordova.js`, and wait for `deviceready` before calling `chooser`. Adding an npm dependency alone does not install the native integration.
 
-If `getFile()` exists but the multiple-selection or URI methods do not, check for a 1.x installation or an older framework wrapper. Install the exact [RC1 version](../README.md#installation), then prepare and rebuild the app. Call the injected `chooser` directly to distinguish wrapper coverage from plugin behavior.
+If `getFile()` exists but the multiple or URI methods do not, check the installed version and any framework wrapper. Install 2.0.0-rc.1, prepare and rebuild the app, and try the injected `chooser` directly. See [framework integration](MIGRATION.md#framework-and-lifecycle-integration).
 
 ## The browser picker does not open or cancellation hangs
 
-Call the picker directly from a user interaction, before an unrelated `await`, network request, or timer. Use Cordova Browser so its proxy is registered. Confirm support for the [required browser features](PLATFORMS.md#browser), particularly file-input `cancel` events. There is no timeout fallback for a browser that omits that event.
+Call the picker directly from a user gesture after `deviceready`, before awaiting a timer or network request. Use Cordova Browser and check the [browser requirements](PLATFORMS.md#browser). In particular, a browser that does not emit the file-input `cancel` event can leave a dismissed picker pending.
 
 ## A second request rejects with BUSY
 
-Wait for the active request to settle before opening another picker. Its work includes reading or copying after the visible dialog closes. Disable selection controls during that period.
+Wait for the active request to settle before opening another picker. It remains active during reads or copies after the dialog closes, so disable the selection control until it finishes. A reset can also leave provider work or an Android picker reservation pending; see [lifecycle behavior](PLATFORMS.md#lifecycle).
 
-Reset can leave provider work pending; Android can also retain an outstanding picker reservation. Repeated calls do not cancel that work. Review [platform lifecycle behavior](PLATFORMS.md#lifecycle) and provider availability. The public API has no cancel or timeout operation.
+If iOS Files stays open, follow the [known issue](KNOWN-ISSUES.md#intermittent-ios-files-selection). An app timeout or another picker call does not cancel the native request.
 
 ## An Android result disappears after activity recreation
 
-The old Promise cannot receive the result. Handle Cordova's raw `resume.pendingResult` channel as described in [restored Android results](PLATFORMS.md#restored-android-results). An ordinary resume event without a result does not imply a new selection is needed.
+The old Promise cannot receive a result after its WebView is destroyed. Cordova may deliver a raw result through `resume.pendingResult`; see [restored Android results](PLATFORMS.md#restored-android-results) for the payload and cleanup requirements.
 
 ## Files are missing or grayed out
 
-Try `'*/*'` to distinguish filter/type-registration differences from provider availability. Continue validating accepted contents in the consumer. Providers may require sign-in, connectivity, or a download.
+Try `'*/*'` to check whether the provider's type mapping is limiting the listing. MIME filters are hints, so validate the file's contents in your application. Providers can require sign-in, connectivity, or a download. For CSV, `text/csv` is a useful starting filter; see [CSV, JSON, and provider filters](FILE-HANDLING.md#csv-json-and-provider-filters).
 
-For CSV, start with `text/csv`; `text/comma-separated-values` is not a universal provider requirement. See [CSV, JSON, and provider filters](FILE-HANDLING.md#csv-json-and-provider-filters). The system picker exposes provider locations, not every filesystem path. iCloud entitlements are not a general fix for an empty picker.
-
-Android's legacy single-file methods prefer local providers; use a URI method with its default remote-provider allowance when appropriate. iOS uses the document picker, so items available only in Photos may not appear. Directories and document packages are outside the regular-file contract. See [Platforms](PLATFORMS.md) for the selection rules.
+Android's single-file data and metadata methods prefer local providers. The newer multiple and URI methods allow remote providers by default. On iOS, Files and the Photos library expose different locations, and the document picker selects regular files rather than directories or document packages. See [platform selection rules](PLATFORMS.md).
 
 ## iOS cannot present the picker
 
-Open it from a visible application view after another modal has finished dismissing. Check the app's supported orientations on iPhone and iPad. A dismissed dialog can still have a request processing provider data, so wait for that request's completion before trying again.
+Present from a visible app view after any other modal has finished dismissing, and check the app's supported orientations. If a previous request is still processing, wait for it to finish.
 
 ## iOS Files stays open after selecting a file
 
-RC1 testing has intermittently encountered a provider URL-resolution failure before the document-picker selection callback. This also occurs in the plain UIKit reference application. See the [iOS selection limitation](KNOWN-ISSUES.md#intermittent-ios-files-selection) for symptoms, recovery, and the remaining verification boundary.
+This has occurred intermittently in simulator tests. See the [iOS known issue](KNOWN-ISSUES.md#intermittent-ios-files-selection) for what is known and how to recover.
 
 ## A URI cannot be read or stops working
 
-Use a consumer supporting the returned URI scheme. A `content:` URI or Blob URL is not a path, and WebView `fetch()` is not a portable reader for native `file:` URIs.
+Use a consumer that supports the returned URI scheme. Native URI methods return private file copies; browser results use Blob URLs. WebView `fetch()` is not a portable reader for native `file:` URIs.
 
-Check whether the reference was released too early, the cache was removed, or browser navigation revoked its URL. Saving a URI does not preserve access. Use [file-handling guidance](FILE-HANDLING.md#reference-lifetimes) to choose persistent storage when needed.
+Check whether the ID was released before every consumer finished, the cache was removed, or browser navigation revoked the URL. A saved URI does not guarantee future access. To keep a file, copy it into persistent app storage. See [reference lifetimes](FILE-HANDLING.md#reference-lifetimes).
 
 ## Browser selection succeeds but a read or preview is blocked
 
-Check the browser console for Content Security Policy violations. The application must permit `blob:` in the directive for its consumer: `connect-src` for `fetch()`, `img-src` for images, or `media-src` for audio/video. Merge the required sources into the existing policy using the [CSP guidance](FILE-HANDLING.md#content-security-policy), then retry with a live reference. Selection and metadata inspection can succeed while the policy blocks subsequent consumption.
+Check the console for Content Security Policy violations. The applicable directive must allow `blob:`: for example, `connect-src` for `fetch()`, `img-src` for images, or `media-src` for audio and video. See the [CSP guidance](FILE-HANDLING.md#content-security-policy), then retry with a live reference.
 
 ## Large files exhaust memory or copies exceed limits
 
-Data methods materialize complete contents. Prefer URI methods with limits and a consumer that avoids loading the entire file into JavaScript. A larger Android heap cannot make whole-file allocation safe for arbitrary sizes.
+`getFile()` and `getFiles()` materialize whole files in memory and have no configurable size limit. Use a URI method with limits and a consumer that avoids reading the entire file into JavaScript. Check available storage for native cache copies.
 
-Only URI methods accept limit options. Check spelling, units, and free storage; unknown properties reject and zero means unlimited. Native limits count actual bytes despite inaccurate metadata. See [copy options](API.md#copy-options).
+Only URI methods accept copy options. Check the option names and byte units; unknown keys reject, and omitted or zero limits mean unlimited. Native copy limits count actual bytes even when provider metadata is inaccurate. See [copy options](API.md#copy-options).
 
 ## A wrapper reports missing data or the call rejects before selection
 
-The Awesome Cordova Plugins Chooser wrapper targets another fork with different arguments and result fields. Use the [direct typed API and migration guidance](MIGRATION.md#awesome-cordova-plugins-and-fork-specific-wrappers). An `any` cast does not translate calls or enable size limits. Data methods return bytes; metadata and URI methods deliberately omit them.
+Confirm the method and arguments match this plugin's [API](API.md). Data methods return `data` and `dataURI`; metadata and URI methods do not. Unknown copy-option keys and invalid filters reject. Failure values may be strings or `Error` objects, so treat them as `unknown`; diagnostic prefixes are not stable typed error codes.
+
+The Awesome Cordova Plugins Chooser wrapper targets a different fork. See [wrapper migration guidance](MIGRATION.md#awesome-cordova-plugins-and-fork-specific-wrappers) for direct calls.
 
 ## Releasing a reference fails
 
-Pass the returned `id`. Native data/metadata results have none; every browser result does. Malformed IDs and filesystem failures reject.
-
-Keep cleanup failures separate from the consumer's outcome. If your application retries native cleanup, retain the returned ID until release succeeds. Never queue references still in use or infer IDs from paths. Browser IDs cannot be reused in a later page session.
+Pass the opaque `id` returned by the plugin, not a URI or a value constructed from its path. Every browser result has an ID; native results have one only for URI methods. Release only plugin-owned references after all consumers finish. Malformed IDs and filesystem errors can reject; retain an ID if your app needs to retry cleanup. Browser IDs do not survive a page session.
 
 ## The application fails to build
 
-Match the installed Cordova platform to its required JDK, SDK, Node, and Xcode versions. Review iOS Swift and deployment-target settings and requirements imposed by other plugins. Adding broad storage permissions or `largeHeap` does not resolve toolchain incompatibilities. The [platform guide](PLATFORMS.md#requirements-and-coverage) links to the official requirements.
+Check the Cordova platform's JDK, SDK, Node, and Xcode requirements, and the requirements of other installed plugins. On iOS, check Swift mode and the deployment target. The [platform guide](PLATFORMS.md#requirements-and-coverage) links to Cordova's setup guides.
 
 ## Report a reproducible issue
 
-Include the plugin version or commit, Cordova platform version, OS/browser and build-tool versions, method/options, provider type, expected result, and actual behavior. State whether a small or empty local file reproduces the issue and whether it follows cancellation, navigation, or activity recreation.
-
-Use synthetic files. Redact credentials, contents, personal filenames, and private URIs from errors and logs before posting an [issue](https://github.com/cyph/cordova-plugin-chooser/issues).
+Open an [issue](https://github.com/cyph/cordova-plugin-chooser/issues) with the plugin and Cordova platform versions, OS or browser, build-tool versions, method and options, provider, expected result, and actual behavior. Say whether the issue occurs with a small local file or after cancellation, navigation, or activity recreation. Use synthetic files and remove credentials, contents, personal filenames, and private URIs from any logs.
