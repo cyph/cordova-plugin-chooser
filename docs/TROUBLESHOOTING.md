@@ -10,6 +10,8 @@ cordova requirements
 
 Match the documentation to the package you installed. Reproduce the problem with a small, nonprivate local file before adding cloud-provider or large-file complexity.
 
+For RC1, also review the [known limitations](KNOWN-ISSUES.md), especially if iOS Files stays open after selecting a document.
+
 ## Chooser or a method is undefined
 
 Load Cordova's generated `cordova.js`, install the plugin into the Cordova application, and wait for `deviceready`. An npm dependency by itself does not install the native integration.
@@ -41,6 +43,10 @@ Android's legacy single-file methods prefer local providers; use a URI method wi
 ## iOS cannot present the picker
 
 Open it from a visible application view after another modal has finished dismissing. Check the app's supported orientations on iPhone and iPad. A dismissed dialog can still have a request processing provider data, so wait for that request's completion before trying again.
+
+## iOS Files stays open after selecting a file
+
+RC1 testing has intermittently encountered a provider URL-resolution failure before the document-picker selection callback. This also occurs in the plain UIKit reference application. See the [iOS selection limitation](KNOWN-ISSUES.md#intermittent-ios-files-selection) for symptoms, recovery, and the remaining verification boundary.
 
 ## A URI cannot be read or stops working
 

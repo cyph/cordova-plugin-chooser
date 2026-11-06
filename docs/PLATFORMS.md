@@ -15,7 +15,7 @@ The plugin declares `cordova-android >=14.0.0` and `cordova-ios >=7.0.0` in [plu
 
 Follow Cordova's [Android](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) or [iOS](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) toolchain requirements. Minimum engine constraints do not establish qualification for future platform versions.
 
-The repository builds Android 14/15 and iOS 7/8 applications and exercises Cordova Browser 7. Its Cordova iOS application fixtures use Swift 5 mode and an iOS 15.0 deployment target. Those fixtures do not establish qualification for older deployment targets, even though source fallbacks remain. Your Xcode version and other dependencies may impose a higher OS floor than Cordova itself. [Verification](VERIFICATION.md) distinguishes automated coverage from device/provider checks.
+The repository builds Android 14/15 and iOS 7/8 applications and exercises Cordova Browser 7. Its Cordova iOS application fixtures use Swift 5 mode and an iOS 15.0 deployment target. Those fixtures do not establish qualification for older deployment targets, even though source fallbacks remain. Your Xcode version and other dependencies may impose a higher OS floor than Cordova itself. [Verification](VERIFICATION.md) distinguishes automated coverage from device/provider checks; the [RC1 limitations](KNOWN-ISSUES.md) describe incomplete iOS UI qualification and provider behavior.
 
 ## Android
 

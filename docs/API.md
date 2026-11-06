@@ -2,7 +2,7 @@
 
 Use the injected `chooser` global after `deviceready`. In browsers, invoke a picker directly from a user interaction. Only one picker request can be active at a time, including the work needed to read or copy its selection.
 
-The [bundled TypeScript declarations](../index.d.ts) define all public overloads. [File handling](FILE-HANDLING.md) explains how to consume results and release resources. Rejection of invalid filters, callbacks, and unknown option keys is an [unreleased change](../CHANGELOG.md#unreleased); valid calls retain the RC1 API.
+The [bundled TypeScript declarations](../index.d.ts) define all public overloads. [File handling](FILE-HANDLING.md) explains how to consume results and release resources. Invalid filters, callbacks, and unknown option keys reject before opening the picker. See the [migration guide](MIGRATION.md) when upgrading an application or replacing a fork-specific wrapper.
 
 ## Methods
 

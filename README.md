@@ -6,7 +6,7 @@ Chooser supports single and multiple selection, Promises and callbacks, and Type
 
 ## Installation
 
-The published candidate is **2.0.0-rc.1**; this checkout also documents [unreleased changes](CHANGELOG.md#unreleased). Install the published candidate explicitly from your Cordova application:
+The current release candidate is **2.0.0-rc.1**. Review the [known limitations](docs/KNOWN-ISSUES.md) before testing it in your application. Install RC1 explicitly from your Cordova application:
 
 ```sh
 cordova plugin add cordova-plugin-chooser@2.0.0-rc.1
@@ -86,6 +86,7 @@ Browser pickers must open directly from a user interaction, before awaiting unre
 - [Platforms](docs/PLATFORMS.md): setup, providers, permissions, and lifecycle behavior.
 - [Migration](docs/MIGRATION.md): upgrading from 1.3.2.
 - [Troubleshooting](docs/TROUBLESHOOTING.md): symptoms and practical checks.
+- [Known limitations](docs/KNOWN-ISSUES.md): unresolved behavior and release-candidate coverage.
 - [Contributing](CONTRIBUTING.md) and [verification](docs/VERIFICATION.md): development and maintenance.
 - [Changelog](CHANGELOG.md): current and historical releases.
 

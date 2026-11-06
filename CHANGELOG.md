@@ -2,14 +2,11 @@
 
 Dates below are npm publication dates in UTC. Historical links lead to version metadata and its published source archive. Early releases with closely related implementation fixes are grouped; individual archives remain linked for reference.
 
-## Unreleased
-
-- Reject invalid filters, callbacks, and unknown copy-option keys before opening a picker, preventing silently ignored wrapper options or misspelled limits.
-- Clarify fork-wrapper migration, CSV decoding, provider filtering, and large-file workflows.
-
 ## 2.0.0-rc.1
 
 First release candidate for 2.0.0. Changes are relative to 1.3.2; see the [migration guide](docs/MIGRATION.md).
+
+This prerelease has [known limitations](docs/KNOWN-ISSUES.md), including intermittent iOS Files selection failures observed during simulator testing. Complete iOS UI qualification remains pending.
 
 ### Added
 
@@ -25,9 +22,11 @@ First release candidate for 2.0.0. Changes are relative to 1.3.2; see the [migra
 - Requires Cordova Android 14 or later, or Cordova iOS 7 or later, on the corresponding native platform. Maintained families are Android 14/15 and iOS 7/8; see [platform requirements](docs/PLATFORMS.md#requirements-and-coverage).
 - Removed the separate Swift-support dependency and corrected package entry points and source registration.
 - Preserved existing single-file calls and cancellation behavior while correcting binary decoding, canonical base64 padding, and application callback error handling.
+- Reject invalid filters, callbacks, and unknown copy-option keys before opening a picker, preventing silently ignored wrapper options or misspelled limits.
 - Metadata paths avoid whole-file reads in plugin code. Native managed copies use bounded streaming, generated cache names, staged batches, and interrupted-operation recovery.
 - Improved cancellation, concurrent-request handling, reset ownership, provider metadata handling, stream closure, and failed-batch cleanup.
 - Updated Android activity restoration and iOS document types, dismissal, orientation, and main-thread ownership.
+- Documented fork-wrapper migration, CSV decoding, provider filtering, and large-file workflows.
 
 ## [1.3.2](https://registry.npmjs.org/cordova-plugin-chooser/1.3.2) — 2020-07-26
 
