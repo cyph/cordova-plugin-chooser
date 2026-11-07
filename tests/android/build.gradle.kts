@@ -21,6 +21,7 @@ android {
 androidComponents { beforeVariants { it.enableAndroidTest = false } }
 dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }
 dependencies {
+    implementation(libs.activity)
     implementation(libs.cordova14)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

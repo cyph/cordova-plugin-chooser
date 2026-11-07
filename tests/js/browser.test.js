@@ -2,130 +2,143 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {browserFixture} = require('./helpers');
 
-const file = (name = 'a.bin', bytes = [0, 1, 255]) => ({name, bytes, size: bytes.length, type: 'application/octet-stream'});
+function file(name = 'a.bin', bytes = [0, 1, 255], type = 'application/octet-stream') {
+	const blob = new Blob([Uint8Array.from(bytes)], {type});
+	const reads = [];
+	return {name, size: blob.size, type, reads, slice(start, end) {
+		reads.push([start, end]);
+		return blob.slice(start, end);
+	}};
+}
+const code = expected => error => error.code === expected;
+async function select(fixture, method, options, files) {
+	const pending = fixture.chooser[method](options);
+	fixture.elements.at(-1).emit('change', files);
+	return pending;
+}
 
-test('browser bridge reads binary once and opens the input in the calling gesture', async () => {
-	const f = browserFixture();
-	const promise = f.chooser.getFile('image/*');
+test('direct combined data opens synchronously, reads once, and owns no Blob URL', async () => {
+	const f = browserFixture(), input = file();
+	const pending = f.chooser.getFileData({accept: 'image/*', maxFileSize: 3, format: 'bytesAndDataURI'});
 	assert.equal(f.elements[0].clicked, true);
 	assert.equal(f.elements[0].accept, 'image/*');
-	const changed = f.elements[0].emit('change', [file()]);
-	f.readers[0].complete();
-	await changed;
-	const selected = await promise;
-	assert.deepEqual(Array.from(selected.data), [0, 1, 255]);
+	f.elements[0].emit('change', [input]);
+	const result = await pending;
+	assert.deepEqual(Array.from(result.data), [0, 1, 255]);
+	assert.equal(result.dataURI, 'data:application/octet-stream;base64,AAH/');
+	assert.equal(input.reads.length, 1);
+	assert.equal('id' in result, false);
+	assert.equal(f.blobs.size, 0);
 	assert.equal(f.elements[0].attached, false);
-	assert.equal(f.blobs.size, 1);
-	await f.chooser.releaseFile(selected.id);
+});
+
+test('metadata has no reads or owned resources; managed handles read and restore by ID', async () => {
+	const f = browserFixture(), input = file();
+	const info = await select(f, 'getFileMetadata', undefined, [input]);
+	assert.equal(info.name, 'a.bin');
+	assert.equal('id' in info, false);
+	assert.equal('uri' in info, false);
+	assert.equal(input.reads.length, 0);
+	const managed = await select(f, 'getFile', {maxFileSize: 3}, [input]);
+	assert.equal(input.reads.length, 0);
+	const restored = await f.chooser.restoreFile(JSON.parse(JSON.stringify(managed)));
+	assert.deepEqual(Array.from(await restored.read({offset: 1, length: 20})), [1, 255]);
+	await managed.release();
+	await assert.rejects(restored.bytes({maxBytes: 3}), code('FILE_RELEASED'));
+	await restored.release();
 	assert.equal(f.blobs.size, 0);
 });
 
-test('metadata and copy mode do not start FileReader; managed IDs remain independently releasable', async () => {
+test('native input cancellation, empty selection and AbortSignal use cancellation exceptions', async () => {
 	const f = browserFixture();
-	const first = f.chooser.getFileMetadata();
-	await f.elements[0].emit('change', [file()]);
-	const info = await first;
-	const second = f.chooser.getFilesUri({maxFileSize: 3});
-	await f.elements[1].emit('change', [file(), file('b.bin')]);
-	const copies = await second;
-	assert.equal(copies.length, 2);
-	assert.equal(f.elements[1].multiple, true);
-	assert.equal(f.readers.length, 0);
-	assert.equal(f.blobs.size, 3);
-	await f.chooser.releaseFile(copies[0].id);
-	await f.chooser.releaseFile(copies[0].id);
-	assert.equal(f.blobs.size, 2);
-	assert.equal('data' in info, false);
-	f.pagehide();
-	assert.equal(f.blobs.size, 0);
-});
-
-test('both native input cancellation and an empty selection resolve undefined', async () => {
-	const f = browserFixture();
-	const canceled = f.chooser.getFile();
+	const canceled = f.chooser.getFile({maxFileSize: null});
+	const rejected = assert.rejects(canceled, error => error instanceof f.chooser.CancellationError && error.reason === 'picker');
 	f.elements[0].emit('cancel');
-	assert.equal(await canceled, undefined);
-	const empty = f.chooser.getFiles();
-	await f.elements[1].emit('change', []);
-	assert.equal(await empty, undefined);
+	await rejected;
+	const empty = f.chooser.getFilesMetadata();
+	const emptyRejected = assert.rejects(empty, code('CANCELLED'));
+	f.elements[1].emit('change', []);
+	await emptyRejected;
+	const controller = new AbortController();
+	const aborted = f.chooser.getFileMetadata({signal: controller.signal});
+	const signalRejected = assert.rejects(aborted, error => error.code === 'CANCELLED' && error.reason === 'signal');
+	controller.abort();
+	await signalRejected;
+	const next = await select(f, 'getFileMetadata', undefined, [file('next')]);
+	assert.equal(next.name, 'next');
 	assert.equal(f.blobs.size, 0);
 });
 
-test('a concurrent request fails without stealing the original callback', async () => {
+test('a concurrent request cannot steal the picker callback', async () => {
 	const f = browserFixture();
 	const pending = f.chooser.getFileMetadata();
-	await assert.rejects(f.chooser.getFileMetadata(), value => value.startsWith('BUSY:'));
-	await f.elements[0].emit('change', [file('original')]);
+	await assert.rejects(f.chooser.getFileMetadata(), code('BUSY'));
+	f.elements[0].emit('change', [file('original')]);
 	assert.equal((await pending).name, 'original');
 });
 
-test('failed copy batches revoke earlier results and a later unlimited call is independent', async () => {
+test('failed batches roll back earlier URLs and limits apply to data and metadata count', async () => {
 	const f = browserFixture();
-	const limited = f.chooser.getFilesUri({maxFileSize: 2});
-	const rejection = assert.rejects(limited, value => value.startsWith('FILE_TOO_LARGE:'));
-	await f.elements[0].emit('change', [file('small', [1]), file('large')]);
+	for (const method of ['getFiles', 'getFilesData']) {
+		const pending = f.chooser[method]({maxFileSize: 2, maxTotalSize: 20, ...(method === 'getFilesData' ? {format: 'bytes'} : {})});
+		const rejection = assert.rejects(pending, code('FILE_TOO_LARGE'));
+		f.elements.at(-1).emit('change', [file('small', [1]), file('large')]);
+		await rejection;
+		assert.equal(f.blobs.size, 0);
+	}
+	const pending = f.chooser.getFilesMetadata({maxFiles: 1});
+	const rejection = assert.rejects(pending, code('TOO_MANY_FILES'));
+	f.elements.at(-1).emit('change', [file(), file('second')]);
 	await rejection;
-	assert.equal(f.blobs.size, 0);
-	const unlimited = f.chooser.getFileUri();
-	await f.elements[1].emit('change', [file()]);
-	assert.equal((await unlimited).size, 3);
 });
 
-test('read errors and page reset clean partial URLs and do not affect the next request', async () => {
+test('aggregate budgets allow exact boundaries and empty files', async () => {
 	const f = browserFixture();
-	const failed = f.chooser.getFile();
-	const rejection = assert.rejects(failed, value => value.startsWith('READ_FAILED:'));
-	const change = f.elements[0].emit('change', [file()]);
-	f.readers[0].fail();
-	await change;
-	await rejection;
-	assert.equal(f.blobs.size, 0);
-	const reset = f.chooser.getFile();
-	const reading = f.elements[1].emit('change', [file()]);
-	f.pagehide();
-	assert.equal(await reset, undefined);
-	await reading;
-	const next = f.chooser.getFileMetadata();
-	await f.elements[2].emit('change', [file('next')]);
-	assert.equal((await next).name, 'next');
-	assert.equal(f.blobs.size, 1);
-});
-
-test('copy count limits reject before creating resources', async () => {
-	const f = browserFixture();
-	const pending = f.chooser.getFilesUri({maxFiles: 1});
-	const rejection = assert.rejects(pending, error => error.startsWith('TOO_MANY_FILES:'));
-	await f.elements[0].emit('change', [file(), file('second')]);
-	await rejection;
-	assert.equal(f.blobs.size, 0);
-	assert.equal(f.readers.length, 0);
-	const single = f.chooser.getFileUri({maxFiles: 1});
-	await f.elements[1].emit('change', [file(), file('ignored')]);
-	assert.equal((await single).name, 'a.bin');
-});
-
-test('aggregate budgets permit exact totals and empty files, then roll back on the first excess byte', async () => {
-	const f = browserFixture();
-	const exact = f.chooser.getFilesUri({maxTotalSize: 3, maxFileSize: 2, maxFiles: 3});
-	await f.elements[0].emit('change', [file('one', [1]), file('two', [2, 3]), file('empty', [])]);
-	const kept = await exact;
+	const kept = await select(f, 'getFiles', {maxTotalSize: 3, maxFileSize: 2, maxFiles: 3}, [file('one', [1]), file('two', [2, 3]), file('empty', [])]);
 	assert.equal(kept.length, 3);
-	const exceeded = f.chooser.getFilesUri({maxTotalSize: 3});
-	const rejection = assert.rejects(exceeded, error => error.startsWith('TOTAL_SIZE_EXCEEDED:'));
-	await f.elements[1].emit('change', [file(), file('empty', []), file('excess', [4])]);
-	await rejection;
-	assert.equal(f.blobs.size, 3); // Only the earlier successful request remains owned.
-	for (const ref of kept) await f.chooser.releaseFile(ref.id);
-	const unlimited = f.chooser.getFilesUri({maxFileSize: 0, maxFiles: 0, maxTotalSize: 0});
-	await f.elements[2].emit('change', [file(), file('second')]);
-	assert.equal((await unlimited).length, 2);
-	assert.equal(f.readers.length, 0);
+	assert.equal((await kept[2].bytes({maxBytes: 1})).length, 0);
+	const pending = f.chooser.getFiles({maxFileSize: null, maxTotalSize: 3});
+	const rejected = assert.rejects(pending, code('TOTAL_SIZE_EXCEEDED'));
+	f.elements.at(-1).emit('change', [file(), file('excess', [4])]);
+	await rejected;
+	assert.equal(f.blobs.size, 3);
+	await f.chooser.releaseFiles(kept.map(item => item.id));
+	assert.equal(f.blobs.size, 0);
 });
 
-test('single copy methods apply aggregate limits too', async () => {
+test('Photos selects image/video inputs and streams decode across chunk boundaries', async () => {
 	const f = browserFixture();
-	const rejection = assert.rejects(f.chooser.getFileUri({maxTotalSize: 2}), error => error.startsWith('TOTAL_SIZE_EXCEEDED:'));
-	await f.elements[0].emit('change', [file()]);
-	await rejection;
+	const pending = f.chooser.getFile({source: 'photos', mediaTypes: ['video'], maxFileSize: null});
+	assert.equal(f.elements[0].accept, 'video/*');
+	const bytes = new TextEncoder().encode('x'.repeat(262143) + '€tail');
+	const input = file('clip.txt', bytes, 'text/plain');
+	f.elements[0].emit('change', [input]);
+	const managed = await pending;
+	const reader = managed.textStream().getReader();
+	let text = '';
+	for (let part; !(part = await reader.read()).done;) text += part.value;
+	assert.equal(text, 'x'.repeat(262143) + '€tail');
+	assert(input.reads.every(([start, end]) => end - start <= 262144));
+	await managed.release();
+});
+
+test('read failures release direct sources and allow another selection', async () => {
+	const f = browserFixture(), broken = file();
+	broken.slice = () => ({arrayBuffer: async () => { throw new Error('fixture read failure'); }});
+	const pending = f.chooser.getFileData({maxFileSize: 3, format: 'bytes'});
+	const rejected = assert.rejects(pending, code('READ_FAILED'));
+	f.elements[0].emit('change', [broken]);
+	await rejected;
 	assert.equal(f.blobs.size, 0);
+	assert.equal((await select(f, 'getFileMetadata', undefined, [file('next')])).name, 'next');
+});
+
+test('pagehide revokes live URLs and saved browser references cannot revive them', async () => {
+	const f = browserFixture();
+	const managed = await select(f, 'getFile', {maxFileSize: null}, [file()]);
+	const reference = managed.toJSON();
+	f.pagehide();
+	await new Promise(resolve => setImmediate(resolve));
+	assert.equal(f.blobs.size, 0);
+	await assert.rejects(f.chooser.restoreFile(reference), code('FILE_UNAVAILABLE'));
 });

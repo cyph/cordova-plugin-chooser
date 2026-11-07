@@ -84,10 +84,10 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 				await page.evaluate(() => {
 					window.reads = 0;
 					window.live = new Set();
-					const read = FileReader.prototype.readAsDataURL;
-					FileReader.prototype.readAsDataURL = function (file) {
+					const read = Blob.prototype.arrayBuffer;
+					Blob.prototype.arrayBuffer = function () {
 						window.reads++;
-						return read.call(this, file);
+						return read.call(this);
 					};
 					const create = URL.createObjectURL.bind(URL),
 						revoke = URL.revokeObjectURL.bind(URL);
@@ -108,12 +108,12 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 								// Capture rejection immediately; assertions consume the settled result later.
 								window.pending = chooser[method](options).then(
 									(value) => ({ value }),
-									(error) => ({ error: String(error) }),
+									(error) => ({ error: error.code + ": " + error.message }),
 								);
 								if (concurrent)
 									window.second = chooser.getFileMetadata().then(
 										(value) => ({ value }),
-										(error) => ({ error: String(error) }),
+										(error) => ({ error: error.code + ": " + error.message }),
 									);
 							};
 						},
@@ -141,11 +141,14 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 				async function release(value) {
 					await page.evaluate(async (value) => {
 						for (const item of Array.isArray(value) ? value : [value])
-							await chooser.releaseFile(item.id);
+							if (item.id) await chooser.releaseFile(item.id);
 					}, value);
 				}
 
-				let dialog = await start("getFile");
+				let dialog = await start("getFileData", {
+					maxFileSize: null,
+					format: "bytesAndDataURI",
+				});
 				await dialog.setFiles(file());
 				let selected = (await result()).value;
 				assert.deepEqual(selected.data, [...bytes]);
@@ -157,10 +160,58 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 				await release(selected);
 				assert.equal(await page.evaluate(() => live.size), 0);
 
+				const text = "a".repeat(262143) + "😀\nend";
+				dialog = await start("getFile", { maxFileSize: null });
+				await dialog.setFiles(file("text.txt", Buffer.from(text)));
+				const managed = await page.evaluate(async () => {
+					const handle = (await pending).value;
+					const alias = await chooser.restoreFile(
+						JSON.parse(JSON.stringify(handle)),
+					);
+					const reader = handle.textStream().getReader();
+					let streamed = "";
+					for (;;) {
+						const part = await reader.read();
+						if (part.done) break;
+						streamed += part.value;
+					}
+					const range = Array.from(
+						await alias.read({ offset: 262143, length: 4 }),
+					);
+					const whole = await alias.text({ maxBytes: null });
+					await handle.release();
+					let released;
+					try {
+						await alias.bytes({ maxBytes: null });
+					} catch (error) {
+						released = error.code;
+					}
+					return { streamed, whole, range, released };
+				});
+				assert.equal(managed.streamed, text);
+				assert.equal(managed.whole, text);
+				assert.deepEqual(managed.range, [...Buffer.from("😀")]);
+				assert.equal(managed.released, "FILE_RELEASED");
+				assert.equal(await page.evaluate(() => live.size), 0);
+
+				dialog = await start("getFileMetadata", {
+					source: "photos",
+					mediaTypes: ["image"],
+				});
+				assert.equal(
+					await page.locator('input[type="file"]').getAttribute("accept"),
+					"image/*",
+				);
+				await dialog.setFiles(image);
+				selected = (await result()).value;
+				assert.equal(selected.mediaType, "image/png");
+				assert.equal("id" in selected, false);
+				assert.equal(await page.evaluate(() => live.size), 0);
+
 				const reads = await page.evaluate(() => window.reads);
 				dialog = await start(
 					"getFilesMetadata",
-					"application/octet-stream",
+					{ accept: "application/octet-stream" },
 					true,
 				);
 				assert.equal(dialog.isMultiple(), true);
@@ -176,7 +227,8 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 				assert.equal(await page.evaluate(() => window.reads), reads);
 				await release(selected);
 
-				dialog = await start("getFilesUri", {
+				dialog = await start("getFiles", {
+					maxFileSize: null,
 					maxTotalSize: bytes.length,
 					maxFiles: 2,
 				});
@@ -208,28 +260,32 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 					true,
 				);
 
-				dialog = await start("getFilesUri", { maxFileSize: 1 });
+				dialog = await start("getFiles", {
+					maxTotalSize: null,
+					maxFileSize: 1,
+				});
 				await dialog.setFiles([file("empty.bin", Buffer.alloc(0)), file()]);
 				assert.match((await result()).error, /^FILE_TOO_LARGE:/);
 				assert.equal(await page.evaluate(() => live.size), 0);
 
 				dialog = await start("getFileMetadata");
 				await dialog.setFiles([]);
-				assert.equal((await result()).value, undefined); // Empty DOM selection, not an OS cancel-dialog assertion.
+				assert.match((await result()).error, /^CANCELLED:/); // Empty DOM selection, not an OS cancel-dialog assertion.
 
 				await page.evaluate(() => {
-					FileReader.prototype.readAsDataURL = function () {
-						queueMicrotask(() =>
-							this.dispatchEvent(new ProgressEvent("error")),
-						);
+					Blob.prototype.arrayBuffer = function () {
+						return Promise.reject(new Error("fixture read failure"));
 					};
 				});
-				dialog = await start("getFile");
+				dialog = await start("getFileData", {
+					maxFileSize: null,
+					format: "bytesAndDataURI",
+				});
 				await dialog.setFiles(file());
 				assert.match((await result()).error, /^READ_FAILED:/);
 				assert.equal(await page.evaluate(() => live.size), 0);
 
-				dialog = await start("getFileUri");
+				dialog = await start("getFile", { maxFileSize: null });
 				await dialog.setFiles(file());
 				selected = (await result()).value;
 				await page.goto(url);
@@ -253,7 +309,10 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 						await page.waitForFunction(
 							() => !document.getElementById("pick").disabled,
 						);
-						dialog = await start("getFileUri", "image/png");
+						dialog = await start("getFile", {
+							accept: "image/png",
+							maxFileSize: null,
+						});
 						await dialog.setFiles(image);
 						const selectedImage = (await result()).value;
 						assert.match(selectedImage.uri, /^blob:/);

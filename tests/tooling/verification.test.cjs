@@ -41,7 +41,13 @@ function fixture(t) {
 	);
 	assert.equal(clone.status, 0, clone.stderr);
 	// Include the verifier and package resources under test, including new files.
-	for (const name of ["scripts", "src", "plugin.xml", "package.json"])
+	for (const name of [
+		"scripts",
+		"src",
+		"plugin.xml",
+		"package.json",
+		"tests/android/gradle/libs.versions.toml",
+	])
 		cpSync(join(source, name), join(root, name), { recursive: true });
 	const readme = join(root, "README.md");
 	const index = join(root, ".git/index");

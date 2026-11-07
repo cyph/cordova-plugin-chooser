@@ -67,11 +67,21 @@ public class ChooserTest {
 
 	static class Recorded extends CallbackContext {
 		final List<PluginResult> finalResults = new ArrayList<>();
+		final CountDownLatch completed = new CountDownLatch(1);
 		Recorded(String id) { super(id, mock(CordovaWebView.class)); }
 		@Override public synchronized void sendPluginResult(PluginResult result) {
-			if (result.getStatus() != PluginResult.Status.NO_RESULT.ordinal()) finalResults.add(result);
+			if (result.getStatus() != PluginResult.Status.NO_RESULT.ordinal()) { finalResults.add(result); completed.countDown(); }
 		}
-		synchronized PluginResult only() { assertEquals(1, finalResults.size()); return finalResults.get(0); }
+		String message() { return payload(only()); }
+		PluginResult only() {
+			try { assertTrue("native callback did not settle", completed.await(5, TimeUnit.SECONDS)); }
+			catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new AssertionError(error); }
+			synchronized (this) { assertEquals(1, finalResults.size()); return finalResults.get(0); }
+		}
+	}
+
+	private static String payload(PluginResult result) {
+		return result.getStrMessage() != null ? result.getStrMessage() : result.getMessage();
 	}
 
 	public static class FixtureProvider extends ContentProvider {
@@ -79,6 +89,7 @@ public class ChooserTest {
 		int opens;
 		boolean nullCursor;
 		boolean failOpen;
+		Runnable beforeOpen;
 		boolean pipe;
 		String displayName = "../source.bin";
 		String mediaType;
@@ -115,6 +126,7 @@ public class ChooserTest {
 		}
 		@Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
 			opens++;
+			if (beforeOpen != null) beforeOpen.run();
 			if (failOpen) throw new FileNotFoundException("offline");
 			if (pipe) {
 				try {
@@ -180,7 +192,7 @@ public class ChooserTest {
 	}
 	private Recorded start(String accept, boolean data) throws Exception {
 		Recorded callback = new Recorded("request");
-		assertTrue(plugin.execute("getFile", new JSONArray().put(accept).put(data), callback));
+		assertTrue(plugin.execute("pick", new JSONArray().put(options(accept, data ? "data" : "metadata", false)), callback));
 		drain();
 		return callback;
 	}
@@ -191,10 +203,27 @@ public class ChooserTest {
 
 	private Recorded copy(long limit, boolean multiple, long maxFiles, long maxTotalSize) throws Exception {
 		Recorded callback = new Recorded("copy");
-		JSONObject options = new JSONObject().put("accept", "*/*").put("mode", "copy").put("multiple", multiple).put("maxFileSize", limit).put("localOnly", false).put("maxFiles", maxFiles).put("maxTotalSize", maxTotalSize);
+		JSONObject options = options("*/*", "copy", multiple).put("maxFileSize", limit).put("localOnly", false).put("maxFiles", maxFiles).put("maxTotalSize", maxTotalSize);
 		plugin.execute("pick", new JSONArray().put(options), callback);
 		drain();
 		return callback;
+	}
+
+	private JSONObject options(String accept, String mode, boolean multiple) throws Exception {
+		return new JSONObject().put("requestId", java.util.UUID.randomUUID().toString()).put("source", "documents")
+			.put("accept", accept).put("mode", mode).put("multiple", multiple).put("localOnly", true)
+			.put("maxFileSize", 0).put("maxFiles", 0).put("maxTotalSize", 0);
+	}
+
+	private String errorCode(Recorded callback) throws Exception {
+		assertEquals(PluginResult.Status.ERROR.ordinal(), callback.only().getStatus());
+		return new JSONObject(callback.message()).getString("code");
+	}
+
+	private JSONObject chunk(String id, long offset, int length) throws Exception {
+		Recorded callback = new Recorded("read");
+		plugin.execute("readFile", new JSONArray().put(id).put(offset).put(length), callback);
+		return object(callback);
 	}
 
 	private void assertEmptyCache() throws Exception {
@@ -214,8 +243,8 @@ public class ChooserTest {
 	}
 
 	private JSONObject object(Recorded callback) throws Exception {
-		assertEquals(callback.only().getStrMessage(), PluginResult.Status.OK.ordinal(), callback.only().getStatus());
-		return new JSONObject(callback.only().getStrMessage());
+		assertEquals(callback.message(), PluginResult.Status.OK.ordinal(), callback.only().getStatus());
+		return new JSONObject(callback.message());
 	}
 
 	@Test public void metadataDoesNotOpenFilesAndUnknownSizeIsNull() throws Exception {
@@ -237,7 +266,9 @@ public class ChooserTest {
 		Recorded offline = start(true);
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		drain();
-		assertEquals(PluginResult.Status.ERROR.ordinal(), offline.only().getStatus());
+		Recorded read = new Recorded("offline-read");
+		plugin.execute("readFile", new JSONArray().put(object(offline).getString("id")).put(0).put(10), read);
+		assertEquals("READ_FAILED", errorCode(read));
 	}
 
 	@Test public void busyAndStaleActivityResultsCannotStealCallbacks() throws Exception {
@@ -308,25 +339,22 @@ public class ChooserTest {
 		intent.setClipData(clip);
 		plugin.onActivityResult(code, Activity.RESULT_OK, intent);
 		drain();
-		JSONArray files = new JSONArray(selected.only().getStrMessage());
+		JSONArray files = new JSONArray(selected.message());
 		assertEquals(2, files.length());
 		assertEquals(URI.toString(), files.getJSONObject(0).getString("sourceUri"));
 		assertEquals("content://chooser.fixture/second", files.getJSONObject(1).getString("sourceUri"));
 	}
 
-	@Test public void resetSuppressesQueuedCopyAndReleaseCompletions() throws Exception {
+	@Test public void resetSuppressesQueuedCopyCompletion() throws Exception {
 		Recorded selected = copy(0, false);
 		CountDownLatch resume = new CountDownLatch(1);
 		worker.submit(() -> { try { resume.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {} });
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		ChooserTransaction.HOUSEKEEPING.submit(() -> { try { resume.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {} });
-		Recorded released = new Recorded("old-release");
-		plugin.execute("releaseFile", new JSONArray().put("00000000-0000-4000-8000-000000000000"), released);
 		plugin.onReset();
 		resume.countDown();
 		drain();
 		assertEquals(0, selected.finalResults.size());
-		assertEquals(0, released.finalResults.size());
 		assertEmptyCache();
 	}
 
@@ -345,12 +373,12 @@ public class ChooserTest {
 		Recorded failed = copy(0, true, 1, 0);
 		plugin.onActivityResult(code, Activity.RESULT_OK, selection(URI, URI, second));
 		drain();
-		assertTrue(failed.only().getStrMessage().startsWith("TOO_MANY_FILES:"));
+		assertEquals("TOO_MANY_FILES", errorCode(failed));
 		assertEquals(0, provider.opens);
 		Recorded deduplicated = copy(0, true, 1, 0);
 		plugin.onActivityResult(code, Activity.RESULT_OK, selection(URI, URI));
 		drain();
-		assertEquals(1, new JSONArray(deduplicated.only().getStrMessage()).length());
+		assertEquals(1, new JSONArray(deduplicated.message()).length());
 	}
 
 	@Test public void restoredCopyKeepsAllLimitsAndRollsBackAnExcessiveBatch() throws Exception {
@@ -364,12 +392,12 @@ public class ChooserTest {
 		plugin.onRestoreStateForActivityResult(state, restored);
 		plugin.onActivityResult(code, Activity.RESULT_OK, selection(URI, Uri.parse("content://chooser.fixture/second")));
 		drain();
-		assertTrue(restored.only().getStrMessage().startsWith("TOTAL_SIZE_EXCEEDED:"));
+		assertEquals("TOTAL_SIZE_EXCEEDED", errorCode(restored));
 		assertEquals(2, provider.opens);
 		assertEmptyCache();
 	}
 
-	@Test public void assetDescriptorSlicesArePreservedInCopiesAndLegacyData() throws Exception {
+	@Test public void assetDescriptorSlicesArePreservedInCopiesAndLazyData() throws Exception {
 		Files.write(provider.source.toPath(), new byte[]{99, 98, 1, 2, 3, 97});
 		provider.offset = 2;
 		provider.length = 3;
@@ -382,7 +410,9 @@ public class ChooserTest {
 		Recorded data = start(true);
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		drain();
-		assertEquals("AQID", object(data).getString("data"));
+		JSONObject source = object(data);
+		assertFalse(source.has("data"));
+		assertEquals("AQID", chunk(source.getString("id"), 0, 32).getString("data"));
 	}
 
 	@Test public void filtersReachThePickerWithoutBroadeningSingleTypes() throws Exception {
@@ -395,9 +425,9 @@ public class ChooserTest {
 			assertNull(inner.getStringArrayExtra(Intent.EXTRA_MIME_TYPES));
 			assertTrue(inner.getBooleanExtra(Intent.EXTRA_LOCAL_ONLY, false));
 			plugin.onActivityResult(code, Activity.RESULT_CANCELED, null);
-			assertEquals("RESULT_CANCELED", request.only().getStrMessage());
+			assertEquals("RESULT_CANCELED", request.message());
 		}
-		JSONObject options = new JSONObject().put("accept", "text/csv,application/json").put("mode", "metadata").put("multiple", true).put("localOnly", false);
+		JSONObject options = options("text/csv,application/json", "metadata", true).put("localOnly", false);
 		Recorded request = new Recorded("plural-filter");
 		plugin.execute("pick", new JSONArray().put(options), request);
 		drain();
@@ -419,8 +449,11 @@ public class ChooserTest {
 		Recorded data = start(true);
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		drain();
-		assertArrayEquals(pdf, android.util.Base64.decode(object(data).getString("data"), android.util.Base64.DEFAULT));
-		assertEquals(pdf.length, object(data).getLong("size"));
+		JSONObject source = object(data);
+		assertEquals("source", source.getString("kind"));
+		assertFalse(source.has("data"));
+		assertArrayEquals(pdf, android.util.Base64.decode(chunk(source.getString("id"), 0, 32).getString("data"), android.util.Base64.DEFAULT));
+		assertTrue(source.isNull("size"));
 		Recorded copied = copy(0, false);
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		drain();
@@ -429,8 +462,9 @@ public class ChooserTest {
 		Recorded empty = start(true);
 		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 		drain();
-		assertEquals("", object(empty).getString("data"));
-		assertEquals(0, object(empty).getLong("size"));
+		JSONObject emptyChunk = chunk(object(empty).getString("id"), 0, 32);
+		assertEquals("", emptyChunk.getString("data"));
+		assertTrue(emptyChunk.getBoolean("eof"));
 	}
 
 	private static byte[] hash(File file) throws Exception {
@@ -459,7 +493,7 @@ public class ChooserTest {
 			JSONObject result = object(copied);
 			assertFalse(result.has("data"));
 			assertFalse(result.has("dataURI"));
-			assertTrue(copied.only().getStrMessage().length() < 16384);
+			assertTrue(copied.message().length() < 16384);
 			assertEquals(size, result.getLong("size"));
 			File output = new File(Uri.parse(result.getString("uri")).getPath());
 			assertArrayEquals(hash(provider.source), hash(output));
@@ -472,7 +506,7 @@ public class ChooserTest {
 			Recorded exceeded = copy(size - 1, false);
 			plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
 			drain(60);
-			assertTrue(exceeded.only().getStrMessage().startsWith("FILE_TOO_LARGE:"));
+			assertEquals("FILE_TOO_LARGE", errorCode(exceeded));
 			assertEmptyCache();
 		}
 	}
@@ -495,6 +529,7 @@ public class ChooserTest {
 			assertEquals(PluginResult.Status.OK.ordinal(), released.only().getStatus());
 			assertFalse(output.exists());
 			plugin.onReset();
+			for (int attempt = 0; attempt < 100 && !provider.querySignal.isCanceled(); attempt++) Thread.sleep(10);
 			assertTrue(provider.querySignal.isCanceled());
 		}
 		finally { provider.resumeQuery.countDown(); }
@@ -526,7 +561,7 @@ public class ChooserTest {
 		state.putString("mode", "unknown");
 		Recorded restored = new Recorded("invalid-restoration");
 		plugin.onRestoreStateForActivityResult(state, restored);
-		assertTrue(restored.only().getStrMessage().startsWith("READ_INTERRUPTED:"));
+		assertEquals("READ_INTERRUPTED", errorCode(restored));
 		plugin.onActivityResult(code, Activity.RESULT_CANCELED, null);
 		assertEquals(0, original.finalResults.size());
 		Recorded next = start(false);
@@ -543,7 +578,7 @@ public class ChooserTest {
 		dispatcher.setActivityResultRequestCode(oldCode);
 		plugin.onReset();
 		Recorded blocked = start(false);
-		assertTrue(blocked.only().getStrMessage().startsWith("BUSY:"));
+		assertEquals("BUSY", errorCode(blocked));
 		assertTrue(dispatcher.onActivityResult(oldCode, Activity.RESULT_OK, new Intent().setData(URI)));
 		assertEquals(0, first.finalResults.size());
 		Recorded next = start(false);
@@ -581,8 +616,326 @@ public class ChooserTest {
 		drain();
 		org.mockito.ArgumentCaptor<PluginResult> event = org.mockito.ArgumentCaptor.forClass(PluginResult.class);
 		verify(core, times(1)).sendResumeEvent(event.capture());
-		assertEquals("RESULT_CANCELED", event.getValue().getMultipartMessage(1).getStrMessage());
+		assertEquals("CANCELLED", new JSONObject(payload(event.getValue().getMultipartMessage(1))).getString("code"));
 		assertEquals(0, provider.opens);
 		assertNull(plugin.onSaveInstanceState());
 	}
+	@Test public void lazySourcesDoNotReadAtSelectionAndEnforceActualBudgets() throws Exception {
+		provider.reportedSize = 1L;
+		Recorded selected = new Recorded("source-budget");
+		plugin.execute("pick", new JSONArray().put(options("*/*", "data", true).put("maxFileSize", 3).put("maxTotalSize", 4)), selected);
+		drain();
+		plugin.onActivityResult(code, Activity.RESULT_OK, selection(URI, Uri.parse("content://chooser.fixture/other")));
+		drain();
+		JSONArray sources = new JSONArray(selected.message());
+		assertEquals(0, provider.opens);
+		for (int i = 0; i < sources.length(); i++) {
+			assertEquals("source", sources.getJSONObject(i).getString("kind"));
+			assertFalse(sources.getJSONObject(i).has("data"));
+			assertFalse(sources.getJSONObject(i).has("uri"));
+		}
+		String first = sources.getJSONObject(0).getString("id");
+		String second = sources.getJSONObject(1).getString("id");
+		assertEquals("AQID", chunk(first, 0, 32).getString("data"));
+		assertEquals(1, provider.opens);
+		Recorded failed = new Recorded("aggregate-limit");
+		plugin.execute("readFile", new JSONArray().put(second).put(0).put(32), failed);
+		assertEquals("TOTAL_SIZE_EXCEEDED", errorCode(failed));
+		for (String id : new String[]{first, second}) {
+			Recorded released = new Recorded("release-source");
+			plugin.execute("releaseFile", new JSONArray().put(id), released);
+			assertEquals(PluginResult.Status.OK.ordinal(), released.only().getStatus());
+		}
+		assertTrue(provider.source.exists());
+		assertEmptyCache();
+	}
+
+	@Test public void managedStatAndChunksRestoreExistingRc1Files() throws Exception {
+		File existing = ChooserFiles.create(activity.getCacheDir());
+		Files.write(existing.toPath(), new byte[]{0, (byte)255, 42, 17, 5});
+		Recorded stat = new Recorded("stat");
+		plugin.execute("statFile", new JSONArray().put(existing.getName()), stat);
+		JSONObject result = object(stat);
+		assertEquals(existing.getName(), result.getString("id"));
+		assertEquals(5, result.getLong("size"));
+		assertEquals(Uri.fromFile(existing).toString(), result.getString("uri"));
+		assertArrayEquals(new byte[]{42, 17}, android.util.Base64.decode(chunk(existing.getName(), 2, 2).getString("data"), android.util.Base64.DEFAULT));
+		assertEquals("AP8q", chunk(existing.getName(), 0, 3).getString("data"));
+		assertTrue(chunk(existing.getName(), 5, 10).getBoolean("eof"));
+	}
+
+	@Test public void countLimitAppliesToMetadataAndSourcesBeforeAnyProviderReads() throws Exception {
+		for (String mode : new String[]{"metadata", "data"}) {
+			Recorded selected = new Recorded(mode);
+			plugin.execute("pick", new JSONArray().put(options("*/*", mode, true).put("maxFiles", 1)), selected);
+			drain();
+			plugin.onActivityResult(code, Activity.RESULT_OK, selection(URI, Uri.parse("content://chooser.fixture/other")));
+			assertEquals("TOO_MANY_FILES", errorCode(selected));
+		}
+		assertEquals(0, provider.opens);
+	}
+
+	@Test public void signalCancellationMatchesRequestIdAndKeepsDispatcherOwnership() throws Exception {
+		JSONObject options = options("*/*", "copy", false);
+		Recorded selected = new Recorded("signal-selection");
+		plugin.execute("pick", new JSONArray().put(options), selected);
+		drain();
+		int oldCode = code;
+		Recorded stale = new Recorded("stale-cancel");
+		plugin.execute("cancelPick", new JSONArray().put("another-request"), stale);
+		stale.only();
+		assertEquals(0, selected.finalResults.size());
+		CountDownLatch finishRequested = new CountDownLatch(1);
+		AppCompatActivity finishHost = mock(AppCompatActivity.class);
+		doAnswer(call -> { ((Runnable) call.getArgument(0)).run(); return null; }).when(finishHost).runOnUiThread(any(Runnable.class));
+		doAnswer(call -> { finishRequested.countDown(); return null; }).when(finishHost).finishActivity(oldCode);
+		when(cordova.getActivity()).thenReturn(finishHost);
+		Recorded cancelled = new Recorded("cancel");
+		plugin.execute("cancelPick", new JSONArray().put(options.getString("requestId")), cancelled);
+		cancelled.only();
+		assertTrue(finishRequested.await(5, TimeUnit.SECONDS));
+		assertEquals("Cancellation must wait for the reserved activity result", 0, selected.finalResults.size());
+		Recorded reserved = start(false);
+		assertEquals("BUSY", errorCode(reserved));
+		plugin.onActivityResult(oldCode, Activity.RESULT_OK, new Intent().setData(URI));
+		assertEquals("CANCELLED", errorCode(selected));
+		assertEquals("signal", new JSONObject(selected.message()).getString("reason"));
+		when(cordova.getActivity()).thenReturn(activity);
+		Recorded next = start(false);
+		assertNotEquals(oldCode, code);
+		plugin.onActivityResult(oldCode, Activity.RESULT_OK, new Intent().setData(URI));
+		assertEquals(0, next.finalResults.size());
+		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+		assertEquals("../source.bin", object(next).getString("name"));
+		assertEquals(0, provider.opens);
+	}
+
+	@Test public void realDispatcherAllowsReopeningAfterSignalCancellationSettles() throws Exception {
+		CordovaInterfaceImpl dispatcher = new CordovaInterfaceImpl(activity, worker);
+		plugin = new Chooser();
+		plugin.privateInitialize("Chooser", dispatcher, mock(CordovaWebView.class), new CordovaPreferences());
+		JSONObject options = options("*/*", "metadata", false);
+		Recorded selected = new Recorded("dispatcher-cancel");
+		plugin.execute("pick", new JSONArray().put(options), selected);
+		drain();
+		int oldCode = plugin.onSaveInstanceState().getInt("code");
+		dispatcher.setActivityResultRequestCode(oldCode);
+		Recorded cancelled = new Recorded("cancel");
+		plugin.execute("cancelPick", new JSONArray().put(options.getString("requestId")), cancelled);
+		cancelled.only();
+		assertEquals(0, selected.finalResults.size());
+		assertTrue(dispatcher.onActivityResult(oldCode, Activity.RESULT_CANCELED, null));
+		assertEquals("CANCELLED", errorCode(selected));
+		assertEquals("signal", new JSONObject(selected.message()).getString("reason"));
+		Recorded next = start(false);
+		int newCode = plugin.onSaveInstanceState().getInt("code");
+		assertNotEquals(oldCode, newCode);
+		dispatcher.setActivityResultRequestCode(newCode);
+		assertTrue(dispatcher.onActivityResult(newCode, Activity.RESULT_OK, new Intent().setData(URI)));
+		assertEquals("../source.bin", object(next).getString("name"));
+		assertEquals(0, provider.opens);
+	}
+
+	@Test public void signalCancellationBeforeLaunchSettlesWithoutAnActivityResult() throws Exception {
+		List<Runnable> launches = new ArrayList<>();
+		AppCompatActivity delayedHost = mock(AppCompatActivity.class);
+		doAnswer(call -> { launches.add(call.getArgument(0)); return null; }).when(delayedHost).runOnUiThread(any(Runnable.class));
+		when(cordova.getActivity()).thenReturn(delayedHost);
+		JSONObject options = options("*/*", "metadata", false);
+		Recorded selected = new Recorded("before-launch");
+		plugin.execute("pick", new JSONArray().put(options), selected);
+		assertEquals(1, launches.size());
+		assertNull(launched);
+		Recorded cancelled = new Recorded("cancel-before-launch");
+		plugin.execute("cancelPick", new JSONArray().put(options.getString("requestId")), cancelled);
+		cancelled.only();
+		assertEquals("CANCELLED", errorCode(selected));
+		assertEquals("signal", new JSONObject(selected.message()).getString("reason"));
+		launches.get(0).run();
+		assertNull(launched);
+		when(cordova.getActivity()).thenReturn(activity);
+		Recorded next = start(false);
+		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+		assertEquals("../source.bin", object(next).getString("name"));
+	}
+
+	@Test public void cancellationDuringProviderProcessingRollsBackBeforeCallback() throws Exception {
+		JSONObject options = options("*/*", "copy", false);
+		Recorded selected = new Recorded("processing-cancel");
+		plugin.execute("pick", new JSONArray().put(options), selected);
+		drain();
+		provider.queryStarted = new CountDownLatch(1);
+		provider.resumeQuery = new CountDownLatch(1);
+		try {
+			plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+			assertTrue(provider.queryStarted.await(5, TimeUnit.SECONDS));
+			Recorded canceled = new Recorded("cancel");
+			plugin.execute("cancelPick", new JSONArray().put(options.getString("requestId")), canceled);
+			canceled.only();
+			assertEquals(0, selected.finalResults.size());
+		}
+		finally { provider.resumeQuery.countDown(); }
+		assertEquals("CANCELLED", errorCode(selected));
+		assertEmptyCache();
+	}
+
+	@Test public void photoContractsProvideMediaFiltersAndKeepPluralSingleLimit() throws Exception {
+		for (String media : new String[]{"image", "video"}) {
+			JSONObject options = options("*/*", "metadata", true).put("source", "photos")
+				.put("mediaTypes", new JSONArray().put(media)).put("maxFiles", 1);
+			Recorded selected = new Recorded("photos");
+			plugin.execute("pick", new JSONArray().put(options), selected);
+			drain();
+			assertNotEquals(Intent.ACTION_CHOOSER, launched.getAction());
+			assertEquals(media + "/*", launched.getType());
+			assertFalse(launched.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false));
+			if (android.os.Build.VERSION.SDK_INT < 33) {
+				assertEquals(Intent.ACTION_OPEN_DOCUMENT, launched.getAction());
+				assertTrue(launched.hasCategory(Intent.CATEGORY_OPENABLE));
+			}
+			Bundle saved = plugin.onSaveInstanceState();
+			assertEquals("photos", saved.getString("source"));
+			assertArrayEquals(new String[]{media}, saved.getStringArray("mediaTypes"));
+			plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+			drain();
+			assertEquals(1, new JSONArray(selected.message()).length());
+		}
+		JSONObject options = options("*/*", "metadata", true).put("source", "photos")
+			.put("mediaTypes", new JSONArray().put("image").put("video")).put("maxFiles", 2);
+		Recorded selected = new Recorded("photos-many");
+		plugin.execute("pick", new JSONArray().put(options), selected);
+		drain();
+		if (Intent.ACTION_OPEN_DOCUMENT.equals(launched.getAction())) {
+			assertTrue(launched.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false));
+			assertArrayEquals(new String[]{"image/*", "video/*"}, launched.getStringArrayExtra(Intent.EXTRA_MIME_TYPES));
+		}
+		plugin.onActivityResult(code, Activity.RESULT_OK, selection(URI, Uri.parse("content://chooser.fixture/2"), Uri.parse("content://chooser.fixture/3")));
+		assertEquals("TOO_MANY_FILES", errorCode(selected));
+		assertEquals(0, provider.opens);
+	}
+
+	@Test public void photoFallbackIsOpenableForSingleBoundedAndUnlimitedSelections() throws Exception {
+		for (long[] selection : new long[][]{{0, 0}, {1, 1}, {1, 2}, {1, 0}}) {
+			boolean multiple = selection[0] != 0;
+			long maxFiles = selection[1];
+			ChooserRequest request = new ChooserRequest(new Recorded("photo-intent"), "*/*", ChooserRequest.Mode.METADATA,
+				multiple, false, 0, maxFiles, 0, 1001, "photo-intent", "photos", new String[]{"image", "video"});
+			Intent intent = plugin.pickerIntent(request);
+			boolean documents = Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());
+			if (android.os.Build.VERSION.SDK_INT < 33) assertTrue(documents);
+			assertEquals("Only the document fallback needs OPENABLE", documents, intent.hasCategory(Intent.CATEGORY_OPENABLE));
+			if (documents) {
+				assertEquals(multiple && maxFiles != 1, intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false));
+				assertArrayEquals(new String[]{"image/*", "video/*"}, intent.getStringArrayExtra(Intent.EXTRA_MIME_TYPES));
+			}
+		}
+	}
+
+	@Test public void invalidWireValuesAreRejectedBeforeOpeningThePicker() throws Exception {
+		for (Object value : new Object[]{-1, 0.5, 9007199254740992D, "3", JSONObject.NULL}) {
+			Recorded rejected = new Recorded("invalid-limit");
+			plugin.execute("pick", new JSONArray().put(options("*/*", "copy", false).put("maxFileSize", value)), rejected);
+			assertEquals("INVALID_ARGUMENT", errorCode(rejected));
+		}
+		Recorded source = new Recorded("invalid-source");
+		plugin.execute("pick", new JSONArray().put(options("*/*", "copy", false).put("source", "camera")), source);
+		assertEquals("INVALID_ARGUMENT", errorCode(source));
+		assertNull(launched);
+	}
+
+	@Test public void cancelReadIsSourceOnlyAndProducesTypedCancellation() throws Exception {
+		Recorded selected = start(true);
+		plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+		drain();
+		String id = object(selected).getString("id");
+		assertEquals("AQ==", chunk(id, 0, 1).getString("data"));
+		Recorded cancel = new Recorded("cancel-source");
+		plugin.execute("cancelRead", new JSONArray().put(id), cancel);
+		assertEquals(PluginResult.Status.OK.ordinal(), cancel.only().getStatus());
+		Recorded read = new Recorded("cancelled-read");
+		plugin.execute("readFile", new JSONArray().put(id).put(1).put(1), read);
+		assertEquals("CANCELLED", errorCode(read));
+		assertEquals("signal", new JSONObject(read.message()).getString("reason"));
+		Recorded released = new Recorded("release-source");
+		plugin.execute("releaseFile", new JSONArray().put(id), released);
+		released.only();
+		File managed = ChooserFiles.create(activity.getCacheDir());
+		Recorded rejected = new Recorded("reject-managed-cancel");
+		plugin.execute("cancelRead", new JSONArray().put(managed.getName()), rejected);
+		assertEquals("INVALID_ARGUMENT", errorCode(rejected));
+		assertTrue(managed.exists());
+		assertTrue(provider.source.exists());
+	}
+
+	@Test public void requestCancellationClosesAnActiveCopyAndLateProviderStreams() throws Exception {
+		ChooserRequest request = new ChooserRequest(new Recorded("copy-cancel"), "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1001);
+		java.util.concurrent.atomic.AtomicInteger closes = new java.util.concurrent.atomic.AtomicInteger();
+		java.io.InputStream input = new java.io.ByteArrayInputStream(new byte[]{1}) {
+			@Override public void close() { closes.incrementAndGet(); }
+		};
+		request.attachInput(input);
+		request.cancel();
+		assertTrue(request.cancellation.isCanceled());
+		assertEquals(1, closes.get());
+		request.detachInput(input);
+		assertThrows(ChooserError.class, () -> request.attachInput(input));
+		assertEquals(2, closes.get());
+	}
+
+	@Test public void rollbackFailurePreservesOriginalErrorAndSignalCancellation() throws Exception {
+		for (boolean cancel : new boolean[]{false, true}) {
+			java.util.concurrent.atomic.AtomicReference<File> blockedJournal = new java.util.concurrent.atomic.AtomicReference<>();
+			CountDownLatch opened = new CountDownLatch(1);
+			CountDownLatch resumeOpen = new CountDownLatch(1);
+			provider.beforeOpen = () -> {
+				File pending = new File(activity.getCacheDir(), "cordova-plugin-chooser/.pending");
+				File[] transactions = pending.listFiles(File::isDirectory);
+				assertNotNull(transactions);
+				assertEquals(1, transactions.length);
+				File journal = new File(transactions[0], "journal.tmp");
+				assertTrue(journal.mkdir()); // Force rollback's journal write to fail.
+				blockedJournal.set(journal);
+				opened.countDown();
+				if (cancel) {
+					try { assertTrue(resumeOpen.await(5, TimeUnit.SECONDS)); }
+					catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new AssertionError(error); }
+				}
+			};
+			JSONObject options = options("*/*", "copy", false).put("maxFileSize", cancel ? 0 : 1);
+			Recorded selected = new Recorded("rollback-failure");
+			try {
+				plugin.execute("pick", new JSONArray().put(options), selected);
+				drain();
+				plugin.onActivityResult(code, Activity.RESULT_OK, new Intent().setData(URI));
+				assertTrue(opened.await(5, TimeUnit.SECONDS));
+				if (cancel) {
+					Recorded cancelled = new Recorded("cancel-before-rollback");
+					plugin.execute("cancelPick", new JSONArray().put(options.getString("requestId")), cancelled);
+					cancelled.only();
+					resumeOpen.countDown();
+				}
+				assertEquals("CLEANUP_FAILED", errorCode(selected));
+				JSONObject failure = new JSONObject(selected.message());
+				JSONObject outcome = failure.getJSONObject("outcome");
+				assertEquals("rejected", outcome.getString("status"));
+				JSONObject original = outcome.getJSONObject("reason");
+				assertEquals(cancel ? "CANCELLED" : "FILE_TOO_LARGE", original.getString("code"));
+				assertEquals(cancel ? "File selection was cancelled." : "Selected file exceeds the byte limit.", original.getString("message"));
+				if (cancel) assertEquals("signal", original.getString("reason"));
+				JSONArray failures = failure.getJSONArray("failures");
+				assertEquals(1, failures.length());
+				assertTrue(ChooserFiles.isId(failures.getJSONObject(0).getString("id")));
+				assertEquals("RELEASE_FAILED", failures.getJSONObject(0).getJSONObject("error").getString("code"));
+			}
+			finally {
+				resumeOpen.countDown();
+				provider.beforeOpen = null;
+				drain();
+				if (blockedJournal.get() != null) assertTrue(blockedJournal.get().delete());
+				ChooserTransaction.recover(activity.getCacheDir(), ChooserTransaction.FILES);
+			}
+			assertEmptyCache();
+		}
+	}
+
 }

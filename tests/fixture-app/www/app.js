@@ -12,19 +12,20 @@ function record(label, value) {
 function pick() {
 	var method = document.getElementById('method').value;
 	var accept = document.getElementById('accept').value;
-	var options = method.endsWith('Uri') ? {
-		accept: accept, maxFileSize: Number(document.getElementById('limit').value),
-		maxFiles: Number(document.getElementById('count').value),
-		maxTotalSize: Number(document.getElementById('total').value),
-		localOnly: document.getElementById('local').checked
-	} : accept;
+	var source = document.getElementById('source').value;
+	var options = source === 'photos' ? {source: source} : {accept: accept, localOnly: document.getElementById('local').checked};
+	if (!method.endsWith('Metadata')) {
+		options.maxFileSize = Number(document.getElementById('limit').value) || null;
+		if (method.startsWith('getFiles')) options.maxTotalSize = Number(document.getElementById('total').value) || null;
+	}
+	if (method.startsWith('getFiles')) options.maxFiles = Number(document.getElementById('count').value) || null;
+	if (method.endsWith('Data')) options.format = 'bytesAndDataURI';
 	chooser[method](options).then(function (result) {
-		if (result === undefined) { record('canceled', null); return; }
 		(Array.isArray(result) ? result : [result]).forEach(function (file) {
 			if (file.id) references.add(file.id);
 		});
 		record(method, result);
-	}, function (error) { record('error', error); });
+	}, function (error) { record(error.code === 'CANCELLED' ? 'canceled' : 'error', error); });
 }
 document.addEventListener('deviceready', function () {
 	['pick', 'twice', 'release'].forEach(function (id) { document.getElementById(id).disabled = false; });

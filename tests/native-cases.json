@@ -13,8 +13,8 @@
 		},
 		{
 			"id": "limits",
-			"input": "Reported size null, zero, too small or too large; actual length 65537; limits 65536, 65537, 0 and omitted",
-			"expect": "Copies enforce actual bytes; exact limit succeeds; zero/omitted unlimited; failure deletes partial batch files"
+			"input": "Reported size null, zero, too small or too large; actual length 65537; public limits 65536, 65537, null, zero and omitted",
+			"expect": "Managed copies and direct data enforce actual bytes; exact limit succeeds; explicit null is unlimited; zero or omitted required limits reject before picker dispatch; failure releases all partial batch resources"
 		},
 		{
 			"id": "short-io",
@@ -34,12 +34,12 @@
 		{
 			"id": "cancel",
 			"input": "Cancel button, Android back, iOS swipe dismissal, browser cancel event; duplicate or late delegate events",
-			"expect": "One success with undefined; original request remains the sole owner of its callback"
+			"expect": "One CancellationError with reason picker; AbortSignal uses reason signal; original request remains the sole owner of its callback"
 		},
 		{
 			"id": "busy",
-			"input": "Start two requests while picker or read is pending",
-			"expect": "Second rejects BUSY; first still completes normally"
+			"input": "Start a second picker while selection, direct reading or rollback is pending; independently start five managed reads",
+			"expect": "Second picker rejects BUSY; first still completes normally; managed reads queue with at most four native reads active"
 		},
 		{
 			"id": "reset",
@@ -58,7 +58,7 @@
 		},
 		{
 			"id": "presentation",
-			"input": "iPad landscape/portrait restrictions, rapid reopen, existing modal, iOS 11/13 fallback and 14+ UTType paths",
+			"input": "iPad landscape/portrait restrictions, rapid reopen and existing modal on supported iOS 15+ versions",
 			"expect": "No incompatible orientation mask; safe popover anchor; no callback theft or stuck busy state; unavailable presenter returns an error"
 		},
 		{
@@ -68,7 +68,7 @@
 		},
 		{
 			"id": "batch-budgets",
-			"input": "Copy selections with duplicate native URIs, empty files, maxFiles at/below count, exact maxTotalSize, one excess byte, zero/omitted limits and a new request after failure",
+			"input": "Selections with duplicate native URIs, empty files, maxFiles at/below count, exact maxTotalSize, one excess byte, explicit null limits and a new request after failure",
 			"expect": "Count applies after normalization/deduplication and before content reads; actual bytes count across files; empty input still passes an exhausted budget; per-file and aggregate limits both apply; failed batch fully rolls back; budgets never leak to another request"
 		},
 		{
@@ -85,6 +85,21 @@
 			"id": "transaction-failures",
 			"input": "Inject rename failure, reset after the first promotion, failed deletion, malformed/traversal journal records, source/destination symlinks including dangling journal.tmp, and destination collision",
 			"expect": "No successful partial batch; retryable pending journal retained on cleanup failure; independent deletes still attempted; foreign files never overwritten/deleted; unsafe entries retained with redacted diagnostics"
+		},
+		{
+			"id": "managed-reads",
+			"input": "Restore a saved reference; read beyond EOF, stream across UTF-8 boundaries, use aliases, release while reads and streams are active, then retry a failed release",
+			"expect": "Native ID lookup is authoritative; one-shot reads already started finish before deletion; streams stop; aliases share release state; unrelated files remain usable; malformed text rejects unless replacement was requested"
+		},
+		{
+			"id": "photos",
+			"input": "Select images, videos and a mixed batch from Android Photo Picker/fallback and iOS PHPicker; exercise metadata, managed and direct modes, count and byte limits, cancellation and immediate reopening",
+			"expect": "Media filters use system picker APIs; metadata does not load representations; selected current representations are read without plugin transcoding; provider imports and managed copies are cleaned up on failure or release"
+		},
+		{
+			"id": "direct-data",
+			"input": "Read each requested format from a source with inaccurate size and split UTF-8 sequences; abort during a blocked provider read; inject cleanup failure",
+			"expect": "Bounded bridge chunks; one content read for combined bytesAndDataURI; exact bytes and canonical padding; no retained managed copy; cancellation waits for actual I/O cleanup; CleanupError preserves original outcome and per-ID failures"
 		}
 	]
 }

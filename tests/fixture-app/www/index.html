@@ -6,13 +6,14 @@
 	<p>Manual fixture for a provisioned Cordova app. Results here are observations, not an automatic pass.</p>
 	<label>Method <select id="method">
 		<option>getFile</option><option>getFileMetadata</option><option>getFiles</option>
-		<option>getFilesMetadata</option><option>getFileUri</option><option>getFilesUri</option>
+		<option>getFilesMetadata</option><option>getFileData</option><option>getFilesData</option>
 	</select></label>
+	<label>Source <select id="source"><option value="documents">Files</option><option value="photos">Photos and videos</option></select></label>
 	<label>MIME filter <input id="accept" value="*/*"></label>
-	<label>Copy limit per file in bytes (0 = unlimited) <input id="limit" type="number" min="0" step="1" value="0"></label>
-	<label>Copy file count (0 = unlimited) <input id="count" type="number" min="0" step="1" value="0"></label>
-	<label>Copy total bytes (0 = unlimited) <input id="total" type="number" min="0" step="1" value="0"></label>
-	<label><input id="local" type="checkbox">Android copies: local only</label>
+	<label>Byte limit per file in bytes (0 = unlimited) <input id="limit" type="number" min="0" step="1" value="0"></label>
+	<label>Selection count (0 = unlimited) <input id="count" type="number" min="0" step="1" value="0"></label>
+	<label>Total bytes (0 = unlimited) <input id="total" type="number" min="0" step="1" value="0"></label>
+	<label><input id="local" type="checkbox">Android documents: local only</label>
 	<button id="pick" disabled>Choose files</button>
 	<button id="twice" disabled>Start two concurrent requests</button>
 	<button id="release" disabled>Release recorded references</button>

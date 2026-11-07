@@ -1,16 +1,13 @@
 import Foundation
 import UIKit
-import MobileCoreServices
+import PhotosUI
+import UniformTypeIdentifiers
 #if canImport(Cordova)
 import Cordova
-#endif
-#if canImport(UniformTypeIdentifiers)
-import UniformTypeIdentifiers
 #endif
 
 private final class ChooserDocumentPicker: UIDocumentPickerViewController {
 	var request: ChooserRequest?
-
 	// Let UIKit intersect with the app's supported orientation mask.
 	override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .all }
 }
@@ -24,99 +21,174 @@ class Chooser: CDVPlugin {
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private var picker: ChooserDocumentPicker?
+	private var picker: UIViewController?
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private var generation: UInt64 = 0 // Main-thread only, including release completions.
-
-	@objc(getFile:)
-	func getFile(command: CDVInvokedUrlCommand) {
-		let reference = ChooserMainReference((self, command))
-		ChooserMain.run {
-			let (plugin, command) = reference.value
-			guard command.arguments.count >= 2,
-				let accept = command.arguments[0] as? String,
-				let includeData = command.arguments[1] as? Bool else {
-				plugin.send(ChooserFailure(code: .invalidArgument, detail: "Expected a MIME filter and includeData boolean.").message, .error, command.callbackId)
-				return
-			}
-			plugin.begin(callback: command.callbackId, accept: accept, mode: includeData ? .data : .metadata, multiple: false, limit: 0)
-		}
-	}
+	private var generation: UInt64 = 0
+	let resources = ChooserResources(cache: Chooser.cacheDirectory)
 
 	@objc(pick:)
 	func pick(command: CDVInvokedUrlCommand) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
-			guard let options = command.arguments.first as? [String: Any],
-				let accept = options["accept"] as? String,
-				let modeName = options["mode"] as? String,
-				let mode = ChooserReadMode(rawValue: modeName),
-				let multiple = options["multiple"] as? Bool else {
-				plugin.send(ChooserFailure(code: .invalidArgument, detail: "Invalid picker options.").message, .error, command.callbackId)
-				return
-			}
 			do {
-				let limit = try plugin.limitOption(options, name: "maxFileSize")
-				let maxFiles = try plugin.limitOption(options, name: "maxFiles")
-				let maxTotalSize = try plugin.limitOption(options, name: "maxTotalSize")
-				plugin.begin(callback: command.callbackId, accept: accept, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize)
-			}
-			catch { plugin.send(error.localizedDescription, .error, command.callbackId) }
+				guard command.arguments.count == 1, let options = command.arguments.first as? [String: Any],
+					let id = options["requestId"] as? String, !id.isEmpty,
+					let source = options["source"] as? String, ["documents", "photos"].contains(source),
+					let accept = options["accept"] as? String,
+					let modeName = options["mode"] as? String, let mode = ChooserReadMode(rawValue: modeName) else {
+					throw ChooserFailure(code: .invalidArgument, detail: "Invalid picker options.")
+				}
+				let multiple = try Self.boolean(options["multiple"])
+				_ = try Self.boolean(options["localOnly"])
+				let limit = try Self.integer(options["maxFileSize"])
+				let maxFiles = try Self.integer(options["maxFiles"])
+				let maxTotalSize = try Self.integer(options["maxTotalSize"])
+				let mediaTypes: [String]
+				if source == "photos" {
+					guard let types = options["mediaTypes"] as? [String], !types.isEmpty,
+						types.allSatisfy({ ["image", "video"].contains($0) }), Set(types).count == types.count else {
+						throw ChooserFailure(code: .invalidArgument, detail: "Invalid photo media types.")
+					}
+					mediaTypes = types
+				} else { mediaTypes = [] }
+				let normalized = accept.lowercased().components(separatedBy: .whitespacesAndNewlines).joined()
+				let request = ChooserRequest(callback: command.callbackId, accept: normalized.isEmpty ? "*/*" : normalized,
+					mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize,
+					worker: ChooserWork.reserve(), id: id, source: source, mediaTypes: mediaTypes)
+				plugin.begin(request)
+			} catch { plugin.sendFailure(error, callback: command.callbackId, fallback: .invalidArgument) }
 		}
 	}
 
-	private func limitOption(_ options: [String: Any], name: String) throws -> Int64 {
-		guard let value = options[name] else { return 0 }
+	private static func boolean(_ value: Any?) throws -> Bool {
+		guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+			throw ChooserFailure(code: .invalidArgument, detail: "Expected a boolean.")
+		}
+		return number.boolValue
+	}
+
+	private static func integer(_ value: Any?) throws -> Int64 {
 		guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else {
-			throw ChooserFailure(code: .invalidArgument, detail: "Expected a numeric limit.")
+			throw ChooserFailure(code: .invalidArgument, detail: "Expected a numeric limit or offset.")
 		}
 		let size = number.doubleValue
 		guard size.isFinite, size >= 0, size <= Double(ChooserFiles.maxSafeInteger), size.rounded(.down) == size else {
-			throw ChooserFailure(code: .invalidArgument, detail: "Expected a nonnegative safe-integer limit.")
+			throw ChooserFailure(code: .invalidArgument, detail: "Expected a nonnegative safe integer.")
 		}
 		return Int64(size)
 	}
 
-	@objc(releaseFile:)
-	func releaseFile(command: CDVInvokedUrlCommand) {
+	@objc(readFile:)
+	func readFile(command: CDVInvokedUrlCommand) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
-			guard let id = command.arguments.first as? String else {
-				plugin.send(ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.").message, .error, command.callbackId)
+			do {
+				guard command.arguments.count == 3, let id = command.arguments[0] as? String else {
+					throw ChooserFailure(code: .invalidArgument, detail: "Expected a file id, offset and length.")
+				}
+				let offset = try Self.integer(command.arguments[1])
+				let length = try Self.integer(command.arguments[2])
+				guard length <= 262144 else { throw ChooserFailure(code: .invalidArgument, detail: "Read chunk exceeds 262144 bytes.") }
+				plugin.read(id: id, offset: offset, length: Int(length), owner: plugin.generation, callback: command.callbackId)
+			} catch { plugin.sendFailure(error, callback: command.callbackId, fallback: .readFailed) }
+		}
+	}
+
+	@objc(cancelRead:)
+	func cancelRead(command: CDVInvokedUrlCommand) {
+		let reference = ChooserMainReference((self, command))
+		ChooserMain.run {
+			let (plugin, command) = reference.value
+			do {
+				guard command.arguments.count == 1, let id = command.arguments.first as? String else {
+					throw ChooserFailure(code: .invalidArgument, detail: "Expected a transient source id.")
+				}
+				try plugin.resources.cancelRead(id: id)
+				plugin.send([:], .ok, command.callbackId)
+			} catch { plugin.sendFailure(error, callback: command.callbackId) }
+		}
+	}
+
+	@objc(statFile:)
+	func statFile(command: CDVInvokedUrlCommand) {
+		resourceCommand(command, releasing: false)
+	}
+
+	@objc(releaseFile:)
+	func releaseFile(command: CDVInvokedUrlCommand) {
+		resourceCommand(command, releasing: true)
+	}
+
+	private func resourceCommand(_ command: CDVInvokedUrlCommand, releasing: Bool) {
+		let reference = ChooserMainReference((self, command))
+		ChooserMain.run {
+			let (plugin, command) = reference.value
+			do {
+				guard command.arguments.count == 1, let id = command.arguments.first as? String else {
+					throw ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.")
+				}
+				if releasing { try plugin.resources.prepareRelease(id: id) }
+				plugin.resource(id: id, releasing: releasing, owner: plugin.generation, callback: command.callbackId)
+			} catch { plugin.sendFailure(error, callback: command.callbackId, fallback: releasing ? .releaseFailed : .fileUnavailable) }
+		}
+	}
+
+	// Construct background callbacks outside the UI actor's lexical context.
+	private func read(id: String, offset: Int64, length: Int, owner: UInt64, callback: String) {
+		resources.enqueue {
+			let result = Result { try self.resources.read(id: id, offset: offset, length: length) }
+			self.resourceResult(result, owner: owner, callback: callback, fallback: .readFailed)
+		}
+	}
+
+	private func resource(id: String, releasing: Bool, owner: UInt64, callback: String) {
+		if releasing {
+			resources.release(id: id) { result in
+				self.resourceResult(result.map { [:] }, owner: owner, callback: callback, fallback: .releaseFailed)
+			}
+		} else {
+			resources.enqueue {
+				let result = Result { try self.resources.stat(id: id) }
+				self.resourceResult(result, owner: owner, callback: callback, fallback: .fileUnavailable)
+			}
+		}
+	}
+
+	private func resourceResult(_ result: Result<[String: Any], Error>, owner: UInt64, callback: String, fallback: ChooserErrorCode) {
+		let reference = ChooserMainReference((self, result))
+		ChooserMain.run {
+			let (plugin, result) = reference.value
+			guard plugin.generation == owner else { return }
+			switch result {
+			case .success(let object): plugin.send(object, .ok, callback)
+			case .failure(let error): plugin.sendFailure(error, callback: callback, fallback: fallback)
+			}
+		}
+	}
+
+	@objc(cancelPick:)
+	func cancelPick(command: CDVInvokedUrlCommand) {
+		let reference = ChooserMainReference((self, command))
+		ChooserMain.run {
+			let (plugin, command) = reference.value
+			guard command.arguments.count == 1, let id = command.arguments.first as? String, !id.isEmpty else {
+				plugin.sendFailure(ChooserFailure(code: .invalidArgument, detail: "Expected a request id."), callback: command.callbackId)
 				return
 			}
-			let owner = plugin.generation
-			plugin.release(id: id, owner: owner, callback: command.callbackId)
+			if let request = plugin.active, request.id == id {
+				let selecting = request.state == .selecting
+				request.signalCancel(reason: "signal")
+				if selecting { plugin.deliver(request, result: .success([:])) }
+			}
+			plugin.send([:], .ok, command.callbackId)
 		}
 	}
 
-	// Form file-worker closures outside the UI actor's lexical context.
-	private func release(id: String, owner: UInt64, callback: String) {
-		ChooserWork.dispatch(on: ChooserTransaction.housekeeping) {
-			let message: String
-			let status: CDVCommandStatus
-			do {
-				try ChooserFiles.release(in: self.cacheDirectory(), id: id)
-				message = ""
-				status = .ok
-			}
-			catch {
-				message = error.localizedDescription
-				status = .error
-			}
-			let reference = ChooserMainReference(self)
-			ChooserMain.run {
-				let plugin = reference.value
-				if plugin.generation == owner { plugin.send(message, status, callback) }
-			}
-		}
-	}
-
-	private func cacheDirectory() throws -> URL {
+	private static func cacheDirectory() throws -> URL {
 		guard let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
 			throw ChooserFailure(code: .cacheFailed, detail: "Private cache directory is unavailable.")
 		}
@@ -126,38 +198,31 @@ class Chooser: CDVPlugin {
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private func begin(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0) {
+	private func begin(_ request: ChooserRequest) {
 		guard active == nil else {
-			send(ChooserFailure(code: .busy, detail: "A file picker is already active.").message, .error, callback)
+			request.finish()
+			sendFailure(ChooserFailure(code: .busy, detail: "A file picker is already active."), callback: request.callback)
 			return
 		}
-		guard let presenter = viewController, presenter.viewIfLoaded?.window != nil,
-			presenter.presentedViewController == nil else {
-			send(ChooserFailure(code: .pickerFailed, detail: "The app is not ready to present a file picker.").message, .error, callback)
+		guard let presenter = viewController, presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil else {
+			request.finish()
+			sendFailure(ChooserFailure(code: .pickerFailed, detail: "The app is not ready to present a file picker."), callback: request.callback)
 			return
 		}
-		guard let worker = ChooserWork.reserve() else {
-			send(ChooserFailure(code: .busy, detail: "Previous provider reads are still pending.").message, .error, callback)
-			return
+		let controller: UIViewController
+		if request.source == "photos" {
+			let photos = PHPickerViewController(configuration: ChooserPhotos.configuration(mediaTypes: request.mediaTypes, multiple: request.multiple, maxFiles: request.maxFiles))
+			photos.delegate = self
+			controller = photos
+		} else {
+			let types = ChooserTypes.identifiers(for: request.accept).compactMap { UTType($0) }
+			// Opening in place keeps metadata selection free of document imports.
+			let documents = ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: false)
+			documents.request = request
+			documents.delegate = self
+			documents.allowsMultipleSelection = request.multiple
+			controller = documents
 		}
-		let normalized = accept.lowercased().components(separatedBy: .whitespacesAndNewlines).joined()
-		let request = ChooserRequest(callback: callback, accept: normalized.isEmpty ? "*/*" : normalized, mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize, worker: worker)
-		let utis = ChooserTypes.identifiers(for: request.accept)
-		let controller: ChooserDocumentPicker
-		#if canImport(UniformTypeIdentifiers)
-		if #available(iOS 14.0, *) {
-			let types = utis.compactMap { UTType($0) }
-			controller = ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: mode != .copy)
-		}
-		else {
-			controller = ChooserDocumentPicker(documentTypes: utis, in: mode == .copy ? .open : .import)
-		}
-		#else
-		controller = ChooserDocumentPicker(documentTypes: utis, in: mode == .copy ? .open : .import)
-		#endif
-		controller.request = request
-		controller.delegate = self
-		controller.allowsMultipleSelection = multiple
 		controller.presentationController?.delegate = self
 		if let popover = controller.popoverPresentationController {
 			popover.sourceView = presenter.view
@@ -166,152 +231,237 @@ class Chooser: CDVPlugin {
 		}
 		active = request
 		picker = controller
-		presenter.present(controller, animated: true) {
-			controller.presentationController?.delegate = self
-		}
+		presenter.present(controller, animated: true) { controller.presentationController?.delegate = self }
 	}
 
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
 	private func selected(_ controller: UIDocumentPickerViewController, urls: [URL]) {
-		guard let request = (controller as? ChooserDocumentPicker)?.request, active === request,
-			request.process() else { return }
-		if urls.isEmpty {
-			complete(request, message: "RESULT_CANCELED", status: .ok)
-			return
-		}
-		var unique: [URL] = []
+		guard let request = (controller as? ChooserDocumentPicker)?.request, active === request, request.process() else { return }
 		var seen = Set<URL>()
+		var unique: [URL] = []
 		for url in urls where seen.insert(url).inserted {
 			unique.append(url)
 			if !request.multiple { break }
 		}
-		if request.mode == .copy && request.maxFiles > 0 && Int64(unique.count) > request.maxFiles {
-			complete(request, message: ChooserFailure(code: .tooManyFiles, detail: "Selection exceeds the file count limit.").message, status: .error)
-			return
-		}
-		process(selection: unique, request: request)
+		processDocuments(unique, request: request)
 	}
 
-	private func process(selection: [URL], request: ChooserRequest) {
-		guard let worker = request.worker else {
-			let reference = ChooserMainReference((self, request))
-			ChooserMain.run {
-				let (plugin, request) = reference.value
-				plugin.complete(request, message: ChooserFailure(code: .readFailed, detail: "Missing request worker.").message, status: .error)
-			}
-			return
-		}
+	private func processDocuments(_ urls: [URL], request: ChooserRequest) {
+		process(request: request, count: urls.count) { try urls.map { try self.readDocument(url: $0, request: request) } }
+	}
+
+	private func processPhotos(_ providers: [NSItemProvider], request: ChooserRequest) {
+		process(request: request, count: providers.count) { try self.readPhotos(providers, request: request) }
+	}
+
+	private func process(request: ChooserRequest, count: Int, produce: @escaping () throws -> [[String: Any]]) {
+		guard let worker = request.worker else { return }
 		worker.run {
+			let result: Result<Any, Error>
 			do {
 				try request.checkCanceled()
-				if request.mode == .copy { request.attach(try ChooserTransaction.begin(in: self.cacheDirectory())) }
-				var results: [[String: Any]] = []
-				for url in selection {
-					if request.canceled { throw ChooserFailure(code: .readInterrupted, detail: "Request was reset.") }
-					results.append(try self.read(url: url, request: request))
+				if count == 0 { request.signalCancel(reason: "picker"); throw ChooserFailure(code: .cancelled, detail: "Selection canceled.") }
+				if request.maxFiles > 0 && Int64(count) > request.maxFiles { throw ChooserFailure(code: .tooManyFiles, detail: "Selection exceeds the file count limit.") }
+				if request.mode == .copy || (request.mode == .data && request.source == "photos") {
+					request.attach(try ChooserTransaction.begin(in: Self.cacheDirectory()))
 				}
+				let values = try produce()
 				try request.checkCanceled()
 				try request.transaction?.commit(canceled: { request.canceled })
-				let object: Any = request.multiple ? results as Any : results[0] as Any
-				let json = try JSONSerialization.data(withJSONObject: object, options: [])
-				guard let message = String(data: json, encoding: .utf8) else {
-					throw ChooserFailure(code: .readFailed, detail: "Could not serialize file result.")
-				}
-				let reference = ChooserMainReference((self, request))
-				ChooserMain.run {
-					let (plugin, request) = reference.value
-					let delivered = plugin.complete(request, message: message, status: .ok)
-					request.finishResources(delivered: delivered)
-				}
+				result = .success(request.multiple ? values as Any : values[0] as Any)
+			} catch {
+				request.recordFailure(error)
+				request.finishResources(delivered: false, wait: true)
+				result = .failure(error)
 			}
-			catch {
-				request.finishResources(delivered: false)
-				let message = error.localizedDescription
-				let reference = ChooserMainReference((self, request))
-				ChooserMain.run {
-					let (plugin, request) = reference.value
-					plugin.complete(request, message: message, status: .error)
-				}
+			let reference = ChooserMainReference((self, request, result))
+			ChooserMain.run {
+				let (plugin, request, result) = reference.value
+				plugin.deliver(request, result: result)
 			}
 		}
 	}
 
-	private func read(url: URL, request: ChooserRequest) throws -> [String: Any] {
-		guard url.isFileURL else { throw ChooserFailure(code: .readFailed, detail: "Expected a file URL from the document picker.") }
+	private func readDocument(url: URL, request: ChooserRequest) throws -> [String: Any] {
+		return try coordinated(url: url, request: request) { coordinated in
+			let sizeValues = try? coordinated.resourceValues(forKeys: [.fileSizeKey])
+			let reported: Any = sizeValues?.fileSize.flatMap { size -> Int? in
+				return size >= 0 && Int64(size) <= ChooserFiles.maxSafeInteger ? size : nil
+			}.map { $0 as Any } ?? NSNull()
+			var file: [String: Any] = ["name": coordinated.lastPathComponent, "mediaType": ChooserTypes.mediaType(for: coordinated),
+				"size": reported, "sourceUri": url.absoluteString]
+			if request.mode == .copy { file = try self.copy(coordinated, metadata: file, request: request) }
+			else if request.mode == .data {
+				let id = try self.resources.register(ChooserSource(url: url, budget: request.budget))
+				request.trackSource(id, in: self.resources)
+				file["id"] = id; file["kind"] = "source"
+			}
+			return file
+		}
+	}
+
+	private func coordinated(url: URL, request: ChooserRequest, consume: (URL) throws -> [String: Any]) throws -> [String: Any] {
+		guard url.isFileURL else { throw ChooserFailure(code: .readFailed, detail: "Expected a provider file URL.") }
 		let scoped = url.startAccessingSecurityScopedResource()
 		defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-		var coordinationError: NSError?
-		var readError: Error?
-		var result: [String: Any]?
 		let coordinator = NSFileCoordinator()
 		request.coordinate(using: coordinator)
 		defer { request.coordinate(using: nil) }
 		try request.checkCanceled()
+		var coordinationError: NSError?
+		var result: Result<[String: Any], Error>?
 		coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
-			do {
+			result = Result {
 				try request.checkCanceled()
-				let values = try coordinated.resourceValues(forKeys: [.isRegularFileKey])
-				guard values.isRegularFile == true else { throw ChooserFailure(code: .readFailed, detail: "Select a regular file, not a directory or package.") }
-				// Size is optional provider metadata; failure must not block a counted copy.
-				let sizeValues = try? coordinated.resourceValues(forKeys: [.fileSizeKey])
-				let reportedSize: Any = sizeValues?.fileSize.flatMap { size -> Int? in
-					return size >= 0 && Int64(size) <= ChooserFiles.maxSafeInteger ? size : nil
-				}.map { $0 as Any } ?? NSNull()
-				var file: [String: Any] = [
-					"name": coordinated.lastPathComponent,
-					"mediaType": ChooserTypes.mediaType(for: coordinated),
-					"uri": coordinated.absoluteString,
-					"size": reportedSize
-				]
-				if request.mode == .data {
-					// This legacy API necessarily materializes the file; metadata mode does not.
-					let data = try Data(contentsOf: coordinated)
-					file["data"] = data.base64EncodedString()
-					file["size"] = data.count
+				guard try coordinated.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+					throw ChooserFailure(code: .readFailed, detail: "Select a regular file, not a directory or package.")
 				}
-				else if request.mode == .copy {
-					guard let transaction = request.transaction else { throw ChooserFailure(code: .cacheFailed, detail: "Missing copy transaction.") }
-					let destination = try transaction.create()
-					guard let input = InputStream(url: coordinated), let output = OutputStream(url: destination, append: false) else {
-						throw ChooserFailure(code: .copyFailed, detail: "Could not open file streams.")
-					}
-					let count = try ChooserFiles.copy(input: input, output: output, budget: request.budget, canceled: { request.canceled })
-					file["sourceUri"] = url.absoluteString
-					file["uri"] = try transaction.destination(for: destination).absoluteString
-					file["id"] = destination.lastPathComponent
-					file["size"] = count
-				}
-				result = file
+				return try consume(coordinated)
 			}
-			catch { readError = error }
 		}
 		if let error = coordinationError { throw error }
-		if let error = readError { throw error }
-		guard let file = result else { throw ChooserFailure(code: .readFailed, detail: "File coordination returned no result.") }
+		guard let value = result else { throw ChooserFailure(code: .readFailed, detail: "File coordination returned no result.") }
+		return try value.get()
+	}
+
+	private func copy(_ url: URL, metadata: [String: Any], request: ChooserRequest) throws -> [String: Any] {
+		guard let transaction = request.transaction else { throw ChooserFailure(code: .cacheFailed, detail: "Missing copy transaction.") }
+		let destination = try transaction.create()
+		let count = try copyBytes(from: url, to: destination, budget: request.budget, request: request)
+		var file = metadata
+		file["uri"] = try transaction.destination(for: destination).absoluteString
+		file["id"] = destination.lastPathComponent
+		file["size"] = count
 		return file
 	}
 
-	#if compiler(>=5.9)
-	@MainActor
-	#endif
-	@discardableResult
-	private func complete(_ request: ChooserRequest, message: String, status: CDVCommandStatus) -> Bool {
-		guard active === request, request.complete() else { return false }
-		defer { request.finish() }
-		active = nil
-		picker = nil
-		guard commandDelegate != nil else { return false }
-		send(message, status, request.callback)
-		return true
+	private func copyBytes(from source: URL, to destination: URL, budget: ChooserBudget, request: ChooserRequest) throws -> Int64 {
+		guard let input = InputStream(url: source), let output = OutputStream(url: destination, append: false) else {
+			throw ChooserFailure(code: .copyFailed, detail: "Could not open file streams.")
+		}
+		return try ChooserFiles.copy(input: input, output: output, budget: budget, canceled: { request.canceled })
+	}
+
+	private func readPhotos(_ providers: [NSItemProvider], request: ChooserRequest) throws -> [[String: Any]] {
+		var values: [[String: Any]] = []
+		for provider in providers {
+			try request.checkCanceled()
+			let identifier = try ChooserPhotos.identifier(for: provider, mediaTypes: request.mediaTypes)
+			let metadata = ChooserPhotos.metadata(for: provider, identifier: identifier)
+			if request.mode == .metadata { values.append(metadata); continue }
+			let value = try ChooserPhotos.load(provider: provider, identifier: identifier, request: request) { temporary in
+				return try self.coordinated(url: temporary, request: request) { url in
+					if request.mode == .copy { return try self.copy(url, metadata: metadata, request: request) }
+					// PHPicker's URL expires when this callback returns. Stage only that
+					// provider-required import; all bridge data still uses bounded reads.
+					guard let transaction = request.transaction else { throw ChooserFailure(code: .cacheFailed, detail: "Missing photo import transaction.") }
+					let cache = try Self.cacheDirectory()
+					let staged = try transaction.create()
+					let imported = try transaction.destination(for: staged)
+					let id = staged.lastPathComponent
+					_ = try self.copyBytes(from: url, to: staged, budget: request.importBudget, request: request)
+					try request.checkCanceled()
+					let source = ChooserSource(url: imported, budget: request.budget, cleanup: { try ChooserFiles.release(in: cache, id: id) })
+					_ = try self.resources.register(source, id: id)
+					request.trackSource(id, in: self.resources)
+					var file = metadata
+					file["id"] = id; file["kind"] = "source"
+					return file
+				}
+			}
+			values.append(value)
+		}
+		return values
 	}
 
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private func send(_ message: String, _ status: CDVCommandStatus, _ callback: String) {
-		commandDelegate?.send(CDVPluginResult(status: status, messageAs: message), callbackId: callback)
+	private func deliver(_ request: ChooserRequest, result: Result<Any, Error>) {
+		guard active === request else { request.finishResources(delivered: false); return }
+		guard request.complete() else { return }
+		let finalize: ChooserMainAction = {
+			guard self.active === request else { request.finishResources(delivered: false); return }
+			if request.canceled {
+				self.rollbackCancellation(request)
+				return
+			}
+			self.active = nil; self.picker = nil
+			defer { request.finish() }
+			if let cleanup = request.cleanupError { self.send(cleanup, .error, request.callback); return }
+			var delivered = false
+			switch result {
+			case .success(let object):
+				do {
+					let bytes = try JSONSerialization.data(withJSONObject: object)
+					guard let message = String(data: bytes, encoding: .utf8) else { throw ChooserFailure(code: .readFailed, detail: "Cannot serialize selection.") }
+					delivered = self.commandDelegate != nil
+					self.commandDelegate?.send(CDVPluginResult(status: .ok, messageAs: message), callbackId: request.callback)
+				} catch { self.sendFailure(error, callback: request.callback) }
+			case .failure(let error): self.sendFailure(error, callback: request.callback)
+			}
+			request.finishResources(delivered: delivered)
+		}
+		finishPresentation(request, completion: finalize)
+	}
+
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
+	private func finishPresentation(_ request: ChooserRequest, completion: @escaping ChooserMainAction) {
+		guard active === request else { request.finishResources(delivered: false); return }
+		guard let controller = picker else { completion(); return }
+		// The system document picker may already be dismissing when its delegate
+		// runs. Join that transition instead of completing a second dismissal early.
+		if controller.isBeingPresented || controller.isBeingDismissed {
+			if let transition = controller.transitionCoordinator,
+				transition.animate(alongsideTransition: nil, completion: { _ in self.finishPresentation(request, completion: completion) }) { return }
+			Self.deferMain { self.finishPresentation(request, completion: completion) }
+			return
+		}
+		if controller.presentingViewController != nil {
+			controller.dismiss(animated: true) { self.finishPresentation(request, completion: completion) }
+		} else { completion() }
+	}
+
+	private static func deferMain(_ action: @escaping ChooserMainAction) {
+		ChooserWork.dispatch(on: .main) { ChooserMain.run(action) }
+	}
+
+	private func rollbackCancellation(_ request: ChooserRequest) {
+		request.finishResources(delivered: false) {
+			let reference = ChooserMainReference((self, request))
+			ChooserMain.run {
+				let (plugin, request) = reference.value
+				guard plugin.active === request else { return }
+				plugin.active = nil; plugin.picker = nil
+				request.finish()
+				let canceled: [String: Any] = ["code": "CANCELLED", "reason": request.cancellationReason ?? "signal", "message": "Selection canceled."]
+				if var cleanup = request.cleanupError {
+					cleanup["cause"] = canceled
+					plugin.send(cleanup, .error, request.callback)
+				} else { plugin.send(canceled, .error, request.callback) }
+			}
+		}
+	}
+
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
+	private func send(_ object: [String: Any], _ status: CDVCommandStatus, _ callback: String) {
+		commandDelegate?.send(CDVPluginResult(status: status, messageAs: object), callbackId: callback)
+	}
+
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
+	private func sendFailure(_ error: Error, callback: String, fallback: ChooserErrorCode = .readFailed) {
+		let failure = error as? ChooserFailure
+		var object: [String: Any] = ["code": (failure?.code ?? fallback).rawValue, "message": failure?.detail ?? error.localizedDescription]
+		if failure?.code == .cancelled { object["reason"] = "signal" }
+		send(object, .error, callback)
 	}
 
 	override func onReset() {
@@ -319,34 +469,51 @@ class Chooser: CDVPlugin {
 		ChooserMain.run {
 			let plugin = reference.value
 			plugin.generation &+= 1
-			plugin.active?.cancel()
+			let abandoned = plugin.active
+			let phase = abandoned?.state
+			abandoned?.cancel()
+			// A completing request has no remaining provider I/O. Reset must own
+			// its rollback even if UIKit drops the pending dismissal completion.
+			if phase != .processing { abandoned?.finishResources(delivered: false) }
 			plugin.active = nil
 			plugin.picker?.dismiss(animated: false, completion: nil)
 			plugin.picker = nil
+			plugin.resources.resetSources()
 		}
 	}
 
-	override func dispose() {
-		onReset()
-		super.dispose()
-	}
+	override func dispose() { onReset(); super.dispose() }
 }
 
 #if compiler(>=5.9)
 @MainActor
 #endif
 extension Chooser: UIDocumentPickerDelegate {
-	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-		selected(controller, urls: urls)
-	}
-
-	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL) {
-		selected(controller, urls: [url])
-	}
-
+	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { selected(controller, urls: urls) }
+	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL) { selected(controller, urls: [url]) }
 	func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-		guard let request = (controller as? ChooserDocumentPicker)?.request, request.state == .selecting else { return }
-		complete(request, message: "RESULT_CANCELED", status: .ok)
+		guard let request = (controller as? ChooserDocumentPicker)?.request, active === request, request.state == .selecting else { return }
+		request.signalCancel(reason: "picker")
+		deliver(request, result: .success([:]))
+	}
+}
+
+#if compiler(>=5.9)
+@MainActor
+#endif
+extension Chooser: PHPickerViewControllerDelegate {
+	func picker(_ controller: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+		guard picker === controller, let request = active, request.process() else { return }
+		var assets = Set<String>()
+		var identities = Set<ObjectIdentifier>()
+		var providers: [NSItemProvider] = []
+		for result in results {
+			if let id = result.assetIdentifier, !assets.insert(id).inserted { continue }
+			guard identities.insert(ObjectIdentifier(result.itemProvider)).inserted else { continue }
+			providers.append(result.itemProvider)
+			if !request.multiple { break }
+		}
+		processPhotos(providers, request: request)
 	}
 }
 
@@ -354,10 +521,9 @@ extension Chooser: UIDocumentPickerDelegate {
 @MainActor
 #endif
 extension Chooser: UIAdaptivePresentationControllerDelegate {
-	@available(iOS 13.0, *)
 	func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-		if let controller = presentationController.presentedViewController as? UIDocumentPickerViewController {
-			documentPickerWasCancelled(controller)
-		}
+		guard presentationController.presentedViewController === picker, let request = active, request.state == .selecting else { return }
+		request.signalCancel(reason: "picker")
+		deliver(request, result: .success([:]))
 	}
 }

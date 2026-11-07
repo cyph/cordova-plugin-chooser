@@ -21,6 +21,7 @@ outputs = [
   "tests/android15/settings-gradle.lockfile",
   "tests/android15/gradle/verification-metadata.xml",
   ".github/workflows/verify.yml",
+  ".github/workflows/ios-provider-investigation.yml",
   "tests/capacitor/locks/app.lockfile",
   "tests/capacitor/locks/runtime.lockfile",
   "tests/capacitor/buildscript-gradle.lockfile",
@@ -99,6 +100,11 @@ mode = "compatible"
 catalogs = []
 maven_repositories = ["central", "google", "plugins"]
 pins = [
+  # Minimum Photo Picker contract API; Cordova may resolve a newer Activity artifact.
+  { provider = "maven", name = "androidx.activity:activity", file = "tests/android/gradle/libs.versions.toml", pointer = [
+    "versions",
+    "activity",
+  ], bound = "===1.7.0" },
   { provider = "maven", name = "org.apache.cordova:framework", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
     "cordova14",

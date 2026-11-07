@@ -115,16 +115,24 @@ final class ChooserTransaction {
 	}
 
 	void finish(boolean delivered) {
-		if (settled) return;
-		settled = true;
-		if (!delivered || !committed) {
-			try { save(false); }
-			catch (IOException error) { diagnostic(); }
-			try { rollback(root, staging, entries, operations); }
-			catch (IOException error) { diagnostic(); return; }
-		}
-		try { removeStaging(staging, operations); }
+		try { finishChecked(delivered); }
 		catch (IOException error) { diagnostic(); }
+	}
+
+	synchronized void finishChecked(boolean delivered) throws IOException {
+		if (settled) return;
+		if (!delivered || !committed) {
+			save(false);
+			rollback(root, staging, entries, operations);
+		}
+		removeStaging(staging, operations);
+		settled = true;
+	}
+
+	List<String> ids() {
+		List<String> ids = new ArrayList<>();
+		for (Entry entry : entries) ids.add(entry.id);
+		return ids;
 	}
 
 	private void save(boolean complete) throws IOException {

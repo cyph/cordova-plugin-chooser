@@ -69,7 +69,7 @@ enum ChooserFiles {
 	}
 
 	static func entryExists(_ file: URL) throws -> Bool {
-		var information = stat()
+		var information = Darwin.stat()
 		if file.path.withCString({ Darwin.lstat($0, &information) }) == 0 { return true }
 		if errno == ENOENT { return false }
 		throw ChooserFailure(code: .cacheFailed, detail: "Cannot inspect cache directory.")
@@ -89,6 +89,53 @@ enum ChooserFiles {
 			}
 			try FileManager.default.removeItem(at: file)
 		}
+	}
+
+	private static func descriptor(in cache: URL, id: String) throws -> (Int32, URL, Int64) {
+		guard isID(id) else { throw ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.") }
+		let root = try directory(in: cache)
+		let parent = root.path.withCString { Darwin.open($0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW) }
+		guard parent >= 0 else { throw ChooserFailure(code: .cacheFailed, detail: "Cannot open private cache directory.") }
+		defer { Darwin.close(parent) }
+		let fd = id.withCString { Darwin.openat(parent, $0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK) }
+		guard fd >= 0 else { throw ChooserFailure(code: .fileUnavailable, detail: "Managed file is unavailable.") }
+		var information = Darwin.stat()
+		guard Darwin.fstat(fd, &information) == 0, (information.st_mode & S_IFMT) == S_IFREG,
+			information.st_size >= 0, information.st_size <= maxSafeInteger else {
+			Darwin.close(fd)
+			throw ChooserFailure(code: .fileUnavailable, detail: "Managed entry is not a regular file.")
+		}
+		return (fd, root.appendingPathComponent(id), information.st_size)
+	}
+
+	static func stat(in cache: URL, id: String) throws -> [String: Any] {
+		let (fd, file, size) = try descriptor(in: cache, id: id)
+		defer { Darwin.close(fd) }
+		return ["id": id, "uri": file.absoluteString, "size": size]
+	}
+
+	static func read(in cache: URL, id: String, offset: Int64, length: Int) throws -> [String: Any] {
+		guard offset >= 0, length >= 0, length <= 262144, offset <= maxSafeInteger - Int64(length) else {
+			throw ChooserFailure(code: .invalidArgument, detail: "Invalid bounded read range.")
+		}
+		let (fd, _, size) = try descriptor(in: cache, id: id)
+		defer { Darwin.close(fd) }
+		if length == 0 { return ["data": "", "eof": offset >= size] }
+		var buffer = [UInt8](repeating: 0, count: length)
+		var count = 0
+		try buffer.withUnsafeMutableBytes { pointer in
+			guard let base = pointer.baseAddress else { return }
+			while count < length {
+				let value = Darwin.pread(fd, base.advanced(by: count), length - count, off_t(offset + Int64(count)))
+				if value < 0 {
+					if errno == EINTR { continue }
+					throw ChooserFailure(code: .readFailed, detail: "Cannot read managed file.")
+				}
+				if value == 0 { break }
+				count += value
+			}
+		}
+		return ["data": Data(buffer.prefix(count)).base64EncodedString(), "eof": count < length || offset + Int64(count) >= size]
 	}
 
 	static func isID(_ id: String) -> Bool {

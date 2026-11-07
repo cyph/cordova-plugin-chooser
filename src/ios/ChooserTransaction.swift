@@ -95,17 +95,22 @@ final class ChooserTransaction {
 		committed = true
 	}
 
+	var fileIDs: [String] { return entries.map { $0.id } }
+
 	func finish(delivered: Bool) {
+		do { try finishChecked(delivered: delivered) }
+		catch { Self.diagnostic() }
+	}
+
+	func finishChecked(delivered: Bool) throws {
 		guard !settled else { return }
-		settled = true
 		if !delivered || !committed {
 			do { try save(committed: false) }
 			catch { Self.diagnostic() }
-			do { try Self.rollback(root: root, folder: staging, entries: entries, operations: operations) }
-			catch { Self.diagnostic(); return }
+			try Self.rollback(root: root, folder: staging, entries: entries, operations: operations)
 		}
-		do { try Self.removeStaging(staging, operations: operations) }
-		catch { Self.diagnostic() }
+		try Self.removeStaging(staging, operations: operations)
+		settled = true
 	}
 
 	private func save(committed: Bool) throws {

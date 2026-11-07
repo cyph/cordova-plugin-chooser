@@ -2,8 +2,8 @@
 import Foundation
 
 enum FixtureError: Error { case failed(String) }
-func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
-	if !condition() { throw FixtureError.failed(message) }
+func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
+	if !(try condition()) { throw FixtureError.failed(message) }
 }
 func rejects(_ message: String, _ action: () throws -> Void) throws {
 	do { try action() }
@@ -364,50 +364,291 @@ do {
 	try require(!exists(destination) && !exists(transaction.staging), "request did not roll back undelivered resources")
 }
 
-// A blocked abandoned read cannot serialize a new request, but still owns capacity.
+// Queued picker work must not turn an otherwise idle picker into BUSY.
 do {
-	guard let oldWork = ChooserWork.reserve() else { throw FixtureError.failed("initial worker unavailable") }
-	let old = ChooserRequest(callback: "old", accept: "*/*", mode: .copy, multiple: false, limit: 0, worker: oldWork)
 	let started = DispatchSemaphore(value: 0)
 	let unblock = DispatchSemaphore(value: 0)
-	oldWork.run { started.signal(); unblock.wait() }
-	try require(started.wait(timeout: .now() + 5) == .success, "old read never started")
-	old.cancel()
-	guard let nextWork = ChooserWork.reserve() else { unblock.signal(); throw FixtureError.failed("old request blocked next worker") }
-	let next = ChooserRequest(callback: "next", accept: "*/*", mode: .copy, multiple: false, limit: 0, worker: nextWork)
-	let nextStarted = DispatchSemaphore(value: 0)
-	let nextUnblock = DispatchSemaphore(value: 0)
-	let nextDone = DispatchSemaphore(value: 0)
-	var result: Int64 = -1
-	nextWork.run {
-		nextStarted.signal()
-		nextUnblock.wait()
-		result = (try? ChooserFiles.copy(input: InputStream(data: Data([1, 2, 3])), output: OutputStream.toMemory(), budget: next.budget, canceled: { next.canceled })) ?? -1
-		nextDone.signal()
+	let completed = DispatchSemaphore(value: 0)
+	var workers: [ChooserWork] = []
+	for _ in 0..<5 {
+		guard let worker = ChooserWork.reserve() else { throw FixtureError.failed("queued worker unavailable") }
+		workers.append(worker)
+		worker.run { started.signal(); unblock.wait(); completed.signal() }
 	}
-	defer { unblock.signal(); nextUnblock.signal() }
-	try require(nextStarted.wait(timeout: .now() + 5) == .success, "new worker serialized behind abandoned read")
-	try require(ChooserWork.reserve() == nil, "blocked reads did not retain capacity")
-	nextUnblock.signal()
-	try require(nextDone.wait(timeout: .now() + 5) == .success && result == 3, "new read failed independently")
-	func availableWorker() throws -> ChooserWork {
-		let deadline = Date().addingTimeInterval(5)
-		while Date() < deadline {
-			if let value = ChooserWork.reserve() { return value }
-			Thread.sleep(forTimeInterval: 0.001)
-		}
-		throw FixtureError.failed("completed worker leaked capacity")
-	}
-	let idle = try availableWorker()
-	idle.releaseIfIdle(); idle.releaseIfIdle()
-	let probe = try availableWorker()
-	try require(ChooserWork.reserve() == nil, "duplicate release increased worker capacity")
-	probe.releaseIfIdle()
+	defer { for _ in 0..<5 { unblock.signal() } }
+	for _ in 0..<4 { try require(started.wait(timeout: .now() + 5) == .success, "worker did not start") }
+	try require(started.wait(timeout: .now() + 0.05) == .timedOut, "more than four request workers ran")
 	unblock.signal()
-	let one = try availableWorker()
-	let two = try availableWorker()
-	try require(ChooserWork.reserve() == nil, "capacity changed after old read returned")
-	one.releaseIfIdle(); two.releaseIfIdle()
+	try require(started.wait(timeout: .now() + 5) == .success, "queued worker did not start after capacity returned")
+	for _ in 0..<4 { unblock.signal() }
+	for _ in 0..<5 { try require(completed.wait(timeout: .now() + 5) == .success, "worker never completed") }
+	for worker in workers { worker.releaseIfIdle(); worker.releaseIfIdle() }
+}
+
+func decoded(_ value: [String: Any]) throws -> Data {
+	guard let text = value["data"] as? String, let bytes = Data(base64Encoded: text) else { throw FixtureError.failed("invalid chunk base64") }
+	try require(bytes.base64EncodedString() == text, "noncanonical chunk base64")
+	return bytes
+}
+
+// Positional cache reads are independent, bounded, and work after registry recreation.
+do {
+	let cache = try newCache()
+	let file = try ChooserFiles.create(in: cache)
+	let id = file.lastPathComponent
+	let bytes = Data((0..<300003).map { UInt8($0 % 251) })
+	try bytes.write(to: file)
+	let store = ChooserResources(cache: { cache })
+	let stat = try store.stat(id: id)
+	try require(stat["size"] as? Int64 == Int64(bytes.count), "stat trusted supplied metadata")
+	for (offset, length) in [(200001, 17), (0, 262144), (300001, 7), (300003, 1), (400000, 9), (3, 0)] {
+		let result = try store.read(id: id, offset: Int64(offset), length: length)
+		let data = try decoded(result)
+		let expected = offset < bytes.count ? Data(bytes.dropFirst(offset).prefix(length)) : Data()
+		try require(data == expected, "positional read changed bytes")
+		try require(result["eof"] as? Bool == (offset + data.count >= bytes.count), "incorrect positional EOF")
+	}
+	for (offset, length) in [(Int64(-1), 1), (Int64(0), 262145), (ChooserFiles.maxSafeInteger, 1)] {
+		try rejects("invalid bounded range accepted") { _ = try store.read(id: id, offset: offset, length: length) }
+	}
+	try rejects("managed read canceled by another alias") { try store.cancelRead(id: id) }
+	let restored = ChooserResources(cache: { cache })
+	try require(try decoded(restored.read(id: id, offset: 0, length: 3)) == Data(bytes.prefix(3)), "restart lost cache access")
+	try restored.release(id: id)
+	try restored.release(id: id)
+	try rejects("released cache file read") { _ = try store.read(id: id, offset: 0, length: 1) }
+	try rejects("released cache file restored") { _ = try restored.stat(id: id) }
+	let symbolic = try ChooserFiles.create(in: cache)
+	try manager.removeItem(at: symbolic)
+	try manager.createSymbolicLink(at: symbolic, withDestinationURL: source)
+	try rejects("stat followed a symbolic link") { _ = try store.stat(id: symbolic.lastPathComponent) }
+	try rejects("read followed a symbolic link") { _ = try store.read(id: symbolic.lastPathComponent, offset: 0, length: 1) }
+}
+
+final class StreamProbe {
+	private let lock = NSLock()
+	private var opens = 0
+	private var closures = 0
+	func opened() { lock.lock(); opens += 1; lock.unlock() }
+	func closed() { lock.lock(); closures += 1; lock.unlock() }
+	var counts: (Int, Int) { lock.lock(); defer { lock.unlock() }; return (opens, closures) }
+}
+final class ProbedInput: InputStream {
+	private let probe: StreamProbe
+	init(data: Data, probe: StreamProbe) { self.probe = probe; super.init(data: data) }
+	override func open() { probe.opened(); super.open() }
+	override func close() { probe.closed(); super.close() }
+}
+
+// Sources are lazy, sequential, share actual-byte budgets, and cannot be restored.
+do {
+	let cache = try newCache()
+	let url = cache.appendingPathComponent("provider.bin")
+	try Data([1, 2, 3]).write(to: url)
+	let probe = StreamProbe()
+	let budget = ChooserBudget(fileLimit: 3, totalLimit: 4)
+	let store = ChooserResources(cache: { cache })
+	let first = try store.register(ChooserSource(url: url, budget: budget, makeStream: { _ in ProbedInput(data: Data([1, 2, 3]), probe: probe) }))
+	let second = try store.register(ChooserSource(url: url, budget: budget))
+	try require(probe.counts.0 == 0, "source selection loaded contents")
+	try rejects("source restored as cache") { _ = try store.stat(id: first) }
+	_ = try store.read(id: first, offset: 0, length: 0)
+	try require(probe.counts.0 == 0, "zero-length read opened provider stream")
+	try require(try decoded(store.read(id: first, offset: 0, length: 2)) == Data([1, 2]), "source chunk changed bytes")
+	try rejects("source sought backwards") { _ = try store.read(id: first, offset: 0, length: 1) }
+	let tail = try store.read(id: first, offset: 2, length: 2)
+	try require(try decoded(tail) == Data([3]) && tail["eof"] as? Bool == true, "source short EOF incorrect")
+	try require(probe.counts.0 == 1, "source reopened for each chunk")
+	_ = try store.read(id: second, offset: 0, length: 1)
+	do {
+		_ = try store.read(id: second, offset: 1, length: 1)
+		throw FixtureError.failed("batch source budget not enforced")
+	} catch let error as ChooserFailure { try require(error.code == .totalSizeExceeded, "wrong source aggregate error") }
+	try store.release(id: first)
+	try store.release(id: second)
+	try require(probe.counts.1 == 1 && exists(url), "release leaked stream or deleted provider original")
+}
+
+// A canceled source never opens lazily; release remains possible and idempotent.
+do {
+	let cache = try newCache()
+	let url = cache.appendingPathComponent("provider.bin")
+	try Data([1]).write(to: url)
+	let probe = StreamProbe()
+	let store = ChooserResources(cache: { cache })
+	let id = try store.register(ChooserSource(url: url, budget: ChooserBudget(fileLimit: 0, totalLimit: 0), makeStream: { _ in ProbedInput(data: Data([1]), probe: probe) }))
+	try store.cancelRead(id: UUID().uuidString.lowercased())
+	try store.cancelRead(id: id)
+	try rejects("canceled source opened") { _ = try store.read(id: id, offset: 0, length: 1) }
+	try require(probe.counts.0 == 0, "cancelRead loaded content")
+	try store.release(id: id)
+	try store.cancelRead(id: id)
+	try store.release(id: id)
+	try require(exists(url), "cancelRead removed provider original")
+}
+
+final class BlockingInput: InputStream {
+	let entered = DispatchSemaphore(value: 0)
+	let resume = DispatchSemaphore(value: 0)
+	let probe: StreamProbe
+	init(probe: StreamProbe) { self.probe = probe; super.init(data: Data([42])) }
+	override func open() { probe.opened(); super.open() }
+	override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+		entered.signal(); resume.wait()
+		return super.read(buffer, maxLength: len)
+	}
+	override func close() { probe.closed(); super.close() }
+}
+
+// Release waits for an actual blocked read, including after cancellation/reset.
+do {
+	let cache = try newCache()
+	let imported = try ChooserFiles.create(in: cache)
+	try Data([42]).write(to: imported)
+	let probe = StreamProbe()
+	let input = BlockingInput(probe: probe)
+	let store = ChooserResources(cache: { cache })
+	let id = try store.register(ChooserSource(url: imported, budget: ChooserBudget(fileLimit: 0, totalLimit: 0),
+		cleanup: { try ChooserFiles.release(in: cache, id: imported.lastPathComponent) }, makeStream: { _ in input }))
+	let readDone = DispatchSemaphore(value: 0)
+	let released = DispatchSemaphore(value: 0)
+	ChooserWork.dispatch(on: .global()) { _ = try? store.read(id: id, offset: 0, length: 1); readDone.signal() }
+	defer { input.resume.signal() }
+	try require(input.entered.wait(timeout: .now() + 5) == .success, "blocking source did not start")
+	try store.cancelRead(id: id)
+	try store.prepareRelease(id: id)
+	ChooserWork.dispatch(on: .global()) { try? store.release(id: id); released.signal() }
+	try require(released.wait(timeout: .now() + 0.05) == .timedOut, "release completed during actual I/O")
+	try require(exists(imported) && probe.counts.1 == 0, "release deleted or closed an in-flight stream")
+	input.resume.signal()
+	try require(readDone.wait(timeout: .now() + 5) == .success, "read did not finish")
+	try require(released.wait(timeout: .now() + 5) == .success, "release did not finish after read")
+	try require(!exists(imported) && probe.counts.1 == 1, "release failed to clean imported source")
+}
+
+// Reset leaves blocked cleanup on its entry, not on shared housekeeping.
+do {
+	let cache = try newCache()
+	let imported = try ChooserFiles.create(in: cache)
+	let other = try ChooserFiles.create(in: cache)
+	try Data([42]).write(to: imported)
+	let probe = StreamProbe()
+	let input = BlockingInput(probe: probe)
+	let store = ChooserResources(cache: { cache })
+	let id = try store.register(ChooserSource(url: imported, budget: ChooserBudget(fileLimit: 0, totalLimit: 0),
+		cleanup: { try ChooserFiles.release(in: cache, id: imported.lastPathComponent) }, makeStream: { _ in input }))
+	let readDone = DispatchSemaphore(value: 0)
+	let sourceReleased = DispatchSemaphore(value: 0)
+	let otherReleased = DispatchSemaphore(value: 0)
+	let pickerCanceled = DispatchSemaphore(value: 0)
+	let housekeepingAvailable = DispatchSemaphore(value: 0)
+	var releaseResult: Result<Void, Error>?
+	ChooserWork.dispatch(on: .global()) { _ = try? store.read(id: id, offset: 0, length: 1); readDone.signal() }
+	defer { input.resume.signal() }
+	try require(input.entered.wait(timeout: .now() + 5) == .success, "reset fixture read did not start")
+	store.resetSources()
+	store.release(id: id) { _ in sourceReleased.signal() }
+	store.release(id: other.lastPathComponent) { result in releaseResult = result; otherReleased.signal() }
+	let request = ChooserRequest(callback: "unrelated-picker", accept: "*/*", mode: .copy, multiple: false, limit: 0)
+	request.signalCancel(reason: "picker")
+	try require(request.complete(), "unrelated cancellation lost completion ownership")
+	request.finishResources(delivered: false) { request.finish(); pickerCanceled.signal() }
+	ChooserWork.dispatch(on: ChooserTransaction.housekeeping) { housekeepingAvailable.signal() }
+	try require(otherReleased.wait(timeout: .now() + 5) == .success, "blocked source stalled unrelated release")
+	try releaseResult!.get()
+	try require(pickerCanceled.wait(timeout: .now() + 5) == .success && request.state == .finished, "blocked source stalled picker cancellation")
+	try require(housekeepingAvailable.wait(timeout: .now() + 5) == .success, "blocked source occupied housekeeping")
+	try require(!exists(other), "unrelated managed file was not released")
+	try require(sourceReleased.wait(timeout: .now() + 0.05) == .timedOut, "blocked source released before its lease ended")
+	try require(exists(imported) && probe.counts.1 == 0, "reset deleted or closed an in-flight source")
+	input.resume.signal()
+	try require(readDone.wait(timeout: .now() + 5) == .success, "reset source read never returned")
+	try require(sourceReleased.wait(timeout: .now() + 5) == .success, "last read lease did not schedule cleanup")
+	try require(!exists(imported) && probe.counts.1 == 1, "reset source was not cleaned exactly once")
+}
+
+// Failed source cleanup is retryable; reset invalidates sources without removing managed copies.
+do {
+	let cache = try newCache()
+	let url = cache.appendingPathComponent("provider.bin")
+	try Data([1]).write(to: url)
+	let store = ChooserResources(cache: { cache })
+	var attempts = 0
+	let id = try store.register(ChooserSource(url: url, budget: ChooserBudget(fileLimit: 0, totalLimit: 0), cleanup: {
+		attempts += 1
+		if attempts == 1 { throw FixtureError.failed("injected cleanup failure") }
+	}))
+	try rejects("cleanup failure ignored") { try store.release(id: id) }
+	try rejects("failed release reopened resource") { _ = try store.read(id: id, offset: 0, length: 1) }
+	try store.release(id: id)
+	try require(attempts == 2, "cleanup not retried")
+	let owned = try ChooserFiles.create(in: cache)
+	_ = try store.stat(id: owned.lastPathComponent)
+	let transient = try store.register(ChooserSource(url: url, budget: ChooserBudget(fileLimit: 0, totalLimit: 0)))
+	store.resetSources()
+	try store.release(id: transient)
+	try rejects("reset source remains readable") { _ = try store.read(id: transient, offset: 0, length: 1) }
+	try require(exists(url) && exists(owned), "reset removed originals or managed copies")
+}
+
+// Signal cancellation preserves completion ownership; reset revokes it.
+do {
+	let request = ChooserRequest(callback: "signal", accept: "*/*", mode: .data, multiple: false, limit: 0, id: "identity")
+	let progress = Progress(totalUnitCount: 1)
+	request.loading(progress)
+	request.signalCancel(reason: "signal")
+	request.signalCancel(reason: "picker")
+	try require(progress.isCancelled && request.cancellationReason == "signal", "signal did not cancel provider progress")
+	try require(!request.process() && request.complete(), "signal lost terminal callback ownership")
+	try require(!request.complete(), "cancellation completed twice")
+	request.finish()
+	let reset = ChooserRequest(callback: "reset", accept: "*/*", mode: .data, multiple: false, limit: 0)
+	reset.cancel()
+	let late = Progress(totalUnitCount: 1)
+	reset.loading(late)
+	try require(late.isCancelled && !reset.complete(), "late provider progress survived reset")
+}
+
+// Cancellation reports cleanup failures instead of quietly discarding them.
+do {
+	let cache = try newCache()
+	let transaction = try ChooserTransaction(cache: cache, operations: .init(move: { try manager.moveItem(at: $0, to: $1) }, remove: { _ in
+		throw FixtureError.failed("injected rollback deletion failure")
+	}))
+	_ = try staged(transaction, 1)
+	let request = ChooserRequest(callback: "cleanup", accept: "*/*", mode: .copy, multiple: false, limit: 0)
+	request.attach(transaction)
+	request.signalCancel(reason: "signal")
+	request.finishResources(delivered: false, wait: true)
+	try require(request.cleanupError?["code"] as? String == "CLEANUP_FAILED", "cancellation swallowed cleanup failure")
+	let outcome = request.cleanupError?["outcome"] as? [String: Any]
+	let reason = outcome?["reason"] as? [String: Any]
+	try require(outcome?["status"] as? String == "rejected" && reason?["code"] as? String == "CANCELLED" && reason?["reason"] as? String == "signal", "cleanup error lost cancellation outcome")
+	try require((request.cleanupError?["failures"] as? [[String: Any]])?.count == 1, "cleanup failure lost resource identity")
+	try ChooserTransaction.recover(in: cache)
+	try require(!exists(transaction.staging), "failed cancellation cleanup was not recoverable")
+}
+
+// A failed batch retains its original failure when rollback also fails.
+do {
+	let cache = try newCache()
+	let transaction = try ChooserTransaction(cache: cache, operations: .init(move: { try manager.moveItem(at: $0, to: $1) }, remove: { _ in
+		throw FixtureError.failed("injected rollback failure")
+	}))
+	_ = try staged(transaction, 1)
+	let request = ChooserRequest(callback: "failed-batch", accept: "*/*", mode: .copy, multiple: true, limit: 2)
+	request.attach(transaction)
+	request.recordFailure(ChooserFailure(code: .fileTooLarge, detail: "Original per-file limit failure."))
+	request.finishResources(delivered: false, wait: true)
+	let cleanup = request.cleanupError
+	let outcome = cleanup?["outcome"] as? [String: Any]
+	let reason = outcome?["reason"] as? [String: Any]
+	try require(cleanup?["code"] as? String == "CLEANUP_FAILED", "rollback failure was not reported")
+	try require(outcome?["status"] as? String == "rejected", "cleanup error omitted rejected outcome")
+	try require(reason?["code"] as? String == "FILE_TOO_LARGE", "cleanup error replaced the original failure")
+	try require(reason?["message"] as? String == "Original per-file limit failure.", "cleanup error lost original detail")
+	try require((cleanup?["failures"] as? [[String: Any]])?.count == 1, "cleanup error lost failed resource identity")
+	try ChooserTransaction.recover(in: cache)
 }
 
 print("Chooser Foundation fixtures completed")

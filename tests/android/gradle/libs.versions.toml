@@ -1,4 +1,5 @@
 [versions]
+activity = "1.7.0"
 agp = "8.10.1"
 cordova14 = "14.0.0"
 cordova15 = "15.0.0"
@@ -14,6 +15,7 @@ robolectric-api33-sdk = "13-robolectric-9030017-i7"
 mockito = "5.18.0"
 
 [libraries]
+activity = { module = "androidx.activity:activity", version.ref = "activity" }
 cordova14 = { module = "org.apache.cordova:framework", version.ref = "cordova14" }
 cordova15 = { module = "org.apache.cordova:framework", version.ref = "cordova15" }
 junit = { module = "junit:junit", version.ref = "junit" }

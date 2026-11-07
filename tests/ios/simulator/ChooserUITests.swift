@@ -8,9 +8,9 @@ final class ChooserUITests: PickerUI {
     func testMP4() { select("Video", "fixture-mp4.mp4") }
     func testMOV() { select("Video", "fixture-mov.mov") }
     func testCancelPromiseReopen() { reopen("promise", swipe: false) }
-    func testCancelCallbackReopen() { reopen("callback", swipe: false) }
+    func testCancelScopedReopen() { reopen("scoped", swipe: false) }
     func testSwipePromiseReopen() { reopen("promise", swipe: true) }
-    func testSwipeCallbackReopen() { reopen("callback", swipe: true) }
+    func testSwipeScopedReopen() { reopen("scoped", swipe: true) }
     func testMetadataOriginalPDF() { select("PDF", "fixture-pdf.pdf") }
     func testMetadataExportedPDF() { select("PDF", "exported-fixture-pdf.pdf") }
     func testUriOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_METHOD": "uri"], resultPrefix: "copied") }

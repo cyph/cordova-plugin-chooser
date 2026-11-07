@@ -1,201 +1,202 @@
-function errorMessage(code, detail) { return code + ': ' + detail; }
-
 var active = null;
 var owned = Object.create(null);
 var idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+var chunkSize = 262144;
 
+function failure(code, message) { return {code: code, message: message}; }
+function validateId(id) {
+	if (typeof id !== 'string' || id.length !== 36 || !idPattern.test(id)) {
+		throw failure('INVALID_ARGUMENT', 'Expected a managed file identifier.');
+	}
+}
 function newId() {
 	for (var attempt = 0; attempt < 10; attempt++) {
 		var bytes = new Uint8Array(16);
 		window.crypto.getRandomValues(bytes);
 		bytes[6] = (bytes[6] & 15) | 64;
 		bytes[8] = (bytes[8] & 63) | 128;
-		var hex = Array.prototype.map.call(bytes, function (byte) {
-			return ('0' + byte.toString(16)).slice(-2);
-		}).join('');
+		var hex = Array.from(bytes, function (byte) { return ('0' + byte.toString(16)).slice(-2); }).join('');
 		var id = hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
-		if (!Object.prototype.hasOwnProperty.call(owned, id)) {
-			return id;
-		}
+		if (!owned[id]) return id;
 	}
-	throw new Error(errorMessage('CACHE_FAILED', 'Could not allocate a managed file id.'));
+	throw failure('CACHE_FAILED', 'Could not allocate a managed file identifier.');
 }
-
-function revoke(id) {
-	if (Object.prototype.hasOwnProperty.call(owned, id)) {
-		URL.revokeObjectURL(owned[id]);
+function metadata(file) {
+	if (!Number.isSafeInteger(file.size) || file.size < 0) throw failure('READ_FAILED', 'Invalid file size.');
+	return {
+		name: typeof file.name === 'string' && file.name ? file.name : 'file',
+		mediaType: /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(file.type) ? file.type : 'application/octet-stream',
+		size: file.size
+	};
+}
+function close(id) {
+	validateId(id);
+	var record = owned[id];
+	if (!record) return Promise.resolve();
+	if (record.release) return record.release;
+	record.closing = true;
+	record.release = record.tail.catch(function () {}).then(function () {
+		if (record.result.uri) URL.revokeObjectURL(record.result.uri);
 		delete owned[id];
-	}
+	}).catch(function (error) {
+		record.release = null;
+		throw failure('RELEASE_FAILED', error.message || 'Could not release the browser file.');
+	});
+	return record.release;
 }
-
-function select(success, failure, options) {
-	if (active) {
-		failure(errorMessage('BUSY', 'A file picker is already active.'));
-		return;
-	}
-	if (!options || typeof options.accept !== 'string' ||
-		['data', 'metadata', 'copy'].indexOf(options.mode) < 0 ||
-		typeof options.multiple !== 'boolean' ||
-		!Number.isSafeInteger(options.maxFileSize) || options.maxFileSize < 0 ||
-		['maxFiles', 'maxTotalSize'].some(function (name) {
-			return options[name] !== undefined && (!Number.isSafeInteger(options[name]) || options[name] < 0);
-		})) {
-		failure(errorMessage('INVALID_ARGUMENT', 'Invalid picker options.'));
-		return;
-	}
-
+function optionsValid(options) {
+	return options && typeof options.requestId === 'string' && options.requestId.length > 0 &&
+		['documents', 'photos'].indexOf(options.source) >= 0 && typeof options.accept === 'string' &&
+		['metadata', 'copy', 'data'].indexOf(options.mode) >= 0 && typeof options.multiple === 'boolean' &&
+		typeof options.localOnly === 'boolean' && ['maxFileSize', 'maxFiles', 'maxTotalSize'].every(function (key) {
+			return Number.isSafeInteger(options[key]) && options[key] >= 0;
+		}) && (options.source !== 'photos' || (Array.isArray(options.mediaTypes) && options.mediaTypes.length > 0 &&
+			options.mediaTypes.every(function (type) { return type === 'image' || type === 'video'; })));
+}
+function select(success, reject, options) {
+	if (!optionsValid(options)) { reject(failure('INVALID_ARGUMENT', 'Invalid picker options.')); return; }
+	if (active) { reject(failure('BUSY', 'A file picker is already active.')); return; }
 	var input = document.createElement('input');
-	var reader;
 	var finished = false;
 	var selected = false;
 	var created = [];
 	input.type = 'file';
-	input.accept = options.accept === '*/*' ? '' : options.accept;
+	input.accept = options.source === 'photos' ? options.mediaTypes.map(function (type) { return type + '/*'; }).join(',') :
+		options.accept === '*/*' ? '' : options.accept;
 	input.multiple = options.multiple;
 	input.style.display = 'none';
-
 	function finish(error, result) {
-		if (finished) {
-			return;
-		}
+		if (finished) return;
 		finished = true;
-		active = null;
+		if (active && active.input === input) active = null;
 		input.removeEventListener('change', onChange);
 		input.removeEventListener('cancel', onCancel);
 		input.remove();
-		if (error || result === 'RESULT_CANCELED') {
-			created.forEach(revoke);
-		}
 		if (error) {
-			failure(error);
+			Promise.allSettled(created.map(close)).then(function (releases) {
+				var failures = releases.flatMap(function (release, index) {
+					return release.status === 'rejected' ? [{id: created[index], error: release.reason}] : [];
+				});
+				if (failures.length) reject({code: 'CLEANUP_FAILED', message: 'Selection cleanup failed.',
+					outcome: {status: 'rejected', reason: error}, failures: failures});
+				else reject(error);
+			});
 		}
-		else {
-			success(result);
-		}
+		else success(result);
 	}
-
-	function onCancel() {
-		if (!selected) {
-			finish(null, 'RESULT_CANCELED');
-		}
-	}
-
-	function readData(file) {
-		return new Promise(function (resolve, reject) {
-			reader = new FileReader();
-			reader.onerror = function () { reject(new Error(errorMessage('READ_FAILED', 'Could not read the selected file.'))); };
-			reader.onabort = function () { reject(new Error(errorMessage('READ_INTERRUPTED', 'File reading was aborted.'))); };
-			reader.onload = function () {
-				var value = reader.result;
-				if (typeof value !== 'string' || value.indexOf(',') < 0) {
-					reject(new Error(errorMessage('READ_FAILED', 'Invalid FileReader result.')));
-					return;
-				}
-				resolve(value.slice(value.indexOf(',') + 1));
-			};
-			reader.readAsDataURL(file);
-		});
-	}
-
-	async function onChange() {
-		if (finished || selected) {
-			return;
-		}
+	function cancel(reason) { finish({code: 'CANCELLED', reason: reason, message: 'File selection was cancelled.'}); }
+	function onCancel() { if (!selected) cancel('picker'); }
+	function onChange() {
+		if (finished || selected) return;
 		selected = true;
 		try {
-			var files = Array.prototype.slice.call(input.files || []);
-			if (!options.multiple) {
-				files = files.slice(0, 1);
-			}
-			if (files.length === 0) {
-				finish(null, 'RESULT_CANCELED');
-				return;
-			}
-			if (options.mode === 'copy' && options.maxFiles > 0 && files.length > options.maxFiles) {
-				throw new Error(errorMessage('TOO_MANY_FILES', 'Selection exceeds the file count limit.'));
-			}
+			var files = Array.from(input.files || []);
+			if (!options.multiple) files = files.slice(0, 1);
+			if (!files.length) { cancel('picker'); return; }
+			if (options.maxFiles && files.length > options.maxFiles) throw failure('TOO_MANY_FILES', 'Selection exceeds the file count limit.');
 			var total = 0;
-			var results = [];
-			for (var i = 0; i < files.length; i++) {
-				if (finished) {
-					return;
+			var budget = {bytes: 0, limit: options.maxTotalSize};
+			var results = files.map(function (file) {
+				var result = metadata(file);
+				if (options.mode === 'metadata') return result;
+				if (options.maxFileSize && file.size > options.maxFileSize) throw failure('FILE_TOO_LARGE', 'File exceeds the byte limit.');
+				if (file.size > Number.MAX_SAFE_INTEGER - total || (options.maxTotalSize && file.size > options.maxTotalSize - total)) {
+					throw failure('TOTAL_SIZE_EXCEEDED', 'Selection exceeds the total byte limit.');
 				}
-				var file = files[i];
-				if (options.mode === 'copy' && options.maxFileSize > 0 && file.size > options.maxFileSize) {
-					throw new Error(errorMessage('FILE_TOO_LARGE', 'Selected file exceeds the byte limit.'));
-				}
-				if (options.mode === 'copy' && options.maxTotalSize > 0) {
-					if (file.size > options.maxTotalSize - total) {
-						throw new Error(errorMessage('TOTAL_SIZE_EXCEEDED', 'Selection exceeds the total byte limit.'));
-					}
-					total += file.size;
-				}
+				total += file.size;
 				var id = newId();
-				var uri = URL.createObjectURL(file);
-				owned[id] = uri;
+				result.id = id;
+				if (options.mode === 'copy') result.uri = URL.createObjectURL(file);
+				else result.kind = 'source';
+				owned[id] = {file: file, result: result, source: options.mode === 'data', offset: 0,
+					limit: options.maxFileSize, budget: budget, tail: Promise.resolve(), closing: false, release: null};
 				created.push(id);
-				var type = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(file.type) ? file.type : 'application/octet-stream';
-				var result = {id: id, name: file.name, mediaType: type, uri: uri, size: file.size};
-				if (options.mode === 'data') {
-					result.data = await readData(file);
-					if (finished) {
-						return;
-					}
-				}
-				results.push(result);
-			}
-			finish(null, JSON.stringify(options.multiple ? results : results[0]));
+				return result;
+			});
+			finish(null, options.multiple ? results : results[0]);
 		}
-		catch (error) {
-			finish(error.message || errorMessage('READ_FAILED', 'File operation failed.'));
-		}
+		catch (error) { finish(error.code ? error : failure('PICKER_FAILED', error.message || 'File selection failed.')); }
 	}
-
-	active = function () {
-		finish(null, 'RESULT_CANCELED');
-		if (reader && reader.readyState === 1) {
-			reader.abort();
-		}
-	};
-	input.addEventListener('cancel', onCancel);
+	active = {input: input, requestId: options.requestId, cancel: cancel};
 	input.addEventListener('change', onChange);
+	input.addEventListener('cancel', onCancel);
 	try {
 		document.body.appendChild(input);
-		// Must stay in the original user gesture; do not defer this behind a Promise.
+		// Keep the input activation in the caller's user gesture.
 		input.click();
 	}
-	catch (error) {
-		finish(errorMessage('PICKER_FAILED', '') + error.message);
-	}
+	catch (error) { finish(failure('PICKER_FAILED', error.message || 'Could not open the picker.')); }
 }
 
 module.exports = {
-	getFile: function (success, failure, args) {
-		if (!Array.isArray(args) || typeof args[0] !== 'string' || typeof args[1] !== 'boolean') {
-			failure(errorMessage('INVALID_ARGUMENT', 'Expected a MIME filter and includeData boolean.'));
-			return;
-		}
-		select(success, failure, {accept: args[0], mode: args[1] ? 'data' : 'metadata', multiple: false, maxFileSize: 0});
-	},
-	pick: function (success, failure, args) {
-		select(success, failure, args && args[0]);
-	},
-	releaseFile: function (success, failure, args) {
-		var id = args && args[0];
-		if (typeof id !== 'string' || id.length !== 36 || !idPattern.test(id)) {
-			failure(errorMessage('INVALID_ARGUMENT', 'Expected a managed file id.'));
-			return;
-		}
-		revoke(id);
+	pick: function (success, reject, args) { select(success, reject, args && args[0]); },
+	cancelPick: function (success, reject, args) {
+		if (!args || typeof args[0] !== 'string') { reject(failure('INVALID_ARGUMENT', 'Expected a request identifier.')); return; }
+		if (active && active.requestId === args[0]) active.cancel('signal');
 		success();
+	},
+	cancelRead: function (success, reject, args) {
+		try {
+			var id = args && args[0];
+			validateId(id);
+			var record = owned[id];
+			if (record && !record.source) throw failure('INVALID_ARGUMENT', 'Only transient source reads can be cancelled by identifier.');
+			if (record) record.cancelled = true;
+			success();
+		}
+		catch (error) { reject(error); }
+	},
+	statFile: function (success, reject, args) {
+		try {
+			var id = args && args[0];
+			validateId(id);
+			var record = owned[id];
+			if (!record || record.source || record.closing) throw failure('FILE_UNAVAILABLE', 'The browser file is no longer available.');
+			success(Object.assign({}, record.result));
+		}
+		catch (error) { reject(error); }
+	},
+	readFile: function (success, reject, args) {
+		try {
+			var id = args && args[0], offset = args && args[1], length = args && args[2];
+			validateId(id);
+			if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0 ||
+				length > chunkSize || length > Number.MAX_SAFE_INTEGER - offset) throw failure('INVALID_ARGUMENT', 'Invalid read range.');
+			var record = owned[id];
+			if (!record || record.closing) throw failure('FILE_UNAVAILABLE', 'The browser file is no longer available.');
+			var job = record.tail.then(async function () {
+				if (record.cancelled) throw {code: 'CANCELLED', reason: 'signal', message: 'Source read was cancelled.'};
+				if (record.source && offset !== record.offset) throw failure('INVALID_ARGUMENT', 'Source reads must be sequential.');
+				var bytes;
+				try { bytes = new Uint8Array(await record.file.slice(offset, offset + length).arrayBuffer()); }
+				catch (error) { throw failure('READ_FAILED', error.message || 'Could not read the browser file.'); }
+				if (record.cancelled) throw {code: 'CANCELLED', reason: 'signal', message: 'Source read was cancelled.'};
+				if (bytes.length > length) throw failure('READ_FAILED', 'File returned more bytes than requested.');
+				if (record.source) {
+					if (record.limit && bytes.length > record.limit - record.offset) throw failure('FILE_TOO_LARGE', 'File exceeds the byte limit.');
+					if (bytes.length > Number.MAX_SAFE_INTEGER - record.budget.bytes ||
+						(record.budget.limit && bytes.length > record.budget.limit - record.budget.bytes)) {
+						throw failure('TOTAL_SIZE_EXCEEDED', 'Selection exceeds the total byte limit.');
+					}
+					record.offset += bytes.length;
+					record.budget.bytes += bytes.length;
+				}
+				var binary = '';
+				for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+				return {data: btoa(binary), eof: offset + bytes.length >= record.file.size || (length > 0 && bytes.length < length)};
+			});
+			record.tail = job.catch(function () {});
+			job.then(success, reject);
+		}
+		catch (error) { reject(error); }
+	},
+	releaseFile: function (success, reject, args) {
+		try { close(args && args[0]).then(success, reject); }
+		catch (error) { reject(error); }
 	}
 };
-
 window.addEventListener('pagehide', function () {
-	if (active) {
-		active();
-	}
-	Object.keys(owned).forEach(revoke);
+	if (active) active.cancel('signal');
+	Object.keys(owned).forEach(function (id) { close(id).catch(function () {}); });
 });
-
 require('cordova/exec/proxy').add('Chooser', module.exports);

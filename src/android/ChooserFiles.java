@@ -85,6 +85,15 @@ final class ChooserFiles {
 		return false;
 	}
 
+	static File managed(File cache, String id) throws IOException {
+		if (!isId(id)) throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Expected a managed file id.");
+		File file = new File(directory(cache), id);
+		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || !file.isFile()) {
+			throw new ChooserError(ChooserError.Code.FILE_UNAVAILABLE, "Managed file is unavailable.");
+		}
+		return file;
+	}
+
 	static void release(File cache, String id) throws IOException {
 		if (!isId(id)) {
 			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Expected a managed file id.");

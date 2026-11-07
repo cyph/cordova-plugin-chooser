@@ -80,7 +80,7 @@ public final class ChooserBridgeTest {
                     }
                     long size = source.length();
                     FixtureProvider.reportedSize = 1; // Count bytes, not inaccurate metadata.
-                    JSONObject response = result("chooser.getFileUri({maxFileSize:" + size + "})");
+                    JSONObject response = result("chooser.getFile({maxFileSize:" + size + "})");
                     assertTrue(response.toString(), response.getBoolean("ok"));
                     assertTrue(response.toString().length() < 16 * 1024);
                     JSONObject file = response.getJSONObject("value");
@@ -92,7 +92,7 @@ public final class ChooserBridgeTest {
                     assertTrue(result("chooser.releaseFile(" + JSONObject.quote(file.getString("id")) + ")").getBoolean("ok"));
                     assertFalse(copy.exists());
                     assertEquals(size, source.length());
-                    JSONObject failure = result("chooser.getFileUri({maxFileSize:" + (size - 1) + "})");
+                    JSONObject failure = result("chooser.getFile({maxFileSize:" + (size - 1) + "})");
                     assertFalse(failure.getBoolean("ok"));
                     assertTrue(failure.getString("error").contains("FILE_TOO_LARGE"));
                     File cache = new File(context.getCacheDir(), "cordova-plugin-chooser");
@@ -111,9 +111,9 @@ public final class ChooserBridgeTest {
             try {
                 intending(hasAction(Intent.ACTION_CHOOSER)).respondWith(new ActivityResult(Activity.RESULT_CANCELED, null));
                 for (int i = 0; i < 3; i++) {
-                    JSONObject response = result("chooser.getFileUri()");
-                    assertTrue(response.toString(), response.getBoolean("ok"));
-                    assertTrue(response.isNull("value"));
+                    JSONObject response = result("chooser.getFile({maxFileSize:null})");
+                    assertFalse(response.toString(), response.getBoolean("ok"));
+                    assertTrue(response.getString("error").contains("CANCELLED"));
                 }
             } finally { Intents.release(); }
         }
@@ -131,12 +131,12 @@ public final class ChooserBridgeTest {
             Intents.init();
             try {
                 select();
-                JSONObject data = result("chooser.getFile('application/pdf').then(file => ({bytes:Array.from(file.data),dataURI:file.dataURI}))");
+                JSONObject data = result("chooser.getFileData({accept:'application/pdf',maxFileSize:11,format:'bytesAndDataURI'}).then(file => ({bytes:Array.from(file.data),dataURI:file.dataURI}))");
                 assertTrue(data.toString(), data.getBoolean("ok"));
                 org.json.JSONArray bytes = data.getJSONObject("value").getJSONArray("bytes");
                 assertEquals(pdf.length, bytes.length());
                 for (int i = 0; i < pdf.length; i++) assertEquals(pdf[i] & 255, bytes.getInt(i));
-                JSONObject copied = result("chooser.getFileUri({maxFileSize:11})");
+                JSONObject copied = result("chooser.getFile({maxFileSize:11})");
                 assertTrue(copied.toString(), copied.getBoolean("ok"));
                 JSONObject reference = copied.getJSONObject("value");
                 assertEquals(pdf.length, reference.getLong("size"));

@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '../..');
 
 function loadChooser(exec, timers = []) {
 	const context = {
-		module: {exports: {}}, Promise, Uint8Array,
+		module: {exports: {}}, Promise, Uint8Array, ArrayBuffer, Blob, ReadableStream, TextDecoder, TextEncoder, AbortController, AbortSignal, crypto: require('node:crypto').webcrypto, btoa, atob,
 		require: name => {
 			if (name !== 'cordova/exec') throw new Error('Unexpected dependency: ' + name);
 			return exec;
@@ -56,7 +56,7 @@ function browserFixture() {
 		abort() { this.readyState = 2; this.onabort(); }
 	}
 	const context = {
-		module: {exports: {}}, Promise, Uint8Array, document, FileReader: Reader,
+		module: {exports: {}}, Promise, Uint8Array, btoa, atob, document, FileReader: Reader,
 		window: {
 			crypto: {getRandomValues(bytes) { bytes.fill(0); bytes[15] = ++sequence; return bytes; }},
 			addEventListener: (name, callback) => windowListeners.set(name, callback)

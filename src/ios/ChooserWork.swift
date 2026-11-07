@@ -61,24 +61,30 @@ enum ChooserMain {
 	}
 }
 
-/** A lease survives reset until its actual file worker returns. */
+/** Picker processing is bounded and queued, including workers abandoned by reset. */
 final class ChooserWork {
-	private static let capacity = DispatchSemaphore(value: 2)
+	private static let operations: OperationQueue = {
+		let queue = OperationQueue()
+		queue.name = "com.cyph.cordova.chooser.requests"
+		queue.qualityOfService = .userInitiated
+		queue.maxConcurrentOperationCount = 4
+		return queue
+	}()
 	private let lock = NSLock()
 	private var started = false
 	private var released = false
-	private let queue = DispatchQueue(label: "com.cyph.cordova.chooser.request." + UUID().uuidString, qos: .userInitiated)
 
-	static func reserve() -> ChooserWork? {
-		guard capacity.wait(timeout: .now()) == .success else { return nil }
-		return ChooserWork()
-	}
+	static func reserve() -> ChooserWork? { return ChooserWork() }
 	private init() {}
 
-	// Explicit GCD handoff for Swift 5 callbacks. Request/worker locks protect
-	// shared state; each request's file operations remain sequential.
+	// Explicit GCD handoff for Swift 5 callbacks. Mutable request/file state
+	// remains protected by its locks; this does not add actor inheritance.
 	static func dispatch(on queue: DispatchQueue, _ action: @escaping () -> Void) {
 		queue.async(execute: DispatchWorkItem(block: action))
+	}
+
+	static func enqueue(on queue: OperationQueue, _ action: @escaping () -> Void) {
+		queue.addOperation(ChooserOperation(action))
 	}
 
 	func run(_ action: @escaping () -> Void) {
@@ -86,20 +92,21 @@ final class ChooserWork {
 		guard !started, !released else { lock.unlock(); return }
 		started = true
 		lock.unlock()
-		Self.dispatch(on: queue) {
-			defer { self.release() }
+		Self.enqueue(on: Self.operations) {
+			defer { self.lock.lock(); self.released = true; self.lock.unlock() }
 			action()
 		}
 	}
 	func releaseIfIdle() {
-		lock.lock()
-		if !started, !released { released = true; Self.capacity.signal() }
-		lock.unlock()
+		lock.lock(); defer { lock.unlock() }
+		if !started { released = true }
 	}
-	private func release() {
-		lock.lock()
-		if !released { released = true; Self.capacity.signal() }
-		lock.unlock()
-	}
-	deinit { releaseIfIdle() }
+}
+
+// OperationQueue owns execution exactly once. The caller supplies an immutable
+// handoff whose mutable captures are confined to the operation or use locks.
+private final class ChooserOperation: Operation, @unchecked Sendable {
+	private let action: () -> Void
+	init(_ action: @escaping () -> Void) { self.action = action; super.init() }
+	override func main() { action() }
 }
