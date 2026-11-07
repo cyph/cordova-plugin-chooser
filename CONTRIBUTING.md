@@ -19,20 +19,26 @@ If `just` is not installed separately, use the flake-provided executable:
 nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
 ```
 
-Setup uses the pinned Chainman runtime to install the frozen dependencies and Git hooks. Run it again after changing toolchain or dependency configuration. The [verification guide](docs/VERIFICATION.md) lists host requirements, test commands, and the supported dependency update workflow.
+Chainman owns the toolchain, frozen dependencies, update policy, and verification tasks. Setup installs those dependencies and Git hooks. Repeat it after changing toolchain or dependency configuration. Use the [verification guide](docs/VERIFICATION.md) for host requirements and dependency updates rather than installing unpinned substitutes.
 
 ## Changes and review
 
-Describe the problem, the behavior of the change, and how you tested it in your pull request. Add regression coverage at the public API, provider, or resource-ownership boundary affected by the change. Keep the JavaScript bridge, [TypeScript declarations](index.d.ts), native implementations, and documentation aligned.
+Describe the problem, resulting behavior, and validation in your pull request. Add regression coverage at the public API, provider, or resource-ownership boundary affected by the change. Keep the JavaScript bridge, [TypeScript declarations](index.d.ts), native implementations, and documentation aligned.
 
-Picker calls return Promises even when callbacks are supplied; cancellation resolves to `undefined`, and successful plural calls return nonempty arrays. Metadata, data, and URI methods have different memory and ownership behavior. Test the relevant contract when changing selection, copying, or release.
+RC2 picker methods are Promise-only and use options objects. Cancellation rejects with `CancellationError`; successful plural calls return nonempty arrays. Managed selection, metadata, and direct data have different memory and ownership behavior. Type declarations must work with TypeScript 5.7 and the pinned current compiler.
 
 ## Implementation boundaries
 
-`Chooser` connects the bridge to the picker, while `ChooserRequest` manages requests and cancellation. File, budget, and transaction helpers manage I/O and cached copies. Changes to lifecycle or I/O need coverage for failures, cleanup, reset, and concurrent work as well as the successful path. Android picker ownership can outlast callback ownership after reset; on iOS, a started worker retains its lease until its I/O returns. Use the Cordova dispatcher or the relevant host fixtures to exercise these boundaries. Error messages are not stable typed error codes.
+Keep provider and lifecycle behavior behind the shared contract. Preserve metadata paths that do not read complete contents, actual-byte budget enforcement, bounded bridge reads, and cleanup after partial failure. Provider names and supplied URIs must never determine cache paths.
+
+Managed aliases share ownership by ID. Releasing an ID prevents new reads, stops unfinished plugin streams, waits for started reads and actual native I/O, and leaves source files alone. Cover stale callbacks, cancellation/reset races, failed deletion and retry, cache eviction, and concurrent reads when changing these paths.
+
+Scoped helpers must preserve the consumer's original result or exception. Cleanup failure carries that outcome separately; it must not imply that a completed upload failed. Typed error codes are part of the API, while explanatory message wording is not.
+
+Use the Cordova dispatcher or appropriate native fixtures to exercise integration boundaries. The [known iOS provider cases](docs/KNOWN-ISSUES.md) retain their assertions in a separate investigation workflow; do not broaden those exclusions to hide unrelated failures.
 
 ## Attribution and submission
 
-Preserve authorship when importing work; use `git cherry-pick -x` when appropriate. For an adaptation, credit the contributor and link to the source commit. Keep copyright and license notices intact.
+Preserve authorship when importing work; use `git cherry-pick -x` where appropriate. For an adaptation, credit the contributor and link to the original commit. Retain copyright and license notices, and distinguish the original author's work from later modifications.
 
-Run the portable checks and native lanes relevant to your change, and report any checks you could not run. Update the changelog for public changes. The [verification guide](docs/VERIFICATION.md#release-preparation) also covers release preparation.
+Develop against `master`. Run portable checks and native lanes relevant to the change, and report checks you could not run. Record public changes in the appropriate changelog entry without rewriting historical behavior or inventing publication dates. See [release preparation](docs/VERIFICATION.md#release-preparation) for package and release checks.

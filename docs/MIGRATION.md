@@ -1,54 +1,110 @@
-# Migrating from 1.3.2 to 2.0
+# Migrating to 2.0.0-rc.2
 
-Version 2.0.0-rc.1 retains the single-file API and adds multiple selection, URI methods with managed references, browser support, and TypeScript declarations. Start by updating the native plugin, then choose the new methods where your application can use them.
+RC2 makes managed files the default and moves complete-data reads into explicitly named methods. It also changes cancellation to an exception, requires byte budgets, adds Photos selection, and removes callback overloads. These changes apply to applications upgrading from both RC1 and 1.x.
+
+RC1 was published on November 6, 2026. It retained the earlier call forms while adding multiple selection, managed URI methods, browser support, and types. Its release notes and contributor credits remain in the [changelog](../CHANGELOG.md).
 
 ## Update the installation
 
-Use `cordova-android >=14.0.0` or `cordova-ios >=7.0.0`, as applicable. The [platform guide](PLATFORMS.md#requirements-and-coverage) covers OS minimums, build tools, and Swift configuration.
+Use Cordova Android 14/15 or Cordova iOS 7/8. iOS apps must target iOS 15 or later and use Swift 5 language mode. Before installing or preparing RC2, add the preferences shown in [iOS build configuration](PLATFORMS.md#build-configuration), preserving an existing higher deployment target. An absent target now fails preparation.
 
-From the Cordova application directory:
+Replace the previous plugin installation from your Cordova application directory:
 
 ```sh
 cordova plugin remove cordova-plugin-chooser
-cordova plugin add cordova-plugin-chooser@2.0.0-rc.1
+cordova plugin add cordova-plugin-chooser@2.0.0-rc.2
 ```
 
-Review the resulting manifest and lockfile changes and rebuild each native app. Chooser no longer needs `cordova-plugin-add-swift-support`; remove it only if no other plugin needs it. Broad Android storage permissions are not needed for the document picker.
+Prepare and rebuild the application, and review manifest and lockfile changes. Chooser no longer uses `cordova-plugin-add-swift-support`; remove that helper only if no other plugin needs it. Neither document selection nor the new photo picker needs broad Android storage or photo-library permission. TypeScript applications need version 5.7 or later. See the [README](../README.md#installation) for installation requirements.
 
-The published 1.3.2 archive identifies itself as `1.3.1` in `plugin.xml`. Check the installed npm package and its source when identifying an older installation. The [changelog](../CHANGELOG.md) preserves the release history.
+## Replace earlier calls
 
-## Existing calls
+| RC1 or 1.x use | RC2 equivalent |
+| --- | --- |
+| `getFile(accept)` for bytes and data URI | `getFileData({accept, maxFileSize, format: 'bytesAndDataURI'})` |
+| `getFiles(accept)` for complete data | `getFilesData({accept, maxFileSize, maxTotalSize, format})` |
+| `getFileMetadata(accept)` | `getFileMetadata({accept})` |
+| `getFilesMetadata(accept)` | `getFilesMetadata({accept, maxFiles})` |
+| `getFileUri(options)` | `getFile(options)` |
+| `getFilesUri(options)` | `getFiles(options)` |
+| Manual select/use/release in one function | `withFile(options, consume)` or `withFiles(options, consume)` |
+| Success/failure callbacks | `await` with `try`/`catch`, or Promise handlers |
+| `result === undefined` for cancellation | Catch `chooser.CancellationError` |
 
-`getFile(accept?)` still returns one result containing `data`, `dataURI`, `name`, `mediaType`, and `uri`. `getFileMetadata(accept?)` returns metadata without the data payload. Both return Promises and accept success and failure callbacks, including callback-first calls. Cancellation resolves to `undefined` and passes `undefined` to the success callback. Single-file results do not need array handling.
+Options objects replace bare MIME strings. Callback arguments and unknown options reject. `getFile()` no longer reads the contents into `data` and `dataURI`; it returns a managed handle with reading methods and a temporary URI.
 
-Results also include `size`: `null` means the provider did not report a size, while `0` reports an empty file. Native metadata methods do not read the whole file in plugin code, although the OS may import or download it. Android's two existing single-file methods continue to prefer local providers.
+When only one representation is needed, choose `'bytes'`, `'text'`, or `'dataURI'`. Use `'bytesAndDataURI'` to retain the useful RC1 pair without two content reads. For large inputs, choose managed selection and read incrementally.
 
-Data URIs use canonical base64 padding. Remove any application workaround for missing padding, and review literal comparisons of encoded strings. Invalid base64 responses reject. Callback exceptions are reported asynchronously and do not change the picker Promise; handle application errors in callbacks and process each selection once.
+## Make budgets explicit
 
-## Multiple selection and large files
+Managed and direct-data selection require `maxFileSize`. Plural calls also require `maxTotalSize`. Set positive byte counts, or explicit `null` for unlimited; RC1's omitted/zero unlimited limits are no longer accepted. `maxFiles` is optional, but a supplied value must be positive or `null`.
 
-Use `getFiles()`, `getFilesMetadata()`, or `getFilesUri()` when the rest of the workflow accepts multiple files. On success they return a nonempty array, even for one file; cancellation is still `undefined`.
+```js
+const file = await chooser.getFileData({
+  accept: 'application/json',
+  maxFileSize: 1024 * 1024,
+  format: 'text'
+});
+const value = JSON.parse(file.text);
+```
 
-Data methods read whole files into memory and have no configurable size limits. For large or unknown inputs, use `getFileUri()` or `getFilesUri()` with limits and a consumer that can process the URI without loading the entire file into JavaScript. These methods return references instead of `data` and `dataURI`. On native platforms they stream copies to private cache; in a browser they create managed Blob URLs.
+Metadata methods accept no byte budgets because they do not materialize contents. Managed whole-file reads require a separate `maxBytes`; a copy allowed onto disk may still be too large to load into memory. Range reads and streams provide incremental access.
 
-Only URI methods accept copy options. Set `maxFileSize`, `maxFiles`, and `maxTotalSize` as needed: each defaults to `0`, meaning unlimited. Unknown option keys and invalid filters reject. The new multiple and URI methods allow remote Android providers by default; URI methods accept `localOnly: true` to request local providers. See [copy options](API.md#copy-options) and the [consume-and-release example](FILE-HANDLING.md#consume-then-release).
+Android document methods now allow remote providers by default, including single-file metadata selection. Set `localOnly: true` if the app wants to request the earlier local-provider preference.
 
-Every browser result has an opaque ID to release. On native platforms only URI results have one. Call `releaseFile(id)` after all consumers finish with a plugin-owned reference, and copy any file you need to keep into persistent app storage. The returned URIs have no persistence guarantee.
+## Handle cancellation and cleanup
+
+Picker dismissal and `AbortSignal` cancellation reject with `CancellationError`. Its `reason` distinguishes `'picker'` from `'signal'`. There is no cancellation-related `undefined` result or boolean success flag.
+
+```js
+try {
+  const name = await chooser.withFile(
+    {maxFileSize: 10 * 1024 * 1024},
+    file => file.name
+  );
+  console.log(name);
+} catch (error) {
+  if (error instanceof chooser.CancellationError) {
+    // The user dismissed selection or the operation was aborted.
+  } else if (error instanceof chooser.CleanupError) {
+    console.error('Cleanup failed:', error.failures);
+    console.log('Operation outcome:', error.outcome);
+  } else {
+    console.error(error);
+  }
+}
+```
+
+A scoped helper preserves the consumer's value or original exception. If cleanup fails, `CleanupError.outcome` records whether the consumer fulfilled or rejected. Do not retry an upload merely because deleting its temporary file failed. See [cleanup handling](FILE-HANDLING.md#consume-then-release).
+
+Pass a signal to each operation that should be abortable. A selection signal does not automatically cancel later reads or a scoped consumer. The helper waits for the consumer to settle before release.
+
+## Update ownership and result fields
+
+Only managed results have `id`, `uri`, reading methods, and a release obligation. Browser metadata and direct-data results no longer retain Blob URLs. Metadata uses optional borrowed `sourceUri` instead of a managed `uri`; direct data likewise has no retained plugin reference.
+
+`file.release()`, `releaseFile(id)`, and `releaseFiles(ids)` share resource ownership. Restoring a saved reference creates another handle to the same resource, not a separate copy. Releasing an ID closes every alias, stops unfinished plugin streams, and waits for started one-shot reads. Wait for external URI consumers yourself.
+
+Save references with `file.toJSON()` and restore them with `restoreFile`. Native cache eviction and browser navigation still invalidate resources. Surviving native RC1 managed IDs remain releasable, but saved cache references are not durable storage.
+
+## Add photo-library selection
+
+Use `source: 'photos'` with optional `mediaTypes: ['image']` or `['video']`. Use the document source for files in Files or other document providers. The photo source adds library selection, not camera capture, editing, or a promise of the original encoded representation. See [platform details](PLATFORMS.md).
 
 ## Framework and lifecycle integration
 
-The plugin includes [TypeScript declarations](API.md#typescript). Framework wrappers have their own API and method coverage; check the wrapper you use or call the injected `chooser` global directly after `deviceready`.
+The package includes [TypeScript declarations](API.md#typescript). Wait for `deviceready` and call the injected global directly unless a wrapper explicitly supports this RC2 contract.
 
 ### Awesome Cordova Plugins and fork-specific wrappers
 
-The Awesome Cordova Plugins Chooser wrapper [changed to the MaximBelov fork](https://github.com/danielsogl/awesome-cordova-plugins/commit/ba37646fc4b7cc86b497affa0ef932ad374b9080). Its `mimeTypes` and `maxFileSize` arguments and `path`, `displayName`, and `mimeType` result fields describe that fork, not this plugin. Installing this plugin does not translate the wrapper's contract.
+The Awesome Cordova Plugins Chooser wrapper [changed to the MaximBelov fork](https://github.com/danielsogl/awesome-cordova-plugins/commit/ba37646fc4b7cc86b497affa0ef932ad374b9080). Its `mimeTypes` input and `path`, `displayName`, and `mimeType` fields do not match this plugin. Installing Chooser does not translate a wrapper's interface.
 
-For a small CSV, call `chooser.getFile('text/csv')`. For a bounded copy, call `chooser.getFileUri({accept: 'text/csv', maxFileSize: 1024 * 1024})`, consume the returned URI, and release its ID. The [file-handling example](FILE-HANDLING.md#consume-then-release) shows cleanup. Passing an object such as `{mimeTypes: 'text/csv', maxFileSize: 1}` to `getFile()` rejects; use a string filter there and copy options only with URI methods.
+Use `accept`, `name`, and `mediaType`, and choose a managed or direct-data method explicitly. An object such as `{mimeTypes: 'text/csv', maxFileSize: 1}` rejects because `mimeTypes` is unknown. Copying the wrapper's type declarations or casting to `any` does not repair the runtime call.
 
 ### Android lifecycle
 
-When Android recreates an activity, the old Promise cannot receive its result. Cordova may deliver a raw native payload through `resume.pendingResult`. Handle it as described in [restored Android results](PLATFORMS.md#restored-android-results).
+A Promise cannot survive WebView destruction. Cordova's `resume.pendingResult` can contain a raw native payload, which is different from the public RC2 result. Review [restored Android results](PLATFORMS.md#restored-android-results) if the application handles activity recreation.
 
 ## Check the application upgrade
 
-Exercise selection, cancellation, failure, and repeated requests on the platforms and providers your app uses. Check file contents, URI consumers, limits, cleanup, and lifecycle recovery. Review the [iOS known issue](KNOWN-ISSUES.md#intermittent-ios-files-selection) when testing the document picker.
+Exercise selection, cancellation, immediate reopening, limits, decoding, release, cache eviction, and the providers your app uses. Confirm that no consumer outlives scoped cleanup and that cleanup errors cannot repeat completed business operations. Review the [known iOS Files issue](KNOWN-ISSUES.md) when qualifying document selection.

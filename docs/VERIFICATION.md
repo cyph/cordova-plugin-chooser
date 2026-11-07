@@ -31,7 +31,8 @@ Xcode is installed separately. The [baseline](https://github.com/cyph/cordova-pl
 | `just verify-ios` | Foundation fixtures and unsigned Cordova iOS 7/8 archives |
 | `just verify-ios-modern` | iOS builds with the modern Apple profile and Foundation sanitizers |
 | `just verify-ios-simulator` | Full iPhone/iPad and Cordova iOS 7/8 simulator matrix |
-| `just chainman run verify-ios-simulator-part cordova-ios7 iphone` | One matrix partition; choose `cordova-ios7` or `cordova-ios8`, and `iphone` or `ipad` |
+| `just chainman run verify-ios-simulator-part cordova-ios7 iphone` | Required cases in one partition; choose `cordova-ios7` or `cordova-ios8`, and `iphone` or `ipad` |
+| `just chainman run verify-ios-simulator-part cordova-ios7 iphone --investigation-only` | Isolated provider cases in that partition |
 | `just chainman run diagnose-ios-simulator` | Focused baseline iPhone picker diagnostic; see below for variants |
 | `just verify-capacitor-android` | Packed plugin through the Capacitor Android bridge on an emulator |
 | `just verify-native` | Android and baseline iOS tasks on a host meeting both requirements |
@@ -41,17 +42,31 @@ Xcode is installed separately. The [baseline](https://github.com/cyph/cordova-pl
 
 ## Automated coverage
 
-Portable tests cover bridge contracts, callbacks, cancellation, decoding, limits, cleanup, declarations, registration, and package contents. Browser integration exercises the installed plugin, managed URLs, failures, navigation, and content security policies. Automated empty selections do not prove real dialog cancellation; Playwright WebKit does not establish full Safari or OS compatibility.
+Portable tests exercise the Promise API, cancellation exceptions, decoding, explicit budgets, resource ownership, cleanup outcomes, declarations, registration, and package contents. The type lane checks TypeScript 5.7 and the pinned current compiler, including DOM compatibility of returned byte arrays. Browser integration exercises the installed plugin, managed URLs, failures, navigation, and content security policies. Automated empty selections do not prove real dialog cancellation; Playwright WebKit does not establish full Safari or OS compatibility.
 
 Android fixtures exercise production code through Cordova, including provider behavior, streams, limits, lifecycle, and cleanup. Robolectric covers API 24, 28, 30, 33, and 35; packed builds and lint cover both supported Cordova Android families. The Capacitor emulator runs the real bridge and provider reads with controlled intent responses; it does not exercise the system picker UI or real cloud providers.
 
-iOS Foundation fixtures test I/O, budgets, transactions, recovery, and worker ownership. The archive tasks compile the plugin with both supported Cordova iOS families and check privacy-resource coexistence. Their deployment target is iOS 15; source fallbacks do not establish coverage below it. The simulator matrix adds app-hosted and Files UI tests, including selection, cancellation, reopening, and independent UIKit controls. See [known limitations](KNOWN-ISSUES.md) for iOS Files failures observed in simulator tests.
+iOS Foundation fixtures test I/O, budgets, transactions, recovery, and worker ownership. The archive tasks compile the plugin with both supported Cordova iOS families and check privacy-resource coexistence. Their deployment target is iOS 15, matching the plugin minimum. Builds alone do not establish picker behavior on every supported iOS version. The simulator matrix adds app-hosted and Files UI tests, including selection, cancellation, reopening, and independent UIKit controls. See [known limitations](KNOWN-ISSUES.md) for iOS Files failures observed in simulator tests.
+
+### File-reading comparison
+
+Use the comparison fixture when changing reading or resource ownership. It sends identical content through managed streams, managed byte reads, and each direct-data format, checking content parity and cleanup while recording chunk sizes, bridge payloads, and modeled copy/storage costs.
+
+```sh
+just chainman exec --profile toolchain -- node scripts/benchmark-files.mjs --output <path>
+```
+
+Replace `<path>` with the destination JSON file. This is a synthetic JavaScript comparison with an in-memory Cordova bridge: timings do not measure native/device throughput, and copy counts do not measure filesystem writes or provider imports. Use the report to compare the paths and investigate changes; the fixture's regression tests also run in the portable lane.
 
 ### Simulator and framework integration
 
 For a focused investigation, run `just chainman run diagnose-ios-simulator` for baseline Cordova iOS 7 on iPhone. Use `diagnose-ios-simulator-ipad`, `diagnose-ios-simulator-modern`, or `diagnose-ios-simulator-modern-ipad` for the other device and Apple profile combinations. Append `--dismissal-only` for cancellation and dismissal checks or `--provider-only` for the provider comparison. The [Verify workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/verify.yml) also offers manual diagnostic profile, device, and scope inputs.
 
-Focused diagnostics help investigate a failure; they do not replace `just verify-ios-simulator`. Release qualification requires the complete matrix, either in one local run or all four framework/device partitions together.
+Required CI runs all four framework/device partitions with an explicit manifest. Seven known case/partition combinations are isolated: UIKit CSV in all four partitions, UIKit PDF in both iPhone partitions, and Chooser CSV in Cordova iOS 8/iPad. They remain in the manually dispatched [iOS provider investigation workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-provider-investigation.yml), with their assertions and artifacts intact. Preparation and test failures still fail that workflow.
+
+`just verify-ios-simulator` runs the complete local suite, including the isolated cases. Use partition commands without a flag for required CI coverage, or append `--investigation-only` for the affected cases in that partition. Focused diagnostics and investigation reports cannot substitute for required qualification. The aggregator checks exact case manifests, source revision, package identity, and all required partitions; mixed, missing, or diagnostic coverage is rejected.
+
+Return the isolated cases to required CI after three consecutive clean runs across all affected partitions on fresh simulators. Moving a case to the investigation workflow does not resolve it; keep [known issues](KNOWN-ISSUES.md) aligned with the actual exclusions.
 
 ## Android dependency ownership
 
@@ -80,20 +95,20 @@ For a Capacitor upgrade, coordinate core, CLI, Android, policy constraints, the 
 
 ## CI and reports
 
-The [Verify workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/verify.yml) runs the verification lanes on pull requests, relevant branch pushes, and manual dispatch. Qualification combines their reports for the same revision and package. Simulator partitions run separately in CI.
+The [Verify workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/verify.yml) runs the verification lanes on pull requests, pushes to `master`, and manual dispatch. Qualification combines their reports for the same revision and package. Simulator partitions run separately in CI.
 
-Find local command logs, summaries, and result bundles under `.verification/reports/`; workflow artifacts retain reports on failure as well as success. Simulator results include xcresult bundles and diagnostic summaries. To check downloaded evidence, run `just chainman run qualify` with `CHOOSER_REPORTS_ROOT`, `GITHUB_SHA`, and the workflow's `CHOOSER_JOB_RESULTS` JSON set for the run.
+Find local command logs, summaries, and result bundles under `.verification/reports/`; workflow artifacts retain reports on failure as well as success. Simulator results include xcresult bundles and diagnostic summaries when tests execute. A setup failure is reported as tests not started; it is not evidence of a test pass or a separate missing-result failure. Recognized transient dependency transport failures may be retried with bounded backoff; integrity, lock, and assertion failures are not treated as transient. To check downloaded evidence, run `just chainman run qualify` with `CHOOSER_REPORTS_ROOT`, `GITHUB_SHA`, and the workflow's `CHOOSER_JOB_RESULTS` JSON set for the run.
 
 ## Interactive checks
 
 Use the [manual fixture app](https://github.com/cyph/cordova-plugin-chooser/tree/master/tests/fixture-app/www) and [native scenarios](https://github.com/cyph/cordova-plugin-chooser/blob/master/tests/native-cases.json) with disposable files. Copy the fixture's `www` contents into a Cordova app with the plugin installed.
 
-Exercise cancellation, repeat and concurrent calls, local and cloud providers, revoked access, empty and binary files, limits, low storage, cache eviction, and release after consumption. Check Android activity recreation, iOS presentation and orientation, and browser navigation. Compare copied bytes as well as metadata. For lifecycle or transaction changes, also test reset during a blocked read, batch failure, short writes, and interruption around commit; confirm cleanup preserves original files.
+Exercise document and Photos selection, cancellation and abort signals, repeat and concurrent calls, local and cloud providers, revoked access, empty and binary files, byte/count limits, low storage, cache eviction, restoration, and release across aliases. Confirm scoped cleanup preserves completed results, and that releasing a file stops streams without hanging on an unread stream. Check Android activity recreation, iOS presentation and orientation, and browser navigation. Compare copied bytes as well as metadata. For lifecycle or transaction changes, also test reset during a blocked read, batch failure, short writes, and interruption around commit; confirm cleanup preserves original files.
 
 ## Release preparation
 
-1. Align package and plugin versions, installation examples, migration guide, and changelog. Use verified npm publication dates in UTC.
-2. Run the full workflow for the release revision, inspect qualification, and perform relevant interactive checks. An RC may ship with an accepted, documented limitation and failed qualification; record its impact and evidence in the release review. Full stable qualification requires all mandatory gates to pass.
+1. Align package and plugin versions, exact-version installation examples, migration guide, and changelog before packing. Describe the version without development-only wording or a claim that publication has occurred. Use a version link for the changelog heading and leave its date unset until publication is verified.
+2. Run the main workflow for the release revision and package, inspect every required gate, and perform relevant interactive checks. Run the separate provider investigation workflow and retain its evidence. Do not count its accepted failures as fixed or substitute its reports for required coverage. Document unverified device/provider behavior in the release review.
 3. Inspect the npm archive for documentation links, types, native resources, license, and notices. Verify the resulting package after any packaged change.
 4. Publish the reviewed artifact with an explicit distribution tag. Use a prerelease tag such as `next` for a prerelease: the version suffix alone does not keep it off `latest`. Link release notes to [known limitations](KNOWN-ISSUES.md) and describe accepted verification gaps.
-5. Confirm registry version, tag, timestamp, and integrity. Create the repository tag and release notes, and add the confirmed publication date to the source changelog.
+5. Confirm registry version, distribution tag, timestamp, and integrity. Tag the qualified source revision and record the verified UTC publication date and package integrity in the GitHub release. Keep the published archive identical to the qualified artifact; the registry metadata and GitHub release record its publication date without requiring a repackaged changelog.

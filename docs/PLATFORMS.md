@@ -1,91 +1,94 @@
 # Platform guide
 
-Chooser uses the platform's document picker. Provider availability, presentation, and the lifetime of returned URIs differ across Android, iOS, and Browser. The [API reference](API.md) describes the shared methods; [file handling](FILE-HANDLING.md) covers consuming and releasing results.
+Chooser uses system document and photo pickers. The shared API provides metadata, managed files, and direct data, while the OS and providers determine what is available and how it is presented.
 
 ## Requirements and coverage
 
-The plugin requires `cordova-android >=14.0.0` or `cordova-ios >=7.0.0` when those platforms are installed. The maintained platform families have these platform-defined OS minimums:
-
-| Cordova platform | Platform OS minimum |
+| Maintained Cordova platform | Application requirement |
 | --- | --- |
-| Android 14.x and 15.x | Android 7.0 (API 24) |
-| iOS 7.x | iOS 11 |
-| iOS 8.x | iOS 13 |
-| Browser 7.x | Browser capabilities described below |
+| Android 14.x and 15.x | Android 7.0 (API 24) or later |
+| iOS 7.x and 8.x | iOS 15 or later; Swift 5 language mode |
+| Browser 7.x | Browser capabilities listed below |
 
-Follow the Cordova [Android](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) and [iOS](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) guides for the appropriate build tools. Other dependencies or your Xcode version can require a higher OS version. The repository's iOS application fixtures use Swift 5 mode and an iOS 15.0 deployment target; that target is separate from Cordova's platform minimums and does not establish coverage for earlier targets.
+The declared native engine minimums are Cordova Android 14 and Cordova iOS 7. Chooser's iOS 15 requirement applies even when the Cordova platform itself supports earlier iOS versions. Follow Cordova's [Android](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) and [iOS](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) guides for the matching build tools. Other app dependencies may require higher versions.
+
+The [verification guide](VERIFICATION.md) describes automated lanes and their boundaries. Builds and controlled provider tests do not establish compatibility with every cloud provider or physical device.
 
 ## Android
 
-### Selection and providers
+### Documents and providers
 
-Chooser requests openable documents through `ACTION_GET_CONTENT`, using a temporary read grant. It needs no broad storage or media permission and does not obtain a persistent document grant.
+The default document source requests openable documents with temporary read access. Chooser needs no broad storage permission and does not obtain a persistent document grant. Local and remote providers are allowed by default. `localOnly: true` requests local providers through `EXTRA_LOCAL_ONLY`; the picker or provider decides how to honor it.
 
-| Methods | Provider preference |
-| --- | --- |
-| `getFile()`, `getFileMetadata()` | Prefer local providers |
-| `getFiles()`, `getFilesMetadata()` | Allow remote providers |
-| `getFileUri()`, `getFilesUri()` | Allow remote providers; `localOnly: true` requests local providers |
+Remote providers can require sign-in, connectivity, downloads, or format conversion. Some providers allow only one selection even in a plural picker; the result is still an array. `sourceUri` identifies the borrowed provider reference, while a managed `uri` identifies the plugin's private copy.
 
-The local preference uses `EXTRA_LOCAL_ONLY`; the picker and provider decide whether to honor it. Remote providers can require sign-in, connectivity, downloads, or format conversion. A provider may allow only one selection in a multiple picker; plural methods still return a nonempty array when a file is selected.
+### Photos and videos
 
-Metadata includes the provider's display name and size when available. The fallback name is `File`, and an unknown size is `null`. The MIME type comes from the provider or filename extension, with `application/octet-stream` as a fallback. For URI methods, `sourceUri` identifies the provider URI, while `uri` identifies the private cache copy; its `size` is the actual number of bytes copied.
+`source: 'photos'` uses Android's Photo Picker when available, with a supported document-picker fallback. The fallback UI can differ and may not enforce the requested selection count; Chooser checks the returned count. Availability depends on Android's version and installed picker components.
+
+Photo selection uses temporary access to the selected media without broad photo-library or media-storage permissions. It does not capture new photos or videos. Use the document source for images and videos stored as ordinary documents when that is the desired browsing experience.
 
 ### Lifecycle
 
-Only one picker request can be active, including the time spent reading or copying after the picker closes. A WebView reset invalidates the callback and requests cancellation of provider work. An open Android picker keeps its reservation until its activity result returns, so another request can still encounter `BUSY` after reset.
+Only one picker request can be active. A reset invalidates callbacks and requests cancellation of provider work. Android can retain a picker reservation until its activity result returns, so an immediate new request may still receive `BUSY`.
 
-A Promise cannot survive destruction of its WebView. Cordova may restore a picker result, but it cannot resume the application's interrupted processing or uploads.
+A Promise cannot survive destruction of its WebView. Cordova may restore a picker result, but it cannot resume the application's interrupted JavaScript processing or uploads.
 
 ### Restored Android results
 
-Register a listener during startup if your app handles activity recreation. Cordova may deliver the result in `event.pendingResult` on [`resume`](https://cordova.apache.org/docs/en/latest/guide/platforms/android/#retrieving-plugin-callback-results-cordova-android-510). Keep enough application state to identify the method that started the request.
+Applications handling activity recreation can listen for `resume.pendingResult`. Check `pluginServiceName === 'Chooser'` and `pluginStatus` before interpreting the result. This is a raw Cordova/native payload, not the public JavaScript result, and is not a replacement for the Promise API.
 
-Check `pendingResult.pluginServiceName === 'Chooser'` and `pendingResult.pluginStatus`. For an `'OK'` status, `pendingResult.result` contains the raw native payload, before the JavaScript wrapper processes it:
+A restored managed-copy payload can be parsed and passed to `restoreFile`; release its managed ID if discarding it. Metadata has no managed resource. Direct-data selection uses temporary source readers internally: a raw source-reader result is not a `FileData` value and cannot be restored as a managed file. Release any returned source IDs and ask the user to select again. A raw `RESULT_CANCELED` indicates cancellation.
 
-| Payload | Handling |
-| --- | --- |
-| `'RESULT_CANCELED'` | Treat as cancellation; it has not been converted to `undefined`. |
-| JSON-encoded object or array | Parse it according to the original method. |
-| Data result | `data` is base64 text, not a `Uint8Array`; `dataURI` has not been constructed. |
-| URI result | Keep its managed ID until consumers finish, then release it, including when discarding the result. |
-
-Other statuses indicate errors. Ordinary resume events may have no pending result, and recovery is not guaranteed for every interruption. There is no public API to query an outstanding operation or enumerate lost references.
+Keep enough app state to identify the interrupted operation. Recovery is not guaranteed for every interruption, and there is no API to enumerate lost references.
 
 ## iOS
 
 ### Build configuration
 
-Use Swift 5 language mode in the app's `config.xml`:
+Set these application `config.xml` preferences before plugin installation or preparation:
 
 ```xml
 <platform name="ios">
+  <preference name="deployment-target" value="15.0" />
   <preference name="SwiftVersion" value="5.0" />
 </platform>
 ```
 
-Choose a `deployment-target` compatible with the app, its dependencies, and Xcode. The repository fixtures use `15.0`. Cordova iOS 7 and later provide Swift integration; Chooser does not require `cordova-plugin-add-swift-support`.
+Keep an existing higher target. Chooser's prepare hook rejects an absent deployment target or one below 15; it does not silently change the application target. Cordova iOS supplies Swift integration, so Chooser does not need `cordova-plugin-add-swift-support`.
 
-### Document access and presentation
+### Documents and presentation
 
-The document picker selects regular files from Files and document providers. It does not select directories or document packages, and it is not a camera or Photos-library picker. Present it from a visible app view after other modal transitions finish. On iPad it is anchored to the app view; its orientation follows the app's supported orientations.
+The document source selects regular files from Files and document providers. It does not select directories or document packages. Present it from a visible app view after other modal transitions finish. The picker follows the app's supported orientations and uses an appropriate anchor on iPad.
 
-For data and metadata methods, the OS imports a copy and may download it even when only metadata is requested. The plugin does not read the full file for metadata. URI methods open the selected document, coordinate the read, and stream a copy into private cache. Security-scoped access is used during the read and then released; no persistent bookmark is created.
+Reads use coordinated, security-scoped access where required. Managed selection copies into private cache; the provider or OS may import or download a document for other modes as well. Metadata does not trigger a full-content read in plugin code. No persistent security-scoped bookmark is created.
 
-A request remains active while provider work completes. After a reset, abandoned provider reads can temporarily occupy worker capacity and cause later requests to encounter `BUSY`. See the [known iOS selection issue](KNOWN-ISSUES.md#intermittent-ios-files-selection) if Files remains open.
+Provider operations can outlive a cancellation request or reset. See the [known Files issue](KNOWN-ISSUES.md#intermittent-ios-files-selection) if selection remains pending.
+
+### Photos and videos
+
+Use `source: 'photos'` to select from the Photos library through `PHPickerViewController`. Set `mediaTypes: ['image']` or `['video']` to narrow the choice. This picker grants access to selected items without requiring broad photo-library permission. Chooser does not request camera access or add capture, editing, or transcoding controls.
+
+The picker prefers the current representation; Chooser does not decode and re-encode images. The system or provider may still supply a converted representation, so this is not a guarantee of original encoded bytes.
+
+Provider file representations are temporary. For direct-data methods, Chooser stages a copy in app-private cache before the provider callback returns, then reads it and removes it automatically. This adds a copy step and temporary storage proportional to the selected representations, potentially alongside the provider's own temporary files. There is no caller release obligation for the returned data; cleanup failures surface as `CleanupError`. See [memory and storage](FILE-HANDLING.md#memory-and-storage).
+
+Photos metadata can lack an exact size or other details. The metadata methods do not load a full representation just to discover them; unknown size is `null`. Choose a managed file when you need content and an actual byte count.
 
 ### Types and privacy
 
-MIME filters are mapped to system type identifiers. The mapping includes common image, audio, video, text, and font wildcards; unknown types can broaden selection. Names come from the last path component and MIME types are inferred from extensions. Filters are selection hints, not content validation.
+Document MIME filters map to system type identifiers, including common wildcards and iWork types. Unknown mappings can broaden selection. Media types and names are descriptive metadata, not content validation.
 
-The plugin includes `ChooserPrivacy.bundle/PrivacyInfo.xcprivacy`. It declares file-timestamp API access with reason `C617.1`, no tracking, and no collected-data types. This bundle is separate from the app's privacy manifest; the app must account for its own behavior and other dependencies. See Apple's [required-reason API guidance](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api).
+The plugin includes a separate `ChooserPrivacy.bundle/PrivacyInfo.xcprivacy`, declaring file-timestamp API access with reason `C617.1`, no tracking, and no collected-data types. The app remains responsible for declarations covering its own behavior and other dependencies.
 
 ## Browser
 
-Using Chooser with Cordova Browser requires Promises, typed arrays, `FileReader`, Blob URL creation and revocation, Web Crypto, and file-input [`cancel` event](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/cancel_event) support. Without the cancel event, dismissing the picker can leave the request pending.
+Use Cordova Browser with Promises, typed arrays, `File`/`Blob` APIs including `slice()` and `arrayBuffer()`, Blob URLs, Web Crypto, `AbortController`, `ReadableStream`, `TextDecoder`, and file-input `cancel` event support. Without the input cancellation event, dismissing a dialog may leave selection pending until the application aborts it.
 
-After `deviceready`, invoke the picker directly from a click or other user gesture, before awaiting a timer or network request. Only one request can be active at a time.
+After `deviceready`, call a picker directly from a click or another user gesture, before awaiting network work or a timer. The plugin's scoped helpers preserve this gesture requirement.
 
-Every browser result has a managed ID and a Blob URL, including data and metadata results. URI methods reference the selected `File` without making a native cache copy. The browser does not expose the original path, so URI results have no `sourceUri`; limits use `File.size`, and `localOnly` has no effect.
+`source: 'photos'` requests image/video types through a file input. The browser and OS choose the UI; a dedicated photo-library interface is not guaranteed. Browser results never expose an original filesystem path. `localOnly` has no effect.
 
-Release each ID after all consumers finish. URLs also expire on `pagehide`, including navigation into the back/forward cache. Do not rely on them as persistent references. The app's [Content Security Policy](FILE-HANDLING.md#content-security-policy) must allow `blob:` for the relevant reader or preview. See [reference lifetimes](FILE-HANDLING.md#reference-lifetimes).
+Managed selection retains the selected `File` and creates a Blob URL. Metadata and direct-data results retain no managed resource. Release managed files after every consumer finishes. Outstanding URLs are also revoked on `pagehide`, including navigation into the back/forward cache; saved references cannot restore them in a new page session.
+
+The application's [Content Security Policy](FILE-HANDLING.md#content-security-policy) must allow Blob URLs for any previews or readers that use them. Use the handle's reading methods for a consistent cross-platform API.

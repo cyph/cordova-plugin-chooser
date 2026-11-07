@@ -1,148 +1,182 @@
 # API reference
 
-Cordova exposes `chooser` as a global after `deviceready`. Open a browser picker directly from a user interaction. A request owns the picker until selection and any reading or copying finish; concurrent requests reject as busy. Reset or interruption can affect that ownership; see [platform lifecycle behavior](PLATFORMS.md#lifecycle).
+Cordova exposes `chooser` after `deviceready`. The methods below describe RC2; use the [migration guide](MIGRATION.md) for earlier call forms. Picker methods return Promises and accept options objects. Open browser pickers directly from a user interaction.
 
 ## Methods
 
-| Method | First argument | Promise result |
+| Method | Successful result |
+| --- | --- |
+| `getFile(options)` | `ManagedFile` |
+| `getFiles(options)` | Nonempty readonly array of `ManagedFile` |
+| `withFile(options, consume)` | Awaited result of `consume(file)`, after cleanup |
+| `withFiles(options, consume)` | Awaited result of `consume(files)`, after cleanup |
+| `getFileMetadata(options?)` | `FileMetadata` |
+| `getFilesMetadata(options?)` | Nonempty readonly array of `FileMetadata` |
+| `getFileData(options)` | `FileData` in the requested format |
+| `getFilesData(options)` | Nonempty readonly array of `FileData` in the requested format |
+| `restoreFile(reference, options?)` | Managed handle for a saved reference |
+| `releaseFile(id)` | `void` |
+| `releaseFiles(ids)` | `void` |
+
+Cancellation rejects with `CancellationError`, including cancellation through an `AbortSignal`. A successful picker never returns `undefined` or an empty array. A scoped consumer may return any value, including `undefined`.
+
+Only one picker request can be active at a time. A second picker can reject with `BUSY`; reading an existing managed file does not open another picker. Native results preserve the provider's returned order and remove repeated URI selections. The provider's order need not match the order in which items were tapped.
+
+## Selection options
+
+All pickers accept an optional `signal`. The default source is documents:
+
+```ts
+interface DocumentSourceOptions {
+  source?: 'documents';
+  accept?: string | readonly string[];
+  localOnly?: boolean;
+}
+interface PhotoSourceOptions {
+  source: 'photos';
+  mediaTypes?: readonly ('image' | 'video')[];
+}
+```
+
+For documents, `accept` takes MIME types such as `'application/pdf'`, wildcards such as `'image/*'`, a comma-separated list, or an array. Omit it or use `'*/*'` for unrestricted selection. Empty filters, filename extensions such as `'.pdf'`, and malformed types reject. Filters are normalized to lowercase and duplicates removed.
+
+MIME filters guide the picker; they do not validate content. Providers determine which items are selectable. `localOnly` defaults to `false` and is an Android provider hint; it has no effect on iOS or the browser.
+
+For photos, `mediaTypes` defaults to `['image', 'video']`. A supplied array must contain at least one of those values. Photo selection does not accept `accept` or `localOnly`; document selection does not accept `mediaTypes`. See [platform behavior](PLATFORMS.md) for photo-picker availability and fallbacks.
+
+Unknown options, callback arguments, and incompatible source options reject with `INVALID_ARGUMENT`.
+
+## Byte and count limits
+
+| Option | Required by | Meaning |
 | --- | --- | --- |
-| `getFile()` | Optional MIME filter | `FileData \| undefined` |
-| `getFileMetadata()` | Optional MIME filter | `FileMetadata \| undefined` |
-| `getFiles()` | Optional MIME filter | `FileData[] \| undefined` |
-| `getFilesMetadata()` | Optional MIME filter | `FileMetadata[] \| undefined` |
-| `getFileUri()` | Optional MIME filter or `CopyOptions` | `FileReference \| undefined` |
-| `getFilesUri()` | Optional MIME filter or `CopyOptions` | `FileReference[] \| undefined` |
-| `releaseFile(id)` | Managed ID | `void` |
+| `maxFileSize` | Managed and direct-data pickers, including scoped helpers | Maximum bytes per selected file |
+| `maxTotalSize` | Plural managed and direct-data pickers | Maximum bytes across the selection |
+| `maxFiles` | Optional on all plural pickers | Maximum selected file count |
+| `maxBytes` | Whole-file reading methods on a managed file | Maximum input bytes to materialize |
 
-Data methods return all bytes and a base64 data URI. They read the entire file into memory and have no configurable size limits. Metadata methods do not read the whole file in plugin code, although the OS or provider may import or download it. A later picker call is a new selection, not a continuation of the metadata request.
+Byte limits must be positive safe integers or explicit `null` for unlimited. Omitted and zero byte limits reject. `maxFiles` accepts a positive safe integer, or omitted/`null` for no plugin-imposed count limit. System pickers can impose their own limits.
 
-URI methods produce references without sending the file contents over the bridge. Android and iOS stream private cache copies; the browser creates Blob URLs for selected files. See [file handling](FILE-HANDLING.md) for consumption and cleanup.
-
-Cancellation resolves to `undefined`. A successful plural call returns a nonempty array, even for one file. Native platforms remove duplicate selected URIs and preserve the provider's returned order, which need not be the order of user selection.
-
-## Promises and callbacks
-
-Each picker returns a Promise and accepts optional success and failure callbacks. These examples are alternative forms:
+An empty file and a file exactly at a limit are accepted. Native byte limits count actual bytes; unreliable provider size metadata cannot bypass them. Limits reject an excessive selection as a whole, and the plugin cleans up partial results. They do not guarantee that oversized items will be hidden in the picker or bound a provider's download time. Whole-file read limits are separate from copy limits because memory and storage have different costs.
 
 ```js
-chooser.getFile();
-chooser.getFile('image/*');
-chooser.getFile(onSuccess, onError);
-chooser.getFile('image/*', onSuccess, onError);
-chooser.getFileUri({accept: 'image/*', maxFileSize: 10485760}, onSuccess, onError);
+const files = await chooser.getFiles({
+  accept: ['image/*', 'application/pdf'],
+  maxFiles: 4,
+  maxFileSize: 10 * 1024 * 1024,
+  maxTotalSize: 25 * 1024 * 1024
+});
 ```
 
-The callback-first form also applies to the other pickers. Success receives the same result as the Promise, including `undefined` on cancellation. Failure receives the rejection reason. The returned Promise remains available when callbacks are supplied; handle each result once.
+Release these managed files after use; [scoped helpers](#scoped-cleanup) handle that automatically when appropriate.
 
-```ts
-type Success<T> = (result: T | undefined) => void;
-type Failure = (error: unknown) => void;
-```
-
-Callback exceptions or rejected callback Promises are reported asynchronously and do not change the picker Promise's result. Handle errors inside asynchronous callbacks. `releaseFile(id, success?, failure?)` likewise returns a Promise and accepts callbacks, with no success value.
-
-## Result types
-
-These interfaces match the [bundled declarations](../index.d.ts):
-
-```ts
-interface FileMetadata {
-  name: string;
-  mediaType: string;
-  uri: string;
-  size: number | null;
-  id?: string;
-}
-interface FileData extends FileMetadata {
-  data: Uint8Array;
-  dataURI: string;
-}
-interface FileReference extends FileMetadata {
-  id: string;
-  size: number;
-  sourceUri?: string;
-}
-```
+## Results and ownership
 
 | Field | Meaning |
 | --- | --- |
-| `name` | Display name supplied or derived by the platform. Treat it as text, not a trusted path. |
-| `mediaType` | Reported or derived MIME type, with `application/octet-stream` as fallback. It does not validate contents. |
-| `uri` | Native source/import URI for data or metadata, private `file:` URI for a native copy, or Blob URL in a browser. |
-| `size` | Bytes; native metadata may report `null` when the size is unavailable. Native data and copies count bytes read, and browser results use `File.size`. `FileData` retains the nullable declared type. |
-| `id` | Opaque managed ID. Present on native URI results and all browser results. |
-| `data` | File bytes as a `Uint8Array`, including an empty array for an empty file. |
-| `dataURI` | `data:<mediaType>;base64,<contents>` for the complete file, with canonical base64 padding. |
-| `sourceUri` | Original provider URI for a native copy; absent in browsers. |
+| `name` | Display name, with a fallback when unavailable; never a trusted filesystem path |
+| `mediaType` | Reported or inferred MIME type; fallback `application/octet-stream` |
+| `size` | Bytes; metadata can report `null`, while managed and direct-data results report actual size |
+| `sourceUri` | Optional borrowed native source reference; no persistence or continuing-access guarantee |
+| `id` | Opaque ID on managed results only |
+| `uri` | Private native cache URI or browser Blob URL on managed results only |
 
-URIs do not promise persistent access. See [reference lifetimes](FILE-HANDLING.md#reference-lifetimes).
+`FileMetadata` contains `name`, `mediaType`, `size`, and optional `sourceUri`. Metadata selection does not read complete file contents or retain plugin-owned resources. The OS or provider can still download or import an item; Photos metadata may be incomplete.
 
-## MIME filters
+`ManagedFile` adds `id`, `uri`, and the reading and lifetime methods below. Native results are snapshots in app-private cache. Browser results retain the selected `File`. Releasing a managed file leaves the selected original untouched.
 
-Pass a MIME type, wildcard, or comma-separated list, for example `'application/pdf'`, `'image/*'`, or `'image/*,application/pdf'`. Use MIME types rather than filename extensions such as `'.pdf'`. Omission or an empty string means `'*/*'`. The bridge lowercases the string and removes whitespace. A non-string filter, including `null`, rejects.
+## Read a managed file
 
-Filters are hints: providers determine what is selectable, and unknown iOS types can broaden the picker. Validate the selected contents in the consuming application.
+| Method | Result and options |
+| --- | --- |
+| `file.bytes({maxBytes, signal?})` | `Uint8Array<ArrayBuffer>` |
+| `file.arrayBuffer({maxBytes, signal?})` | `ArrayBuffer` |
+| `file.blob({maxBytes, signal?})` | `Blob` with the file's MIME type |
+| `file.text({maxBytes, encoding?, fatal?, signal?})` | Decoded string |
+| `file.dataURI({maxBytes, signal?})` | Complete base64 data URI with canonical padding |
+| `file.getData({format, maxBytes, decoding?, signal?})` | Metadata and the requested data representation |
+| `file.read({offset?, length, signal?})` | Byte array for a range |
+| `file.stream({offset?, length?, signal?}?)` | `ReadableStream<Uint8Array<ArrayBuffer>>` |
+| `file.textStream({offset?, length?, encoding?, fatal?, signal?}?)` | `ReadableStream<string>` |
 
-## Copy options
+Offsets and lengths are byte counts, must be nonnegative safe integers, and cannot overflow safe integer arithmetic when added. Offset defaults to zero. `read` requires a length; streams default to the remaining file. Zero length is valid. Reads at EOF return fewer bytes than requested, including an empty array beyond EOF. A text range can split an encoded character; choose ranges accordingly.
 
-Only `getFileUri()` and `getFilesUri()` accept an options object:
+Whole-file and range methods return Promises. Stream factories return streams immediately and can throw during option validation; later failures reject stream reads. Streaming honors backpressure and handles text characters split across chunks. The plugin bounds bridge transfers internally; callers need not divide a larger range into bridge-sized pieces.
 
-```ts
-interface CopyOptions {
-  accept?: string;
-  maxFileSize?: number;
-  maxFiles?: number;
-  maxTotalSize?: number;
-  localOnly?: boolean;
-}
+Text defaults to UTF-8 and `fatal: true`. Malformed input rejects with `DECODE_FAILED`. Set `fatal: false` to replace malformed sequences. Encoding labels follow `TextDecoder`; unsupported labels reject. Canceling a stream reader stops that reader without releasing the managed file.
+
+## Direct data and formats
+
+`getFileData` and `getFilesData` read the selection and return complete data, with no retained managed resource. They require `format` and the selection byte budgets. `file.getData` uses the same formats on an existing managed file and requires `maxBytes` instead.
+
+| `format` | Additional result fields |
+| --- | --- |
+| `'bytes'` | `data: Uint8Array<ArrayBuffer>` |
+| `'text'` | `text: string` |
+| `'dataURI'` | `dataURI: string` |
+| `'bytesAndDataURI'` | Both `data` and `dataURI`, from one content read |
+
+Each result also includes `format`, metadata, and actual `size`. Text format accepts `decoding: {encoding?, fatal?}`. Other formats reject `decoding`. Direct-data results have no `id`, `uri`, or `release` method; bytes and strings already returned to JavaScript remain usable after the plugin closes its readers.
+
+```js
+const file = await chooser.getFileData({
+  accept: 'text/csv',
+  maxFileSize: 1024 * 1024,
+  format: 'text',
+  decoding: {encoding: 'utf-8', fatal: true}
+});
+console.log(file.name, file.text);
 ```
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `accept` | `'*/*'` | MIME filter hint |
-| `maxFileSize` | `0` | Maximum bytes per file |
-| `maxFiles` | `0` | Maximum number of files, after native URI deduplication |
-| `maxTotalSize` | `0` | Maximum bytes across the selection |
-| `localOnly` | `false` | Android: request local providers; ignored on iOS and browser |
+Direct data has no retained managed file after successful completion, but it can require temporary storage. For iOS Photos, Chooser copies the selected representation into app-private cache before the provider's temporary URL expires, then reads that staged copy into the requested format. This uses temporary storage proportional to the selected representations, adds a copy step, and can coexist with the provider's own temporary files. Chooser removes its staged copies automatically; callers do not release direct-data results. Cleanup failures are reported through `CleanupError`. The complete result still occupies memory; use managed streams for large inputs.
 
-Limits must be nonnegative JavaScript safe integers. Omitted or zero limits are unlimited, and a file or selection exactly at a limit is accepted. `accept` must be a string and `localOnly` a boolean. Unknown keys, invalid option values, non-string filters, and non-function callbacks reject with a `TypeError` before the picker opens. A supplied failure callback is notified of the rejection.
+## Scoped cleanup
 
-Native byte limits count streamed bytes, even when a provider's reported size is missing or wrong; browser limits use `File.size`. A selection over a limit rejects as a whole rather than returning a partial array. The plugin attempts to clean up resources created by a failed batch. See a [bounded selection example](FILE-HANDLING.md#consume-then-release).
+`withFile(options, consume)` and `withFiles(options, consume)` select managed files, await the consumer, release the resources, and return the consumer's result. The consumer can be synchronous or asynchronous. It must await every operation that uses the resources, including failure paths and parallel work.
 
-On Android, the legacy single-file data and metadata methods request local providers. New multiple and URI methods allow remote providers by default. `localOnly: true` requests local providers for URI methods; the picker or provider decides how to honor that request.
+A returned handle, URI, or stream is expired after scoped cleanup. Return parsed data, a completed upload's result, or another value independent of the managed resource. Use `getFile`/`getFiles` when the lifetime extends beyond one function.
 
-## Release a reference
+If cleanup succeeds, the helper preserves the consumer's result or throws its original exception unchanged. If cleanup fails, it throws `CleanupError` with:
 
 ```ts
-declare function releaseFile(id: string, success?: () => void, failure?: Failure): Promise<void>;
+type OperationOutcome<T> =
+  | {status: 'fulfilled'; value: T}
+  | {status: 'rejected'; reason: unknown};
+
+// error.outcome: OperationOutcome<T>
+// error.failures: readonly {id: string; error: ChooserError}[]
 ```
 
-Pass the returned opaque ID after all consumers finish. Release removes the plugin-owned native cache copy or revokes its browser Blob URL, leaving the selected source alone. An already-absent managed resource normally succeeds; malformed IDs and filesystem failures can reject. Native data and metadata results have no ID, while every browser result does. Releasing a browser data result does not erase bytes or strings already held by JavaScript. See [cleanup guidance](FILE-HANDLING.md#consume-then-release).
+A fulfilled outcome means the consumer completed successfully even though resource cleanup failed. Retry cleanup using the failed IDs; do not automatically repeat the consumer's upload or other side effect. The same error preserves a cancellation outcome if cleanup also fails. Direct-data methods likewise preserve a completed result when closing their temporary readers fails.
+
+## Release and restoration
+
+`file.release()`, `releaseFile(file.id)`, and `releaseFiles(ids)` share ownership by ID. Restored aliases do not own independent copies. Starting release prevents new reads through every alias, stops unfinished plugin streams with `FILE_RELEASED`, waits for started one-shot reads and native I/O, then releases the resource. Release does not wait for an unread stream to be consumed.
+
+External URI readers are outside this coordination: wait for them before releasing. Deletion failures are retryable, but old handles stay closed to new reads. Releasing an already absent resource succeeds. Batch release validates every ID before changing anything, deduplicates IDs, attempts all releases, and reports per-ID failures on `RELEASE_FAILED`.
+
+Save a serializable reference with `file.toJSON()` or `JSON.stringify(file)`. `restoreFile(reference, {signal}?)` validates it and asks the platform for authoritative resource status. It resolves native files by managed ID, not a supplied URI or filename. Restoration does not make cache storage durable. Native references can survive app restart only while the copy remains; browser references require the original page's live registry. Surviving native RC1 managed IDs remain releasable.
 
 ## Cancellation and errors
 
-Cancellation resolves successfully to `undefined`. Invalid arguments, presentation errors, read errors, and copy errors reject. Rejection reasons can be strings or `Error` objects; treat them as `unknown`. Prefixes such as `BUSY` or `FILE_TOO_LARGE` are diagnostic text, not stable typed error codes.
+Catch `chooser.CancellationError` for expected picker dismissal or a canceled operation. Its stable `code` is `CANCELLED`, and `reason` is `'picker'` or `'signal'`.
 
-There is no public cancellation, timeout, or progress API. A timeout in application code does not cancel a native picker. Browser cancellation requires file-input `cancel` event support; without it a dismissed dialog can leave the request pending. See [known limitations](KNOWN-ISSUES.md) and [troubleshooting](TROUBLESHOOTING.md).
+Pass an `AbortSignal` to the operation you want to cancel. An already aborted signal prevents selection; aborting during work requests cancellation and cleanup. Settlement may wait for provider I/O. A selection signal does not attach itself to every later read or to the scoped consumer: pass it to reads explicitly. Cleanup waits for the consumer to settle before releasing its files.
+
+`ChooserError.code` distinguishes invalid arguments, busy or unsupported operations, picker/access failures, size/count limits, read/decode/copy/cache failures, unavailable/released resources, release/cleanup failures, and memory exhaustion. See [the declarations](../index.d.ts) for the complete `ErrorCode` union. Messages are explanatory text, not an API to parse. Application exceptions from scoped consumers can be any value.
 
 ## TypeScript
 
-The package's `types` field points to `index.d.ts`. Include the declarations in your TypeScript project to use the Cordova-injected global:
+The bundled declarations require **TypeScript 5.7 or later** and DOM types for signals, blobs, and streams. Byte results use `Uint8Array<ArrayBuffer>`, so they can be passed to DOM APIs accepting ordinary ArrayBuffer-backed bytes.
+
+To include the Cordova global without emitting a runtime import:
 
 ```ts
 // chooser-global.d.ts
 import 'cordova-plugin-chooser';
 ```
 
-This declaration-file import emits no JavaScript. Ensure TypeScript can resolve the installed package. For global access from module source files, enable [`allowUmdGlobalAccess`](https://www.typescriptlang.org/tsconfig/allowUmdGlobalAccess.html):
-
-```json
-{
-  "compilerOptions": { "allowUmdGlobalAccess": true }
-}
-```
-
-Import types without a runtime import when needed:
+For global access from module source files, enable `allowUmdGlobalAccess` in `tsconfig.json`. Import types without a runtime import when needed:
 
 ```ts
 import type Chooser = require('cordova-plugin-chooser');
@@ -152,4 +186,4 @@ function describe(file: Chooser.FileMetadata): string {
 }
 ```
 
-Wait for `deviceready` before calling the global. Runtime imports require Cordova's `cordova/exec` to resolve.
+Ensure TypeScript can resolve the package, and wait for `deviceready` before calling the runtime global. A runtime package import still needs Cordova's `cordova/exec`; it does not create a standalone picker.
