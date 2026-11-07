@@ -14,9 +14,9 @@ export const simulatorPartitions = ["cordova-ios7", "cordova-ios8"].flatMap(
 );
 
 export function simulatorPartitionOptions(args) {
-	assert.equal(
-		args.length,
-		2,
+	assert(
+		args.length === 2 ||
+			(args.length === 3 && args[2] === "--investigation-only"),
 		"A simulator partition requires framework and device",
 	);
 	const [framework, device] = args;
@@ -26,7 +26,11 @@ export function simulatorPartitionOptions(args) {
 		),
 		"Unexpected simulator partition",
 	);
-	return { framework, device };
+	return {
+		framework,
+		device,
+		...(args.length === 3 ? { investigation: true } : {}),
+	};
 }
 
 export const simulatorCases = [
@@ -34,13 +38,19 @@ export const simulatorCases = [
 		"testAdaptiveDismissalAndStaleCallbacks",
 		"testResetAndDuplicateSelectionCannotSettleANewerRequest",
 		"testMovieWildcardIncludesMP4AndQuickTime",
+		"testSignalCancellationIdentityAndImmediateReopen",
+		"testDirectDataSessionsAreLazyBoundedAndCancelable",
+		"testManagedCopySurvivesResetAndReadsPositionally",
+		"testNativeOptionValidationAndMetadataCountLimit",
+		"testPhotoPickerConfigurationAndCancellation",
+		"testPhotoMetadataDoesNotLoadContentsAndProviderURLIsConsumedInHandler",
 	].map((name) => `ChooserPickerTests/${name}()`),
 	...formats.map((name) => `ChooserUITests/test${name}()`),
 	...[
 		"testCancelPromiseReopen",
-		"testCancelCallbackReopen",
+		"testCancelScopedReopen",
 		"testSwipePromiseReopen",
-		"testSwipeCallbackReopen",
+		"testSwipeScopedReopen",
 	].map((name) => `ChooserUITests/${name}()`),
 ];
 export const controlCases = [
@@ -50,6 +60,49 @@ export const controlCases = [
 	"UIKitControlTests/testPlainSheetSwipe()",
 	"UIKitControlTests/testSystemDelegateSwipe()",
 ];
+
+// These tuples remain executable with their original assertions in the manual
+// investigation workflow and the complete local suite.
+export function simulatorPartitionSelection(partition, suite = "required") {
+	simulatorPartitionOptions([partition.framework, partition.device]);
+	assert(
+		["required", "investigation", "full"].includes(suite),
+		"Unexpected simulator suite",
+	);
+	const affected = new Set([
+		"UIKitControlTests/testCSV()",
+		...(partition.device === "iphone" ? ["UIKitControlTests/testPDF()"] : []),
+		...(partition.framework === "cordova-ios8" && partition.device === "ipad"
+			? ["ChooserUITests/testCSV()"]
+			: []),
+	]);
+	const select = (cases) =>
+		cases.filter(
+			(id) =>
+				suite === "full" || (suite === "investigation") === affected.has(id),
+		);
+	return { control: select(controlCases), chooser: select(simulatorCases) };
+}
+
+export function simulatorManifest(suite, partitions = simulatorPartitions) {
+	assert(partitions.length > 0, "Empty simulator manifest");
+	const identities = partitions.map(
+		({ framework, device }) => `${framework}:${device}`,
+	);
+	assert.equal(
+		new Set(identities).size,
+		identities.length,
+		"Duplicate simulator partition",
+	);
+	return {
+		suite,
+		partitions: partitions.map(({ framework, device }) => ({
+			framework,
+			device,
+			...simulatorPartitionSelection({ framework, device }, suite),
+		})),
+	};
+}
 
 const providerControlCases = [
 	"ImportOriginalJSON",
@@ -127,6 +180,15 @@ export function simulatorSelection(diagnostic, scope = "all") {
 
 export function simulatorTestArguments(required, scope) {
 	assert(
+		Array.isArray(required) && required.length > 0,
+		"Empty simulator selection",
+	);
+	assert.equal(
+		new Set(required).size,
+		required.length,
+		"Duplicate simulator selection",
+	);
+	assert(
 		["all", "dismissal", "provider"].includes(scope),
 		"Unexpected simulator scope",
 	);
@@ -173,6 +235,15 @@ export function checkSimulatorResults(
 	tests,
 	required = simulatorCases,
 ) {
+	assert(
+		Array.isArray(required) && required.length > 0,
+		"Empty simulator selection",
+	);
+	assert.equal(
+		new Set(required).size,
+		required.length,
+		"Duplicate simulator selection",
+	);
 	const records = simulatorCaseRecords(tests);
 	for (const record of records)
 		assert.equal(record.result, "Passed", `Unsuccessful case: ${record.id}`);

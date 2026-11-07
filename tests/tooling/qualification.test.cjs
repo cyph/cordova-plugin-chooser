@@ -19,7 +19,21 @@ test("captured xcresult trees retain exact case identities and failure outcomes"
 		controlCases,
 	} = await import("../../scripts/simulator-results.mjs");
 	for (const [label, required] of [
-		["chooser", simulatorCases],
+		// Captured RC1 evidence retains its historical callback case names.
+		[
+			"chooser",
+			simulatorCases
+				.filter(
+					(id) =>
+						!id.startsWith("ChooserPickerTests/") ||
+						[
+							"ChooserPickerTests/testAdaptiveDismissalAndStaleCallbacks()",
+							"ChooserPickerTests/testResetAndDuplicateSelectionCannotSettleANewerRequest()",
+							"ChooserPickerTests/testMovieWildcardIncludesMP4AndQuickTime()",
+						].includes(id),
+				)
+				.map((id) => id.replace("ScopedReopen", "CallbackReopen")),
+		],
 		// This captured bundle predates the additional gesture controls.
 		[
 			"control",
@@ -123,9 +137,9 @@ test("focused simulator selection cannot narrow release qualification", async ()
 	]);
 	assert.deepEqual(focus.chooser, [
 		"ChooserUITests/testCancelPromiseReopen()",
-		"ChooserUITests/testCancelCallbackReopen()",
+		"ChooserUITests/testCancelScopedReopen()",
 		"ChooserUITests/testSwipePromiseReopen()",
-		"ChooserUITests/testSwipeCallbackReopen()",
+		"ChooserUITests/testSwipeScopedReopen()",
 	]);
 	assert.equal(
 		simulatorTestArguments(controlCases, "all").length,
@@ -267,6 +281,8 @@ test("simulator evidence requires exact passing case identities and consistent t
 test("qualification requires every successful job, complete reports and the same package", async (t) => {
 	const { aggregateReports, requiredChecks, validateReport } =
 		await import("../../scripts/qualification.mjs");
+	const { simulatorManifest } =
+		await import("../../scripts/simulator-results.mjs");
 	const directory = mkdtempSync(join(tmpdir(), "chooser-qualification-"));
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
 	const sha = "a".repeat(40);
@@ -289,6 +305,9 @@ test("qualification requires every successful job, complete reports and the same
 		checks,
 		package: { version, integrity: "sha512-YWJjZA==" },
 		commands: [{ status: 0 }],
+		...(lane === "ios-simulator"
+			? { simulator: simulatorManifest("required") }
+			: {}),
 	}));
 	const save = (report) => {
 		mkdirSync(join(directory, report.lane), { recursive: true });

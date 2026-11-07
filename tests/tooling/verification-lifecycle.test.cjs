@@ -131,6 +131,42 @@ test("diagnostic failures preserve the original simulator failure", async () => 
 	);
 });
 
+test("preparation failures without an xcresult retain their cause without extraction errors", async () => {
+	const { runSimulatorSuite } =
+		await import("../../scripts/simulator-evidence.mjs");
+	for (const failedCommand of [true, false]) {
+		const primary = new Error("test runner could not launch");
+		const recorded = [];
+		assert.throws(
+			() =>
+				runSimulatorSuite({
+					execute() {
+						if (failedCommand) throw primary;
+					},
+					resultsAvailable() {
+						recorded.push("availability");
+						return false;
+					},
+					missingResults() {
+						recorded.push("not-started");
+					},
+					extract() {
+						assert.fail("There is no result bundle to extract");
+					},
+					save() {
+						assert.fail("There is no result tree to save");
+					},
+					diagnostics() {
+						recorded.push("diagnostics");
+					},
+					required: ["Suite/test()"],
+				}),
+			failedCommand ? (error) => error === primary : /tests did not start/,
+		);
+		assert.deepEqual(recorded, ["availability", "not-started", "diagnostics"]);
+	}
+});
+
 test("instrumentation evidence copying preserves a simultaneous Gradle failure", async (t) => {
 	const { runInstrumentation } = await import("../../scripts/capacitor.mjs");
 	const directory = mkdtempSync(join(tmpdir(), "chooser-evidence-"));

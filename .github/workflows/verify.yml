@@ -3,7 +3,7 @@ run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0}, {1}, {2})', 
 on:
   pull_request:
   push:
-    branches: [master, "candidate/**"]
+    branches: [master]
   workflow_dispatch:
     inputs:
       ios_diagnostic:
@@ -225,9 +225,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Prepare frozen dependencies
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
       - name: Exercise iOS simulator
         run: |
-          nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
           set --
           if [ '${{ inputs.ios_diagnostic }}' = true ]; then
             if [ '${{ inputs.ios_diagnostic_profile }}' = modern ]; then
@@ -251,8 +252,7 @@ jobs:
           git diff --exit-code
           git diff --cached --exit-code
       - name: Retain compact simulator diagnostics
-        if: ${{ always() }}
-        continue-on-error: true
+        if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-summary' || format('diagnostics-ios-simulator-{0}-{1}-summary', matrix.framework, matrix.device) }}
@@ -262,14 +262,13 @@ jobs:
             .verification/reports/**/*-tests.json
             .verification/reports/**/*-sources.json
             .verification/reports/**/*-events.log
+            .verification/reports/**/*-not-started.json
           include-hidden-files: true
           retention-days: 14
           overwrite: true
           if-no-files-found: error
       - name: Retain simulator bundles
-        id: bundles
-        if: ${{ always() }}
-        continue-on-error: true
+        if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || format('qualification-ios-simulator-{0}-{1}', matrix.framework, matrix.device) }}
@@ -278,21 +277,6 @@ jobs:
           retention-days: 14
           overwrite: true
           if-no-files-found: error
-      - name: Retry simulator bundle upload
-        id: bundles_retry
-        if: ${{ always() && steps.bundles.outcome == 'failure' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || format('qualification-ios-simulator-{0}-{1}', matrix.framework, matrix.device) }}
-          path: .verification/reports/
-          include-hidden-files: true
-          retention-days: 14
-          overwrite: true
-          if-no-files-found: error
-      - name: Require retained simulator bundles
-        if: ${{ always() && steps.bundles.outcome != 'success' && steps.bundles_retry.outcome != 'success' }}
-        run: exit 1
 
   qualification:
     if: ${{ always() && !github.event.repository.private && !inputs.ios_diagnostic }}

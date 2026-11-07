@@ -5,6 +5,8 @@ import {
 	simulatorDocuments,
 	simulatorPartitions,
 	simulatorPartitionOptions,
+	simulatorPartitionSelection,
+	simulatorManifest,
 } from "./simulator-results.mjs";
 
 const version = JSON.parse(
@@ -61,15 +63,28 @@ requiredChecks["ios-modern"] = [
 	"thread-sanitizer",
 ];
 
-export function simulatorPartitionChecks(partition) {
+export function simulatorPartitionChecks(
+	partition,
+	suite = partition.investigation ? "investigation" : "required",
+) {
 	simulatorPartitionOptions([partition.framework, partition.device]);
 	const prefix = `${partition.framework}:${partition.device}`;
+	const selected = simulatorPartitionSelection(partition, suite);
 	return requiredChecks["ios-simulator"].filter(
 		(check) =>
 			check === "package" ||
 			check.endsWith(":compile") ||
-			check === prefix ||
-			check.startsWith(`${prefix}:`),
+			(check === prefix && selected.chooser.length > 0) ||
+			(check.startsWith(`${prefix}:`) &&
+				(check !== `${prefix}:native-control` || selected.control.length > 0)),
+	);
+}
+
+function validateSimulatorManifest(report, partitions = simulatorPartitions) {
+	assert.deepEqual(
+		report.simulator,
+		simulatorManifest("required", partitions),
+		"Simulator manifest must contain exactly the required cases",
 	);
 }
 
@@ -84,6 +99,10 @@ function validateReportBase(report, sha) {
 	assert(
 		!Object.hasOwn(report, "diagnostic"),
 		"Diagnostic evidence cannot satisfy release qualification",
+	);
+	assert(
+		!Object.hasOwn(report, "investigation"),
+		"Investigation evidence cannot satisfy release qualification",
 	);
 	assert.match(
 		report.package?.integrity ?? "",
@@ -107,6 +126,14 @@ export function validateReport(report, sha) {
 		!Object.hasOwn(report, "partition"),
 		"A partial simulator report cannot qualify alone",
 	);
+	if (report.lane === "ios-simulator") {
+		validateSimulatorManifest(report);
+		assert.deepEqual(
+			[...report.checks].sort(),
+			[...requiredChecks[report.lane]].sort(),
+			"Missing ios-simulator check or unexpected simulator coverage",
+		);
+	}
 	for (const check of requiredChecks[report.lane])
 		assert(
 			report.checks.includes(check),
@@ -136,6 +163,7 @@ function validateSimulatorPartitions(parts, sha) {
 			part.partition.framework,
 			part.partition.device,
 		]);
+		validateSimulatorManifest(part, [identity]);
 		identities.push(`${identity.framework}:${identity.device}`);
 		const expected = simulatorPartitionChecks(identity);
 		assert.equal(

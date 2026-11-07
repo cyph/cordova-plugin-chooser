@@ -16,6 +16,9 @@ import {
 	simulatorTestArguments,
 	simulatorCaseRecords,
 	simulatorDocuments,
+	simulatorPartitions,
+	simulatorPartitionSelection,
+	simulatorManifest,
 } from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
@@ -42,6 +45,35 @@ function sourceFingerprint(directory, names = sourceNames) {
 	});
 }
 
+export function prepareSimulatorApp(directory) {
+	const path = join(directory, "config.xml");
+	let config = readFileSync(path, "utf8");
+	let found = false;
+	config = config.replace(/<preference\b[^>]*\/>/g, (preference) => {
+		if (!/\bname\s*=\s*(["'])deployment-target\1/.test(preference))
+			return preference;
+		found = true;
+		const value = preference.match(/\bvalue\s*=\s*(["'])([^"']*)\1/);
+		assert(
+			value && /^\d+(?:\.\d+){0,2}$/.test(value[2]),
+			"Invalid iOS deployment target",
+		);
+		if (Number(value[2].split(".")[0]) >= 15) return preference;
+		return preference.replace(value[0], 'value="15.0"');
+	});
+	if (!found) {
+		assert(
+			config.includes("</widget>"),
+			"Missing Cordova widget configuration",
+		);
+		config = config.replace(
+			"</widget>",
+			'<preference name="deployment-target" value="15.0" />\n</widget>',
+		);
+	}
+	writeFileSync(path, config);
+}
+
 export function verifyIosSimulator({
 	root,
 	output,
@@ -61,14 +93,24 @@ export function verifyIosSimulator({
 		!partition || (!diagnostic && !modern && diagnosticScope === "all"),
 		"Release partitions require the complete baseline suite",
 	);
-	if (partition) report.partition = partition;
-	const selected = simulatorSelection(diagnostic, diagnosticScope);
+	const suiteKind = partition?.investigation
+		? "investigation"
+		: partition
+			? "required"
+			: "full";
+	const partitions = partition
+		? [{ framework: partition.framework, device: partition.device }]
+		: simulatorPartitions;
+	if (partition) report.partition = partitions[0];
+	if (!diagnostic) report.simulator = simulatorManifest(suiteKind, partitions);
+	if (suiteKind === "investigation") report.investigation = true;
+	const diagnosticSelection = simulatorSelection(diagnostic, diagnosticScope);
 	if (diagnostic)
 		report.diagnostic = {
 			device: diagnosticDevice,
 			scope: diagnosticScope,
 			sourceDocuments: ["all", "provider"].includes(diagnosticScope),
-			required: selected,
+			required: diagnosticSelection,
 		};
 	assert.equal(
 		process.platform,
@@ -146,7 +188,7 @@ export function verifyIosSimulator({
 	const failures = [];
 	const fixtures = [];
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
-		const generated = app("ios", alias, packed, env);
+		const generated = app("ios", alias, packed, env, prepareSimulatorApp);
 		const directory = join(output, "simulator-tests", alias);
 		rmSync(directory, { recursive: true, force: true });
 		mkdirSync(directory, { recursive: true });
@@ -426,6 +468,12 @@ export function verifyIosSimulator({
 		]) {
 			if (diagnostic && kind !== diagnosticDevice) continue;
 			if (partition && kind !== partition.device) continue;
+			const selected = diagnostic
+				? diagnosticSelection
+				: simulatorPartitionSelection(
+						{ framework: alias, device: kind },
+						suiteKind,
+					);
 			const type = devices.find((device) => device.name === deviceName);
 			assert(type, `Missing simulator device type: ${deviceName}`);
 			const udid = simctl([
@@ -447,6 +495,12 @@ export function verifyIosSimulator({
 				let reference;
 				const suite = (bundle, scheme, required, scope = diagnosticScope) =>
 					runSimulatorSuite({
+						resultsAvailable: () => existsSync(bundle),
+						missingResults: () =>
+							writeFileSync(
+								bundle.replace(/\.xcresult$/, "-not-started.json"),
+								JSON.stringify({ status: "not-started", required }, null, 2),
+							),
 						execute: () =>
 							run(
 								"/usr/bin/xcodebuild",
@@ -559,6 +613,7 @@ export function verifyIosSimulator({
 										]),
 									),
 								() => {
+									if (!existsSync(bundle)) return;
 									const destination = bundle.replace(
 										/\.xcresult$/,
 										"-attachments",
@@ -733,7 +788,11 @@ export function verifyIosSimulator({
 					} finally {
 						recordIdentities("after-control");
 					}
-					if (selected.control.includes("UIKitControlTests/testSwipe()")) {
+					if (
+						selected.control.includes("UIKitControlTests/testSwipe()") &&
+						existsSync(controlResult.replace(/\.xcresult$/, "-tests.json")) &&
+						existsSync(controlResult.replace(/\.xcresult$/, "-events.log"))
+					) {
 						const command = report.commands.find(
 							(item) =>
 								item.command === "/usr/bin/xcodebuild" &&
@@ -759,7 +818,8 @@ export function verifyIosSimulator({
 							...reference,
 						});
 					}
-					suite(result, "Chooser", selected.chooser);
+					if (selected.chooser.length)
+						suite(result, "Chooser", selected.chooser);
 				}, [
 					() => recordIdentities("after-suites"),
 					() => {
@@ -777,7 +837,7 @@ export function verifyIosSimulator({
 					},
 				]);
 
-				checked(`${alias}:${kind}`);
+				if (selected.chooser.length) checked(`${alias}:${kind}`);
 			} catch (error) {
 				failures.push(
 					new Error(`${alias}/${kind} qualification failed`, { cause: error }),

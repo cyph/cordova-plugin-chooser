@@ -36,6 +36,9 @@ async function fixture(t) {
 		checks: [...checks],
 		package: { version, integrity: "sha512-YWJjZA==" },
 		commands: [{ status: 0 }],
+		...(lane === "ios-simulator"
+			? { simulator: simulator.simulatorManifest("required") }
+			: {}),
 	});
 	const other = Object.entries(requiredChecks)
 		.filter(([lane]) => lane !== "ios-simulator")
@@ -43,6 +46,7 @@ async function fixture(t) {
 	const parts = simulator.simulatorPartitions.map((partition, index) => ({
 		...report("ios-simulator", simulatorPartitionChecks(partition)),
 		partition: { ...partition },
+		simulator: simulator.simulatorManifest("required", [partition]),
 		toolchain: {
 			apple: { ...apple },
 			simulators: [
@@ -93,12 +97,139 @@ test("partitions preserve all original release cases and reject narrowing argume
 		assert.throws(() => f.simulatorPartitionOptions(args));
 	const release = f.simulatorSelection(false);
 	assert.equal(release.control.length, 10);
-	assert.equal(release.chooser.length, 13);
+	assert.equal(release.chooser.length, 19);
 	assert.equal(
 		(release.control.length + release.chooser.length + 7) *
 			f.simulatorPartitions.length,
-		120,
+		144,
 	);
+});
+
+test("required and investigation suites partition exactly seven affected tuples", async (t) => {
+	const f = await fixture(t);
+	const affected = [];
+	let requiredCount = 0;
+	let fullCount = 0;
+	for (const partition of f.simulatorPartitions) {
+		const full = f.simulatorPartitionSelection(partition, "full");
+		const required = f.simulatorPartitionSelection(partition, "required");
+		const investigation = f.simulatorPartitionSelection(
+			partition,
+			"investigation",
+		);
+		for (const group of ["control", "chooser"]) {
+			assert.deepEqual(
+				[...required[group], ...investigation[group]].sort(),
+				[...full[group]].sort(),
+			);
+			assert(!required[group].some((id) => investigation[group].includes(id)));
+			requiredCount += required[group].length;
+			fullCount += full[group].length;
+			affected.push(
+				...investigation[group].map(
+					(id) => `${partition.framework}:${partition.device}:${id}`,
+				),
+			);
+		}
+		const options = f.simulatorPartitionOptions([
+			partition.framework,
+			partition.device,
+			"--investigation-only",
+		]);
+		assert.deepEqual(options, { ...partition, investigation: true });
+		const checks = f.simulatorPartitionChecks(options);
+		assert.equal(
+			checks.includes(`${partition.framework}:${partition.device}`),
+			investigation.chooser.length > 0,
+		);
+		assert.equal(checks.filter((check) => check.includes(":seed-")).length, 6);
+		assert(
+			checks.includes(
+				`${partition.framework}:${partition.device}:provider-setup`,
+			),
+		);
+	}
+	assert.deepEqual(
+		affected.sort(),
+		[
+			"cordova-ios7:iphone:UIKitControlTests/testCSV()",
+			"cordova-ios7:iphone:UIKitControlTests/testPDF()",
+			"cordova-ios7:ipad:UIKitControlTests/testCSV()",
+			"cordova-ios8:iphone:UIKitControlTests/testCSV()",
+			"cordova-ios8:iphone:UIKitControlTests/testPDF()",
+			"cordova-ios8:ipad:UIKitControlTests/testCSV()",
+			"cordova-ios8:ipad:ChooserUITests/testCSV()",
+		].sort(),
+	);
+	assert.equal(requiredCount + 28, 137);
+	assert.equal(fullCount + 28, 144);
+	assert.throws(() => f.simulatorManifest("required", []), /Empty/);
+	assert.throws(
+		() =>
+			f.simulatorManifest("required", [
+				f.simulatorPartitions[0],
+				f.simulatorPartitions[0],
+			]),
+		/Duplicate/,
+	);
+	assert.throws(
+		() => f.simulatorManifest("other"),
+		/Unexpected simulator suite/,
+	);
+	for (const ids of [[], ["Suite/test()", "Suite/test()"]]) {
+		assert.throws(() => f.simulatorTestArguments(ids, "all"));
+		assert.throws(() => f.checkSimulatorResults({}, {}, ids));
+	}
+});
+
+test("qualification rejects full, investigation, missing and altered case manifests", async (t) => {
+	const f = await fixture(t);
+	for (const mutate of [
+		(part) => {
+			delete part.simulator;
+		},
+		(part) => {
+			part.investigation = true;
+		},
+		(part) => {
+			part.simulator = f.simulatorManifest("investigation", [part.partition]);
+		},
+		(part) => {
+			part.simulator = f.simulatorManifest("full", [part.partition]);
+		},
+		(part) => {
+			part.simulator.partitions[0].chooser.pop();
+		},
+		(part) => {
+			part.simulator.partitions[0].control.push("UIKitControlTests/testCSV()");
+		},
+		(part) => {
+			part.simulator.partitions[0].chooser.push(
+				part.simulator.partitions[0].chooser[0],
+			);
+		},
+		(part) => {
+			part.simulator.partitions[0].device = "ipad";
+		},
+		(part) => {
+			part.simulator.partitions.push(part.simulator.partitions[0]);
+		},
+	]) {
+		const bad = structuredClone(f.parts);
+		mutate(bad[0]);
+		assert.throws(() => f.run([...f.other, ...bad]), /manifest|Investigation/);
+	}
+	const complete = f.report("ios-simulator", f.requiredChecks["ios-simulator"]);
+	for (const suite of ["full", "investigation"]) {
+		assert.throws(
+			() =>
+				f.validateReport(
+					{ ...complete, simulator: f.simulatorManifest(suite) },
+					sha,
+				),
+			/manifest/,
+		);
+	}
 });
 
 test("all four isolated partitions qualify together and cannot qualify alone", async (t) => {

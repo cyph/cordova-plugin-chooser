@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { retryDependencyPreparation } from "./dependency-retry.mjs";
 import { spawnSync } from "node:child_process";
 import {
 	accessSync,
@@ -47,7 +48,7 @@ const reportDirectory = join(
 	output,
 	"reports",
 	partition
-		? `${lane}-${partition.framework}-${partition.device}`
+		? `${lane}-${partition.framework}-${partition.device}${partition.investigation ? "-investigation" : ""}`
 		: lane || "unknown",
 );
 const report = {
@@ -108,7 +109,10 @@ const run = (
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
 		if (capture) process.stderr.write(`${result.stdout}${result.stderr}`);
-		throw new Error(`${command} failed (${result.status ?? result.signal})`);
+		throw Object.assign(
+			new Error(`${command} failed (${result.status ?? result.signal})`),
+			{ commandOutput: `${result.stdout || ""}${result.stderr || ""}` },
+		);
 	}
 	return result.stdout?.trim();
 };
@@ -349,20 +353,31 @@ function androidArguments(fixture, buildTools, task) {
 function androidDependencies() {
 	androidEnvironment();
 	for (const [fixture, , buildTools] of androidFixtures)
-		run(
-			"gradle",
-			androidArguments(fixture, buildTools, "prepareRobolectricSdks"),
+		retryDependencyPreparation((timeout) =>
+			run(
+				"gradle",
+				[
+					...androidArguments(fixture, buildTools, "prepareRobolectricSdks"),
+					"resolveVerificationDependencies",
+				],
+				root,
+				false,
+				{},
+				{ timeout },
+			),
 		);
 }
 
 function android() {
 	androidEnvironment(true);
+	androidDependencies();
 	const archive = pack();
 	for (const [fixture, alias, buildTools] of androidFixtures) {
 		// Continue independent checks so one failure still yields the other
 		// SDK and lint diagnostics in the same qualification attempt.
 		run("gradle", [
 			...androidArguments(fixture, buildTools, "testApi24"),
+			"--offline",
 			"testApi28",
 			"testApi30",
 			"testApi33",
@@ -474,6 +489,7 @@ function ios(modern = false) {
 		"ChooserWork",
 		"ChooserRequest",
 		"ChooserFiles",
+		"ChooserResources",
 		"ChooserTransaction",
 	].map((name) => `src/ios/${name}.swift`);
 	run(
