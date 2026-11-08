@@ -450,7 +450,7 @@ class ProbedInput: InputStream {
 	override var streamError: Error? { backing.streamError }
 	override var hasBytesAvailable: Bool { backing.hasBytesAvailable }
 	override func open() { probe.opened(); backing.open() }
-	override func close() { probe.closed(); backing.close() }
+	override func close() { backing.close(); probe.closed() }
 	override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
 		return backing.read(buffer, maxLength: len)
 	}
@@ -476,13 +476,29 @@ for bytes in [Data(), Data([0, 128, 255])] {
 do {
 	let probe = StreamProbe()
 	let missing = sandbox.appendingPathComponent("missing-probed-input")
-	let input = ProbedInput(wrapping: InputStream(url: missing)!, probe: probe)
+	let backing = InputStream(url: missing)!
+	let input = ProbedInput(wrapping: backing, probe: probe)
 	input.open()
 	var buffer = [UInt8](repeating: 0, count: 1)
 	try require(input.read(&buffer, maxLength: 1) == -1, "adapter hid a concrete read failure")
 	try require(input.streamStatus == .error && input.streamError != nil, "adapter lost error status")
 	input.close()
-	try require(input.streamStatus == .closed && probe.counts.0 == 1 && probe.counts.1 == 1, "failed adapter leaked its stream")
+	// Foundation can retain .error after close; lifecycle probes verify closure
+	// independently while the adapter must preserve the concrete stream's status.
+	try require(probe.counts.0 == 1 && probe.counts.1 == 1, "failed adapter did not complete exactly one open/close")
+	try require(input.streamStatus == backing.streamStatus, "adapter changed the closed failed stream's status")
+}
+
+// A failed concrete input still takes the copy routine's two-stream cleanup path.
+do {
+	let probe = StreamProbe()
+	let input = ProbedInput(wrapping: InputStream(url: sandbox.appendingPathComponent("missing-copy-input"))!, probe: probe)
+	let output = OutputStream.toMemory()
+	try rejects("failed probed input copied successfully") {
+		_ = try ChooserFiles.copy(input: input, output: output, limit: 0, canceled: { false })
+	}
+	try require(probe.counts.0 == 1 && probe.counts.1 == 1, "copy failed to close its failed input exactly once")
+	try require(output.streamStatus == .closed, "failed input left the copy output open")
 }
 
 // Sources are lazy, sequential, share actual-byte budgets, and cannot be restored.
@@ -609,21 +625,31 @@ do {
 	try require(!exists(imported) && probe.counts.1 == 1, "reset source was not cleaned exactly once")
 }
 
-// Failed source cleanup is retryable; reset invalidates sources without removing managed copies.
+// Failed reads retain their stream until release; cleanup retries never close it twice.
 do {
 	let cache = try newCache()
 	let url = cache.appendingPathComponent("provider.bin")
 	try Data([1]).write(to: url)
+	let probe = StreamProbe()
 	let store = ChooserResources(cache: { cache })
 	var attempts = 0
 	let id = try store.register(ChooserSource(url: url, budget: ChooserBudget(fileLimit: 0, totalLimit: 0), cleanup: {
 		attempts += 1
 		if attempts == 1 { throw FixtureError.failed("injected cleanup failure") }
+	}, makeStream: { _ in
+		ProbedInput(wrapping: InputStream(url: cache.appendingPathComponent("missing-source-input"))!, probe: probe)
 	}))
+	try rejects("source open failure accepted") { _ = try store.read(id: id, offset: 0, length: 1) }
+	try rejects("failed source retried its stream") { _ = try store.read(id: id, offset: 0, length: 1) }
+	try require(probe.counts.0 == 1 && probe.counts.1 == 0, "failed source reopened or closed before release")
 	try rejects("cleanup failure ignored") { try store.release(id: id) }
+	try require(probe.counts.1 == 1, "failed source cleanup did not close its stream")
 	try rejects("failed release reopened resource") { _ = try store.read(id: id, offset: 0, length: 1) }
 	try store.release(id: id)
+	try store.release(id: id)
 	try require(attempts == 2, "cleanup not retried")
+	try require(probe.counts.0 == 1 && probe.counts.1 == 1, "cleanup retry reopened or closed the stream twice")
+	// Reset invalidates sources without removing provider originals or managed copies.
 	let owned = try ChooserFiles.create(in: cache)
 	_ = try store.stat(id: owned.lastPathComponent)
 	let transient = try store.register(ChooserSource(url: url, budget: ChooserBudget(fileLimit: 0, totalLimit: 0)))
