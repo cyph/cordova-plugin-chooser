@@ -144,7 +144,7 @@ test("release comparison is manual, bounded and cannot supply qualification arti
 	assert.match(triggers, /workflow_dispatch:/);
 	assert.doesNotMatch(triggers, /push:|pull_request:|schedule:|workflow_run:/);
 	const matrix = workflow.match(
-		/fromJSON\(inputs\.experiment == 'metadata-regression' && '([^']+)' \|\| inputs\.experiment == 'metadata-mode' && '([^']+)' \|\| '([^']+)'\)/,
+		/fromJSON\(\(inputs\.experiment == 'metadata-regression' \|\| inputs\.experiment == 'metadata-restoration'\) && '([^']+)' \|\| inputs\.experiment == 'metadata-mode' && '([^']+)' \|\| '([^']+)'\)/,
 	);
 	assert(matrix, "Expected explicit bounded experiment matrices");
 	assert.deepEqual(JSON.parse(matrix[1]), [
@@ -162,7 +162,7 @@ test("release comparison is manual, bounded and cannot supply qualification arti
 	);
 	assert.match(
 		triggers,
-		/options: \[releases, metadata-mode, metadata-regression\]/,
+		/options:\s*\[\s*releases,\s*metadata-mode,\s*metadata-regression,\s*metadata-restoration,?\s*\]/,
 	);
 	assert.match(
 		workflow,

@@ -90,6 +90,13 @@ just chainman run compare-ios-releases cordova-ios8 ipad metadata-regression
 just chainman run compare-ios-releases cordova-ios7 ipad metadata-regression
 ```
 
+The `metadata-restoration` experiment targets the same PNG on Cordova iOS 8/iPad and PDF on Cordova iOS 7/iPad. It compares the same RC2 source in open-in-place and metadata-only import modes. The packages differ only in the picker’s `asCopy` argument; reports record exact package identities and the patch. Six fresh simulators and provider stores run in UIKit, open, import, import, open, UIKit order, with the final UIKit import/open controls reversed. The same frozen toolchain, deadlines, failure handling, and evidence rules apply; manual comparisons cannot qualify required CI. Run either partition locally with:
+
+```sh
+just chainman run compare-ios-releases cordova-ios8 ipad metadata-restoration
+just chainman run compare-ios-releases cordova-ios7 ipad metadata-restoration
+```
+
 ## Android dependency ownership
 
 AAPT2 comes from the pinned Nix Android SDK. Verification supplies its path through `android.aapt2FromMavenOverride` to fixture Gradle commands and disposable Cordova builds. The Gradle distribution is also pinned by Nix.

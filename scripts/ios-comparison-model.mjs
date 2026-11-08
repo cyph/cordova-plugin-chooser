@@ -72,18 +72,22 @@ export function createComparisonPlan({
 		experiment === undefined ||
 			experiment === "releases" ||
 			experiment === "metadata-mode" ||
-			experiment === "metadata-regression",
+			experiment === "metadata-regression" ||
+			experiment === "metadata-restoration",
 		"Unexpected comparison experiment",
 	);
-	const metadataMode = experiment === "metadata-mode";
-	const metadataRegression = experiment === "metadata-regression";
+	const metadataVariants =
+		experiment === "metadata-mode" || experiment === "metadata-restoration";
+	const metadataTargets =
+		experiment === "metadata-regression" ||
+		experiment === "metadata-restoration";
 	assert(
-		!metadataRegression || device === "ipad",
-		"Unexpected metadata-regression partition",
+		!metadataTargets || device === "ipad",
+		`Unexpected ${experiment} partition`,
 	);
-	const focusedMetadata = metadataMode || metadataRegression;
+	const focusedMetadata = metadataVariants || metadataTargets;
 	const targetFormat =
-		metadataRegression && framework === "cordova-ios7" ? "PDF" : "Image";
+		metadataTargets && framework === "cordova-ios7" ? "PDF" : "Image";
 	const documents = comparisonDocuments
 		.filter(({ format }) => !focusedMetadata || format === targetFormat)
 		.map((document) => ({ ...document }));
@@ -93,17 +97,17 @@ export function createComparisonPlan({
 				`UIKitControlTests/testSeed${targetFormat}()`,
 			]
 		: comparisonSetupCases;
-	const releases = metadataMode
+	const releases = metadataVariants
 		? ["uikit", "rc2-open", "rc2-import", "rc2-import", "rc2-open", "uikit"]
 		: ["uikit", "rc1", "rc2", "rc2", "rc1", "uikit"];
 	output = resolve(output);
 	const packages = Object.fromEntries(
-		(metadataMode ? ["rc2-open", "rc2-import"] : ["rc1", "rc2"]).map(
+		(metadataVariants ? ["rc2-open", "rc2-import"] : ["rc1", "rc2"]).map(
 			(release) => [
 				release,
 				{
 					release,
-					...(metadataMode
+					...(metadataVariants
 						? {
 								comparisonRelease: "rc2",
 								metadataAsCopy: release === "rc2-import",
@@ -189,7 +193,8 @@ export function checkComparisonResults(report, plan) {
 	);
 	if (
 		plan.experiment === "metadata-mode" ||
-		plan.experiment === "metadata-regression"
+		plan.experiment === "metadata-regression" ||
+		plan.experiment === "metadata-restoration"
 	) {
 		const descriptors = report.context?.descriptors ?? {};
 		assert.deepEqual(
@@ -227,7 +232,8 @@ export function checkComparisonResults(report, plan) {
 	for (const [index, arm] of report.arms.entries()) {
 		if (
 			plan.experiment === "metadata-mode" ||
-			plan.experiment === "metadata-regression"
+			plan.experiment === "metadata-regression" ||
+			plan.experiment === "metadata-restoration"
 		)
 			assert.equal(
 				arm.release,
@@ -271,7 +277,8 @@ export async function runComparisonSchedule({
 		arms: plan.arms.map((arm) => ({
 			id: arm.id,
 			...(plan.experiment === "metadata-mode" ||
-			plan.experiment === "metadata-regression"
+			plan.experiment === "metadata-regression" ||
+			plan.experiment === "metadata-restoration"
 				? { release: arm.release }
 				: {}),
 			status: "not-started",

@@ -270,7 +270,8 @@ export function prepareIosComparison({ root, plan, report, deadline }) {
 			freshSimulatorPerArm: true,
 		},
 		pluginAsCopy:
-			plan.experiment === "metadata-mode"
+			plan.experiment === "metadata-mode" ||
+			plan.experiment === "metadata-restoration"
 				? { "rc2-open": false, "rc2-import": true }
 				: { rc1: true, rc2: false },
 		locale: "en_US",
@@ -327,7 +328,8 @@ function armRunner({
 function fixtureFor(arm, report) {
 	return report.context.descriptors[
 		arm.release === "uikit"
-			? report.plan.experiment === "metadata-mode"
+			? report.plan.experiment === "metadata-mode" ||
+				report.plan.experiment === "metadata-restoration"
 				? "rc2-open"
 				: "rc2"
 			: arm.release
@@ -456,7 +458,8 @@ function executeCase({
 	}
 	if (
 		report.plan.experiment === "metadata-mode" ||
-		report.plan.experiment === "metadata-regression"
+		report.plan.experiment === "metadata-regression" ||
+		report.plan.experiment === "metadata-restoration"
 	) {
 		try {
 			item.artifacts.provider = join(arm.directory, `${name}-provider.log`);
@@ -808,7 +811,7 @@ if (
 	try {
 		assert(
 			[4, 5].includes(process.argv.length),
-			"Usage: node scripts/ios-comparison.mjs <cordova-ios7|cordova-ios8> <iphone|ipad> [releases|metadata-mode|metadata-regression]",
+			"Usage: node scripts/ios-comparison.mjs <cordova-ios7|cordova-ios8> <iphone|ipad> [releases|metadata-mode|metadata-regression|metadata-restoration]",
 		);
 		const report = await verifyIosComparison({
 			framework: process.argv[2],
