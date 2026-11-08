@@ -433,11 +433,56 @@ final class StreamProbe {
 	func closed() { lock.lock(); closures += 1; lock.unlock() }
 	var counts: (Int, Int) { lock.lock(); defer { lock.unlock() }; return (opens, closures) }
 }
-final class ProbedInput: InputStream {
+class ProbedInput: InputStream {
+	private let backing: InputStream
 	private let probe: StreamProbe
-	init(data: Data, probe: StreamProbe) { self.probe = probe; super.init(data: data) }
-	override func open() { probe.opened(); super.open() }
-	override func close() { probe.closed(); super.close() }
+	init(wrapping backing: InputStream, probe: StreamProbe) {
+		self.backing = backing
+		self.probe = probe
+		// InputStream is a class cluster. Its initializer can initialize this
+		// subclass, but the superclass's stream operations remain abstract.
+		super.init(data: Data())
+	}
+	convenience init(data: Data, probe: StreamProbe) {
+		self.init(wrapping: InputStream(data: data), probe: probe)
+	}
+	override var streamStatus: Stream.Status { backing.streamStatus }
+	override var streamError: Error? { backing.streamError }
+	override var hasBytesAvailable: Bool { backing.hasBytesAvailable }
+	override func open() { probe.opened(); backing.open() }
+	override func close() { probe.closed(); backing.close() }
+	override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+		return backing.read(buffer, maxLength: len)
+	}
+	override func getBuffer(_ buffer: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>, length len: UnsafeMutablePointer<Int>) -> Bool {
+		return backing.getBuffer(buffer, length: len)
+	}
+}
+
+// The adapter must preserve concrete Foundation stream behavior and probes.
+for bytes in [Data(), Data([0, 128, 255])] {
+	let probe = StreamProbe()
+	let input = ProbedInput(data: bytes, probe: probe)
+	try require(input.streamStatus == .notOpen && probe.counts.0 == 0, "adapter opened input eagerly")
+	input.open()
+	var buffer = [UInt8](repeating: 91, count: 8)
+	let count = input.read(&buffer, maxLength: buffer.count)
+	try require(count == bytes.count && Data(buffer.prefix(count)) == bytes, "adapter changed concrete stream bytes")
+	try require(input.read(&buffer, maxLength: buffer.count) == 0, "adapter lost end-of-stream")
+	try require(input.streamStatus == .atEnd && !input.hasBytesAvailable && input.streamError == nil, "adapter lost EOF status")
+	input.close()
+	try require(input.streamStatus == .closed && probe.counts.0 == 1 && probe.counts.1 == 1, "adapter lost open/close lifecycle")
+}
+do {
+	let probe = StreamProbe()
+	let missing = sandbox.appendingPathComponent("missing-probed-input")
+	let input = ProbedInput(wrapping: InputStream(url: missing)!, probe: probe)
+	input.open()
+	var buffer = [UInt8](repeating: 0, count: 1)
+	try require(input.read(&buffer, maxLength: 1) == -1, "adapter hid a concrete read failure")
+	try require(input.streamStatus == .error && input.streamError != nil, "adapter lost error status")
+	input.close()
+	try require(input.streamStatus == .closed && probe.counts.0 == 1 && probe.counts.1 == 1, "failed adapter leaked its stream")
 }
 
 // Sources are lazy, sequential, share actual-byte budgets, and cannot be restored.
@@ -487,17 +532,14 @@ do {
 	try require(exists(url), "cancelRead removed provider original")
 }
 
-final class BlockingInput: InputStream {
+final class BlockingInput: ProbedInput {
 	let entered = DispatchSemaphore(value: 0)
 	let resume = DispatchSemaphore(value: 0)
-	let probe: StreamProbe
-	init(probe: StreamProbe) { self.probe = probe; super.init(data: Data([42])) }
-	override func open() { probe.opened(); super.open() }
+	init(probe: StreamProbe) { super.init(wrapping: InputStream(data: Data([42])), probe: probe) }
 	override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
 		entered.signal(); resume.wait()
 		return super.read(buffer, maxLength: len)
 	}
-	override func close() { probe.closed(); super.close() }
 }
 
 // Release waits for an actual blocked read, including after cancellation/reset.

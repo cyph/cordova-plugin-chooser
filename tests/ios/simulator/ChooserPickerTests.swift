@@ -361,17 +361,29 @@ private final class PickerBlockedSource {
 private final class PickerBlockingInput: InputStream {
     let entered = DispatchSemaphore(value: 0)
     let resume = DispatchSemaphore(value: 0)
+    private let backing: InputStream
     private let lock = NSLock()
     private var closed = 0
-    init(bytes: Data) { super.init(data: bytes) }
+    init(bytes: Data) {
+        backing = InputStream(data: bytes)
+        // Delegate to a concrete stream instead of InputStream's abstract methods.
+        super.init(data: Data())
+    }
+    override var streamStatus: Stream.Status { backing.streamStatus }
+    override var streamError: Error? { backing.streamError }
+    override var hasBytesAvailable: Bool { backing.hasBytesAvailable }
+    override func open() { backing.open() }
     override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength length: Int) -> Int {
         entered.signal()
         resume.wait()
-        return super.read(buffer, maxLength: length)
+        return backing.read(buffer, maxLength: length)
+    }
+    override func getBuffer(_ buffer: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>, length len: UnsafeMutablePointer<Int>) -> Bool {
+        return backing.getBuffer(buffer, length: len)
     }
     override func close() {
         lock.lock(); closed += 1; lock.unlock()
-        super.close()
+        backing.close()
     }
     var closeCount: Int { lock.lock(); defer { lock.unlock() }; return closed }
 }
