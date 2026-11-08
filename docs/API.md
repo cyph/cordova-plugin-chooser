@@ -30,7 +30,7 @@ All pickers accept an optional `signal`. The default source is documents:
 interface DocumentSourceOptions {
   source?: 'documents';
   accept?: string | readonly string[];
-  localOnly?: boolean;
+  preferLocal?: boolean;
 }
 interface PhotoSourceOptions {
   source: 'photos';
@@ -40,9 +40,9 @@ interface PhotoSourceOptions {
 
 For documents, `accept` takes MIME types such as `'application/pdf'`, wildcards such as `'image/*'`, a comma-separated list, or an array. Omit it or use `'*/*'` for unrestricted selection. Empty filters, filename extensions such as `'.pdf'`, and malformed types reject. Filters are normalized to lowercase and duplicates removed.
 
-MIME filters guide the picker; they do not validate content. Providers determine which items are selectable. `localOnly` defaults to `false` and is an Android provider hint; it has no effect on iOS or the browser.
+MIME filters guide the picker; they do not validate content. Providers determine which items are selectable. `preferLocal` defaults to `false` and is an Android provider hint, not a guarantee; it has no effect on iOS or the browser.
 
-For photos, `mediaTypes` defaults to `['image', 'video']`. A supplied array must contain at least one of those values. Photo selection does not accept `accept` or `localOnly`; document selection does not accept `mediaTypes`. See [platform behavior](PLATFORMS.md) for photo-picker availability and fallbacks.
+For photos, `mediaTypes` defaults to `['image', 'video']`. A supplied array must contain at least one of those values. Photo selection does not accept `accept` or `preferLocal`; document selection does not accept `mediaTypes`. See [platform behavior](PLATFORMS.md) for photo-picker availability and fallbacks.
 
 Unknown options, callback arguments, and incompatible source options reject with `INVALID_ARGUMENT`.
 
@@ -94,12 +94,12 @@ Release these managed files after use; [scoped helpers](#scoped-cleanup) handle 
 | `file.blob({maxBytes, signal?})` | `Blob` with the file's MIME type |
 | `file.text({maxBytes, encoding?, fatal?, signal?})` | Decoded string |
 | `file.dataURI({maxBytes, signal?})` | Complete base64 data URI with canonical padding |
-| `file.getData({format, maxBytes, decoding?, signal?})` | Metadata and the requested data representation |
-| `file.read({offset?, length, signal?})` | Byte array for a range |
+| `file.getData({format, maxBytes, encoding?, fatal?, signal?})` | Metadata and the requested data representation; text options only for `format: 'text'` |
+| `file.readRange({offset?, length, signal?})` | Byte array for a range |
 | `file.stream({offset?, length?, signal?}?)` | `ReadableStream<Uint8Array<ArrayBuffer>>` |
 | `file.textStream({offset?, length?, encoding?, fatal?, signal?}?)` | `ReadableStream<string>` |
 
-Offsets and lengths are byte counts, must be nonnegative safe integers, and cannot overflow safe integer arithmetic when added. Offset defaults to zero. `read` requires a length; streams default to the remaining file. Zero length is valid. Reads at EOF return fewer bytes than requested, including an empty array beyond EOF. A text range can split an encoded character; choose ranges accordingly.
+Offsets and lengths are byte counts, must be nonnegative safe integers, and cannot overflow safe integer arithmetic when added. Offset defaults to zero. `readRange` requires a length; streams default to the remaining file. Zero length is valid. Reads at EOF return fewer bytes than requested, including an empty array beyond EOF. A text range can split an encoded character; choose ranges accordingly.
 
 Whole-file and range methods return Promises. Stream factories return streams immediately and can throw during option validation; later failures reject stream reads. Streaming honors backpressure and handles text characters split across chunks. The plugin bounds bridge transfers internally; callers need not divide a larger range into bridge-sized pieces.
 
@@ -112,18 +112,21 @@ Text defaults to UTF-8 and `fatal: true`. Malformed input rejects with `DECODE_F
 | `format` | Additional result fields |
 | --- | --- |
 | `'bytes'` | `data: Uint8Array<ArrayBuffer>` |
+| `'blob'` | `blob: Blob` with the file's MIME type |
+| `'arrayBuffer'` | `arrayBuffer: ArrayBuffer` |
 | `'text'` | `text: string` |
 | `'dataURI'` | `dataURI: string` |
 | `'bytesAndDataURI'` | Both `data` and `dataURI`, from one content read |
 
-Each result also includes `format`, metadata, and actual `size`. Text format accepts `decoding: {encoding?, fatal?}`. Other formats reject `decoding`. Direct-data results have no `id`, `uri`, or `release` method; bytes and strings already returned to JavaScript remain usable after the plugin closes its readers.
+Each result also includes `format`, metadata, and actual `size`. For text format, pass `encoding` and `fatal` as top-level options; binary formats reject them. The `decoding` option is not accepted. Unlike the raw values returned by `file.blob()` and `file.arrayBuffer()`, `file.getData()` returns this envelope. Direct-data results have no `id`, `uri`, or `release` method; values already returned to JavaScript remain usable after the plugin closes its readers.
 
 ```js
 const file = await chooser.getFileData({
   accept: 'text/csv',
   maxFileSize: 1024 * 1024,
   format: 'text',
-  decoding: {encoding: 'utf-8', fatal: true}
+  encoding: 'utf-8',
+  fatal: true
 });
 console.log(file.name, file.text);
 ```
@@ -153,13 +156,13 @@ A fulfilled outcome means the consumer completed successfully even though resour
 
 `file.release()`, `releaseFile(file.id)`, and `releaseFiles(ids)` share ownership by ID. Restored aliases do not own independent copies. Starting release prevents new reads through every alias, stops unfinished plugin streams with `FILE_RELEASED`, waits for started one-shot reads and native I/O, then releases the resource. Release does not wait for an unread stream to be consumed.
 
-External URI readers are outside this coordination: wait for them before releasing. Deletion failures are retryable, but old handles stay closed to new reads. Releasing an already absent resource succeeds. Batch release validates every ID before changing anything, deduplicates IDs, attempts all releases, and reports per-ID failures on `RELEASE_FAILED`.
+External URI readers are outside this coordination: wait for them before releasing. Deletion failures are retryable, but old handles stay closed to new reads. Releasing an already absent resource succeeds. Batch release requires a dense array of valid IDs: it rejects missing entries and validates every ID before changing anything. It deduplicates IDs, attempts all releases, and reports per-ID failures on `RELEASE_FAILED`.
 
 Save a serializable reference with `file.toJSON()` or `JSON.stringify(file)`. `restoreFile(reference, {signal}?)` validates it and asks the platform for authoritative resource status. It resolves native files by managed ID, not a supplied URI or filename. Restoration does not make cache storage durable. Native references can survive app restart only while the copy remains; browser references require the original page's live registry. Surviving native RC1 managed IDs remain releasable.
 
 ## Cancellation and errors
 
-Catch `chooser.CancellationError` for expected picker dismissal or a canceled operation. Its stable `code` is `CANCELLED`, and `reason` is `'picker'` or `'signal'`.
+Catch `chooser.CancellationError` for expected picker dismissal or a canceled operation. Its stable `code` is `CANCELLED`, and `reason` is `'picker'` or `'signal'`. When an operation is canceled by its supplied `AbortSignal`, the cancellation's `cause` preserves that signal's `reason`. A rejected `CleanupError.outcome` preserves the failure when cleanup also fails, including through nested cleanup errors. A custom or native cancellation without an associated aborted signal need not have that cause.
 
 Pass an `AbortSignal` to the operation you want to cancel. An already aborted signal prevents selection; aborting during work requests cancellation and cleanup. Settlement may wait for provider I/O. A selection signal does not attach itself to every later read or to the scoped consumer: pass it to reads explicitly. Cleanup waits for the consumer to settle before releasing its files.
 

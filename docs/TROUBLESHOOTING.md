@@ -18,13 +18,13 @@ Install the plugin into the Cordova app, load the generated `cordova.js`, and wa
 
 ## Invalid arguments or missing data
 
-Pass an options object and the required byte budgets. `maxFileSize`, `maxTotalSize`, and `maxBytes` take positive safe integers or explicit `null`; zero is not unlimited in RC2. Unknown options and extra callback arguments reject with `INVALID_ARGUMENT`.
+Pass an options object and the required byte budgets. `maxFileSize`, `maxTotalSize`, and `maxBytes` take positive safe integers or explicit `null`; zero is not unlimited in RC2. Unknown options and extra callback arguments reject with `INVALID_ARGUMENT`. Use `preferLocal` for the Android document-provider hint and `readRange` for managed range reads.
 
 `getFile` returns reading methods, not a `data` field. `getFileData` returns only the requested representation. Metadata has no contents or managed URI. A fork-specific wrapper can have different names and signatures; see [wrapper migration](MIGRATION.md#awesome-cordova-plugins-and-fork-specific-wrappers).
 
 ## Cancellation is reported as an error
 
-Expected cancellation is a typed exception. Catch `chooser.CancellationError` at the UI boundary and handle it quietly. Its reason is `'picker'` or `'signal'`. A `CleanupError` containing a canceled outcome also reports a resource-release failure and needs separate handling.
+Expected cancellation is a typed exception. Catch `chooser.CancellationError` at the UI boundary and handle it quietly. Its reason is `'picker'` or `'signal'`; when an operation is canceled by its supplied signal, its `cause` contains that signal's reason. A `CleanupError` containing a canceled outcome also reports a resource-release failure and needs separate handling.
 
 ## The browser picker does not open or cancellation hangs
 
@@ -70,11 +70,11 @@ A failed batch returns no partial array. Handle reported cleanup failures separa
 
 ## Text decoding fails
 
-Text defaults to strict UTF-8. Choose the file's actual encoding, or set `fatal: false` if replacement characters are acceptable. Text ranges can cut through a multibyte character. Whole-file decoding and text streams handle chunk boundaries internally.
+Text defaults to strict UTF-8. Choose the file's actual `encoding`, or set `fatal: false` if replacement characters are acceptable. Pass these options at the top level for text reads, streams, and `format: 'text'`; binary data formats reject them. Text ranges can cut through a multibyte character. Whole-file decoding and text streams handle chunk boundaries internally.
 
 ## Cleanup fails after processing succeeded
 
-Inspect `CleanupError.outcome`. A fulfilled outcome contains the completed result; retrying the business operation can duplicate its effects. Retain `error.failures` and retry `releaseFiles` with those IDs when appropriate. Malformed IDs are not paths to repair: pass only opaque IDs returned by the plugin.
+Inspect `CleanupError.outcome`. A fulfilled outcome contains the completed result; retrying the business operation can duplicate its effects. Retain `error.failures` and retry `releaseFiles` with those IDs when appropriate. Pass a dense array of opaque IDs returned by the plugin; missing entries and malformed IDs reject before any release starts.
 
 ## An Android result disappears after activity recreation
 

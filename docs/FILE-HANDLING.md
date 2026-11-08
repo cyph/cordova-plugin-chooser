@@ -10,7 +10,7 @@ Direct-data selection from iOS Photos also stages each selected representation i
 
 Choose `maxFileSize` and, for plural selection, `maxTotalSize` according to the application's storage allowance. These are required byte budgets; use explicit `null` only when unlimited input is acceptable. A provider's reported size is advisory. Native copy and direct-read limits count actual bytes.
 
-Whole-file readers and direct-data methods still need memory for their complete result. Base64 adds roughly one third to the byte length, and encoded strings and buffers can coexist. `bytesAndDataURI` deliberately retains both representations. The `maxBytes` read budget limits input bytes, not total JavaScript heap consumption. A large `read({length})` also allocates the requested range.
+Whole-file readers and direct-data methods still need memory for their complete result. Base64 adds roughly one third to the byte length, and encoded strings and buffers can coexist. `bytesAndDataURI` deliberately retains both representations. The `maxBytes` read budget limits input bytes, not total JavaScript heap consumption. A large `readRange({length})` also allocates the requested range.
 
 For large inputs, consume `stream()` or `textStream()` incrementally and avoid accumulating every chunk. The plugin handles bounded bridge transfers and backpressure; the consuming parser or uploader must also avoid retaining the whole file.
 
@@ -59,6 +59,21 @@ Retry failed cleanup separately from business operations such as uploads. Repeat
 
 For longer-lived previews or background work in the current application session, use `getFile`, retain the handle, and call `file.release()` when every consumer finishes. Releasing any alias closes all handles for that ID. It stops unfinished plugin streams, waits for started one-shot reads and native I/O, and prevents new reads. An external URI consumer must finish before release; the plugin cannot observe its lifetime.
 
+For example, use a managed URI and read multiple ranges inside a scoped helper:
+
+```js
+async function inspectAndUpload(uploadUri) {
+  return chooser.withFile({maxFileSize: 10 * 1024 * 1024}, async file => {
+    const header = await file.readRange({offset: 0, length: 16});
+    const next = await file.readRange({offset: 16, length: 16});
+    await uploadUri(file.uri, file.name, file.mediaType);
+    return {header, next};
+  });
+}
+```
+
+The URI consumer must finish before release. The scoped helper reports both the operation outcome and cleanup failures through `CleanupError` when cleanup fails.
+
 ## Stream a file
 
 `textStream` preserves multibyte characters across chunks. Chunk boundaries are not line or record boundaries; an incremental parser must carry partial records between calls.
@@ -88,7 +103,7 @@ async function chooseTextAndProcess(acceptChunk) {
 }
 ```
 
-Canceling this reader stops its stream without releasing the file; the scoped helper releases it after the function settles. Pass a `signal` to `textStream` to make reads abortable. Pass a signal to selection separately if selection should also be cancelable. UTF-8 decoding is strict by default; set `fatal: false` only when replacement characters are acceptable.
+Canceling this reader stops its stream without releasing the file; the scoped helper releases it after the function settles. Pass a `signal` to `textStream` to make reads abortable. Pass a signal to selection separately if selection should also be cancelable. UTF-8 decoding is strict by default; set the top-level `encoding` and `fatal` options on `textStream`, `text`, or a text-format data call as needed. Set `fatal: false` only when replacement characters are acceptable.
 
 ## Native consumers
 
@@ -126,7 +141,7 @@ Merge the needed sources into the existing policy and retain other trusted origi
 
 Native snapshots do not follow later source changes. Saving `file.toJSON()` saves a reference, not the contents. `restoreFile(savedReference)` checks whether the managed resource still exists. Native cache copies can survive a restart but can also be evicted; browser references cannot be restored after their page registry is lost. Navigation through `pagehide`, including entry into the back/forward cache, revokes browser resources.
 
-IDs are opaque. Pass them back unchanged; do not derive them from filenames or URIs. Surviving native RC1 cache IDs remain releasable with `releaseFile`. Release is idempotent for absent resources and retryable after deletion failures. A failed release leaves handles closed to new reads.
+`releaseFiles` requires a dense array of valid IDs and validates the entire array before releasing anything. IDs are opaque. Pass them back unchanged; do not derive them from filenames or URIs. Surviving native RC1 cache IDs remain releasable with `releaseFile`. Release is idempotent for absent resources and retryable after deletion failures. A failed release leaves handles closed to new reads.
 
 ## Failed and interrupted work
 

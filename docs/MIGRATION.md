@@ -33,7 +33,7 @@ Prepare and rebuild the application, and review manifest and lockfile changes. C
 
 Options objects replace bare MIME strings. Callback arguments and unknown options reject. `getFile()` no longer reads the contents into `data` and `dataURI`; it returns a managed handle with reading methods and a temporary URI.
 
-When only one representation is needed, choose `'bytes'`, `'text'`, or `'dataURI'`. Use `'bytesAndDataURI'` to retain the useful RC1 pair without two content reads. For large inputs, choose managed selection and read incrementally.
+When only one representation is needed, choose `'bytes'`, `'text'`, `'blob'`, `'arrayBuffer'`, or `'dataURI'`. Use `'bytesAndDataURI'` to retain the useful RC1 pair without two content reads. For large inputs, choose managed selection and read incrementally.
 
 ## Make budgets explicit
 
@@ -48,13 +48,13 @@ const file = await chooser.getFileData({
 const value = JSON.parse(file.text);
 ```
 
-Metadata methods accept no byte budgets because they do not materialize contents. Managed whole-file reads require a separate `maxBytes`; a copy allowed onto disk may still be too large to load into memory. Range reads and streams provide incremental access.
+Metadata methods accept no byte budgets because they do not materialize contents. Managed whole-file reads require a separate `maxBytes`; a copy allowed onto disk may still be too large to load into memory. Use `file.readRange({offset, length})` and streams for incremental access. Text methods accept `encoding` and `fatal` as top-level options; data formats other than `text` reject them.
 
-Android document methods now allow remote providers by default, including single-file metadata selection. Set `localOnly: true` if the app wants to request the earlier local-provider preference.
+Android document methods now allow remote providers by default, including single-file metadata selection. Set `preferLocal: true` if the app wants to request the earlier local-provider preference.
 
 ## Handle cancellation and cleanup
 
-Picker dismissal and `AbortSignal` cancellation reject with `CancellationError`. Its `reason` distinguishes `'picker'` from `'signal'`. There is no cancellation-related `undefined` result or boolean success flag.
+Picker dismissal and `AbortSignal` cancellation reject with `CancellationError`. Its `reason` distinguishes `'picker'` from `'signal'`. When an operation is canceled by its supplied `AbortSignal`, `cause` preserves that signal's reason. There is no cancellation-related `undefined` result or boolean success flag.
 
 ```js
 try {
@@ -75,7 +75,7 @@ try {
 }
 ```
 
-A scoped helper preserves the consumer's value or original exception. If cleanup fails, `CleanupError.outcome` records whether the consumer fulfilled or rejected. Do not retry an upload merely because deleting its temporary file failed. See [cleanup handling](FILE-HANDLING.md#consume-then-release).
+A scoped helper preserves the consumer's value or original exception, including cancellation caused by an operation's signal and its cause. If cleanup fails, `CleanupError.outcome` records whether the consumer fulfilled or rejected. Do not retry an upload merely because deleting its temporary file failed. See [cleanup handling](FILE-HANDLING.md#consume-then-release).
 
 Pass a signal to each operation that should be abortable. A selection signal does not automatically cancel later reads or a scoped consumer. The helper waits for the consumer to settle before release.
 

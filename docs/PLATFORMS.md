@@ -18,7 +18,7 @@ The [verification guide](VERIFICATION.md) describes automated lanes and their bo
 
 ### Documents and providers
 
-The default document source requests openable documents with temporary read access. Chooser needs no broad storage permission and does not obtain a persistent document grant. Local and remote providers are allowed by default. `localOnly: true` requests local providers through `EXTRA_LOCAL_ONLY`; the picker or provider decides how to honor it.
+The default document source requests openable documents with temporary read access. Chooser needs no broad storage permission and does not obtain a persistent document grant. Local and remote providers are allowed by default. `preferLocal: true` requests local providers through `EXTRA_LOCAL_ONLY`; the picker or provider decides how to honor it.
 
 Remote providers can require sign-in, connectivity, downloads, or format conversion. Some providers allow only one selection even in a plural picker; the result is still an array. `sourceUri` identifies the borrowed provider reference, while a managed `uri` identifies the plugin's private copy.
 
@@ -87,7 +87,7 @@ Use Cordova Browser with Promises, typed arrays, `File`/`Blob` APIs including `s
 
 After `deviceready`, call a picker directly from a click or another user gesture, before awaiting network work or a timer. The plugin's scoped helpers preserve this gesture requirement.
 
-`source: 'photos'` requests image/video types through a file input. The browser and OS choose the UI; a dedicated photo-library interface is not guaranteed. Browser results never expose an original filesystem path. `localOnly` has no effect.
+`source: 'photos'` requests image/video types through a file input. The browser and OS choose the UI; a dedicated photo-library interface is not guaranteed. Browser results never expose an original filesystem path. `preferLocal` has no effect.
 
 Managed selection retains the selected `File` and creates a Blob URL. Metadata and direct-data results retain no managed resource. Release managed files after every consumer finishes. Outstanding URLs are also revoked on `pagehide`, including navigation into the back/forward cache; saved references cannot restore them in a new page session.
 

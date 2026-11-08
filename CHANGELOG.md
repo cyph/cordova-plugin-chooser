@@ -8,12 +8,13 @@ RC2 makes managed files the default, adds photo-library selection, and gives app
 
 ### API changes
 
-- `getFile` and `getFiles` return managed handles with metadata, a temporary URI, and whole-file, range, and streaming readers. They replace the RC1 `getFileUri` and `getFilesUri` methods.
-- Added `withFile` and `withFiles` for scoped use and cleanup, `restoreFile` for saved references, and `releaseFiles` for batch cleanup. Aliases share ownership; release stops unfinished plugin streams and waits for started reads before removing the resource.
-- Added `getFileData`, `getFilesData`, and managed `getData` with explicit `bytes`, `text`, `dataURI`, and `bytesAndDataURI` formats. The combined format preserves the useful RC1 pair with one content read. Direct-data and metadata results have no retained managed resource or release obligation.
-- Picker calls now take options objects and return Promises without callback overloads. Cancellation rejects with `CancellationError`, including `AbortSignal` cancellation. Structured error codes replace parsing diagnostic text; `CleanupError` preserves a successful consumer result or original failure alongside cleanup failures.
+- `getFile` and `getFiles` return managed handles with metadata, a temporary URI, and whole-file, `readRange`, and streaming readers. They replace the RC1 `getFileUri` and `getFilesUri` methods.
+- Added `withFile` and `withFiles` for scoped use and cleanup, `restoreFile` for saved references, and `releaseFiles` for batch cleanup. Aliases share ownership; release stops unfinished plugin streams and waits for started reads before removing the resource. Batch release validates every ID, including missing array entries, before starting.
+- Added `getFileData`, `getFilesData`, and managed `getData` with explicit `bytes`, `text`, `blob`, `arrayBuffer`, `dataURI`, and `bytesAndDataURI` formats. Each result includes metadata, format, and actual size; managed `blob()` and `arrayBuffer()` continue to return raw values. The combined format preserves the useful RC1 pair with one content read. Direct-data and metadata results have no retained managed resource or release obligation.
+- Picker calls now take options objects and return Promises without callback overloads. Cancellation rejects with `CancellationError`, including cancellation caused by an operation's `AbortSignal`; that signal's reason is preserved as the cancellation cause, including through cleanup failures. Structured error codes replace parsing diagnostic text; `CleanupError` preserves a successful consumer result or original failure alongside cleanup failures.
+- Text reads and text-format data calls accept top-level `encoding` and `fatal` options; binary data formats reject them.
 - Managed and direct-data selection require positive byte budgets or explicit `null` for unlimited. Plural calls require an aggregate budget, and whole-file readers require a separate `maxBytes` budget. Omitted and zero byte limits are no longer unlimited.
-- Document filters accept MIME strings or arrays. Android document selection allows remote providers by default, with an optional local-provider hint. Metadata and direct-data results expose optional borrowed `sourceUri` rather than a managed `uri`.
+- Document filters accept MIME strings or arrays. Android document selection allows remote providers by default, with the optional `preferLocal` provider hint (default `false`). Metadata and direct-data results expose optional borrowed `sourceUri` rather than a managed `uri`.
 
 ### Platforms and maintenance
 

@@ -1,6 +1,6 @@
 # Cordova Plugin Chooser
 
-Choose documents, photos, and videos in a Cordova app on Android, iOS, or the browser platform. Work with managed files: inspect metadata, read a range, stream the contents, or pass a temporary URI to another consumer. For small files, request text, bytes, or a data URI directly.
+Choose documents, photos, and videos in a Cordova app on Android, iOS, or the browser platform. Work with managed files: inspect metadata, read a range, stream the contents, or pass a temporary URI to another consumer. For small files, request text, bytes, a Blob, an ArrayBuffer, or a data URI directly.
 
 These docs describe **2.0.0-rc.2**. RC2 changes the API; see the [migration guide](docs/MIGRATION.md) before upgrading from RC1 or 1.x.
 
@@ -25,7 +25,7 @@ Installing the npm package alone does not provide a standalone web or Node.js pi
 
 ## Quick start
 
-For work that finishes in one operation, `withFile` selects a managed file and releases it after your function settles. This example reads and parses a JSON document up to 1 MiB:
+This example reads and parses a JSON document up to 1 MiB using direct data:
 
 ```html
 <button id="choose-file" type="button" disabled>Choose JSON</button>
@@ -45,16 +45,17 @@ document.addEventListener('deviceready', () => {
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
-      const value = await chooser.withFile(
-        {accept: 'application/json', maxFileSize: 1024 * 1024},
-        async file => JSON.parse(await file.text({maxBytes: 1024 * 1024}))
-      );
-      output.textContent = JSON.stringify(value);
+      const file = await chooser.getFileData({
+        accept: 'application/json',
+        maxFileSize: 1024 * 1024,
+        format: 'text'
+      });
+      output.textContent = JSON.stringify(JSON.parse(file.text));
     } catch (error) {
       if (error instanceof chooser.CancellationError) {
         output.textContent = 'Selection canceled.';
       } else if (error instanceof chooser.CleanupError) {
-        output.textContent = 'File cleanup failed. See the console for the operation result.';
+        output.textContent = 'File cleanup failed. See the console for the read outcome.';
         console.error(error.outcome, error.failures);
       } else {
         output.textContent = 'Could not read the JSON document.';
@@ -67,7 +68,7 @@ document.addEventListener('deviceready', () => {
 });
 ```
 
-Call browser pickers directly from a user interaction. Picker cancellation rejects with `CancellationError`; successful calls return a file, an array, or the scoped function's result. A cleanup failure preserves that result or the original error in `CleanupError.outcome`.
+Call browser pickers directly from a user interaction. Picker cancellation rejects with `CancellationError`. If cleanup also fails, `CleanupError.outcome` preserves the completed result or original error; handle cleanup separately from the operation.
 
 ## Choose a method
 
