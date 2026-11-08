@@ -8,12 +8,13 @@
 		<option>getFile</option><option>getFileMetadata</option><option>getFiles</option>
 		<option>getFilesMetadata</option><option>getFileData</option><option>getFilesData</option>
 	</select></label>
+	<label>Data format <select id="format"><option>bytesAndDataURI</option><option>bytes</option><option>blob</option><option>arrayBuffer</option><option>text</option><option>dataURI</option></select></label>
 	<label>Source <select id="source"><option value="documents">Files</option><option value="photos">Photos and videos</option></select></label>
 	<label>MIME filter <input id="accept" value="*/*"></label>
 	<label>Byte limit per file in bytes (0 = unlimited) <input id="limit" type="number" min="0" step="1" value="0"></label>
 	<label>Selection count (0 = unlimited) <input id="count" type="number" min="0" step="1" value="0"></label>
 	<label>Total bytes (0 = unlimited) <input id="total" type="number" min="0" step="1" value="0"></label>
-	<label><input id="local" type="checkbox">Android documents: local only</label>
+	<label><input id="local" type="checkbox">Android documents: prefer local</label>
 	<button id="pick" disabled>Choose files</button>
 	<button id="twice" disabled>Start two concurrent requests</button>
 	<button id="release" disabled>Release recorded references</button>

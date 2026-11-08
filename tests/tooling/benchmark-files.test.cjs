@@ -9,8 +9,9 @@ test("all output paths preserve bytes with bounded reads and explicit copy owner
 		warmups: 0,
 	});
 	assert.match(report.measurement, /Synthetic.*not native\/device throughput/);
-	assert.equal(report.cases.length, 6);
-	const [stream, managed, bytes, text, dataURI, combined] = report.cases;
+	assert.equal(report.cases.length, 8);
+	const [stream, managed, bytes, text, dataURI, combined, blob, arrayBuffer] =
+		report.cases;
 	for (const result of report.cases) {
 		const { bridge, ownership, parity } = result.instrumentation;
 		assert.equal(parity.verified, true);
@@ -64,7 +65,12 @@ test("all output paths preserve bytes with bounded reads and explicit copy owner
 		dataURI.instrumentation.consumer.dataURICharacters,
 	);
 	// Additional output representations must not cause another bridge read pass.
-	for (const result of [text, dataURI, combined]) {
+	assert.equal(blob.instrumentation.consumer.blobBytes, report.fixture.bytes);
+	assert.equal(
+		arrayBuffer.instrumentation.consumer.arrayBufferBytes,
+		report.fixture.bytes,
+	);
+	for (const result of [text, dataURI, combined, blob, arrayBuffer]) {
 		assert.deepEqual(
 			result.instrumentation.bridge,
 			bytes.instrumentation.bridge,
@@ -90,6 +96,8 @@ test("short provider reads and inaccurate reported size do not truncate direct t
 		"managed-stream",
 		"direct-text",
 		"direct-bytesAndDataURI",
+		"direct-blob",
+		"direct-arrayBuffer",
 	]) {
 		const result = await runScenario(scenario, bytes, {
 			maxReadBytes: 65537,
@@ -108,7 +116,13 @@ test("read failures still clean up and corrupted output fails byte-parity valida
 	const { createFixture, runScenario } =
 		await import("../../scripts/benchmark-files.mjs");
 	const bytes = createFixture(524325);
-	for (const scenario of ["managed-stream", "managed-bytes", "direct-bytes"]) {
+	for (const scenario of [
+		"managed-stream",
+		"managed-bytes",
+		"direct-bytes",
+		"direct-blob",
+		"direct-arrayBuffer",
+	]) {
 		await assert.rejects(
 			runScenario(scenario, bytes, { failReadAt: 2 }),
 			(error) => error.code === "READ_FAILED",

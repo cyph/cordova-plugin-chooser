@@ -134,8 +134,23 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 								),
 							),
 						]);
-						if (result.value?.data)
-							result.value.data = Array.from(result.value.data);
+						for (const value of Array.isArray(result.value)
+							? result.value
+							: [result.value]) {
+							if (value?.data) value.data = Array.from(value.data);
+							if (value?.blob instanceof Blob)
+								value.blob = {
+									bytes: Array.from(
+										new Uint8Array(await value.blob.arrayBuffer()),
+									),
+									size: value.blob.size,
+									type: value.blob.type,
+								};
+							if (value?.arrayBuffer instanceof ArrayBuffer)
+								value.arrayBuffer = Array.from(
+									new Uint8Array(value.arrayBuffer),
+								);
+						}
 						return result;
 					});
 				async function release(value) {
@@ -160,6 +175,84 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 				await release(selected);
 				assert.equal(await page.evaluate(() => live.size), 0);
 
+				for (const format of ["blob", "arrayBuffer"]) {
+					for (const multiple of [false, true]) {
+						dialog = await start(multiple ? "getFilesData" : "getFileData", {
+							format,
+							maxFileSize: bytes.length,
+							...(multiple ? { maxTotalSize: bytes.length } : {}),
+							preferLocal: true,
+						});
+						await dialog.setFiles(
+							multiple ? [file(), file("empty.bin", Buffer.alloc(0))] : file(),
+						);
+						const results = (await result()).value;
+						for (const [index, data] of (multiple
+							? results
+							: [results]
+						).entries()) {
+							assert.equal(data.format, format);
+							assert.equal(data.size, index ? 0 : bytes.length);
+							assert.equal(data.mediaType, "application/octet-stream");
+							assert.equal("id" in data, false);
+							assert.equal("uri" in data, false);
+							assert.deepEqual(
+								format === "blob" ? data.blob.bytes : data.arrayBuffer,
+								index ? [] : [...bytes],
+							);
+							if (format === "blob") {
+								assert.equal(data.blob.type, data.mediaType);
+								assert.equal(data.blob.size, data.size);
+							}
+						}
+						assert.equal(await page.evaluate(() => live.size), 0);
+					}
+					for (const limits of [
+						{ maxFileSize: 4, maxTotalSize: null },
+						{ maxFileSize: null, maxTotalSize: 4 },
+					]) {
+						dialog = await start("getFilesData", { format, ...limits });
+						await dialog.setFiles([file(), file("empty.bin", Buffer.alloc(0))]);
+						assert.match(
+							(await result()).error,
+							limits.maxFileSize ? /^FILE_TOO_LARGE:/ : /^TOTAL_SIZE_EXCEEDED:/,
+						);
+						assert.equal(await page.evaluate(() => live.size), 0);
+					}
+				}
+
+				const invalid = await page.evaluate(async () => {
+					const results = [];
+					for (const options of [
+						{ format: "blob", fatal: false },
+						{ format: "arrayBuffer", encoding: "utf-8" },
+						{ format: "text", decoding: { fatal: false } },
+						{ format: "bytes", localOnly: true },
+					]) {
+						try {
+							await chooser.getFileData({ maxFileSize: null, ...options });
+						} catch (error) {
+							results.push(error.code);
+						}
+					}
+					return {
+						results,
+						inputs: document.querySelectorAll('input[type="file"]').length,
+					};
+				});
+				assert.deepEqual(invalid, {
+					results: Array(4).fill("INVALID_ARGUMENT"),
+					inputs: 0,
+				});
+
+				dialog = await start("getFileData", {
+					format: "text",
+					maxFileSize: null,
+					encoding: "windows-1252",
+				});
+				await dialog.setFiles(file("latin.txt", Buffer.from([0xe9])));
+				assert.equal((await result()).value.text, "é");
+
 				const text = "a".repeat(262143) + "😀\nend";
 				dialog = await start("getFile", { maxFileSize: null });
 				await dialog.setFiles(file("text.txt", Buffer.from(text)));
@@ -168,6 +261,24 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 					const alias = await chooser.restoreFile(
 						JSON.parse(JSON.stringify(handle)),
 					);
+					if (handle.read !== undefined)
+						throw new Error("Obsolete read alias remains");
+					const sparse = [handle.id, , handle.id];
+					const inherited = [handle.id, , handle.id];
+					Object.setPrototypeOf(
+						inherited,
+						Object.assign(Object.create(Array.prototype), { 1: handle.id }),
+					);
+					for (const ids of [sparse, inherited]) {
+						let code;
+						try {
+							await chooser.releaseFiles(ids);
+						} catch (error) {
+							code = error.code;
+						}
+						if (code !== "INVALID_ARGUMENT")
+							throw new Error("Sparse release accepted");
+					}
 					const reader = handle.textStream().getReader();
 					let streamed = "";
 					for (;;) {
@@ -176,7 +287,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 						streamed += part.value;
 					}
 					const range = Array.from(
-						await alias.read({ offset: 262143, length: 4 }),
+						await alias.readRange({ offset: 262143, length: 4 }),
 					);
 					const whole = await alias.text({ maxBytes: null });
 					await handle.release();

@@ -15,6 +15,8 @@ export const scenarios = [
 	"direct-text",
 	"direct-dataURI",
 	"direct-bytesAndDataURI",
+	"direct-blob",
+	"direct-arrayBuffer",
 ];
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -282,6 +284,22 @@ export async function runScenario(scenario, bytes, options = {}) {
 			"Data results must not transfer resource ownership",
 		);
 		assert.equal("uri" in result, false);
+		if (scenario.startsWith("direct-")) {
+			assert.equal(result.format, scenario.slice("direct-".length));
+			assert.equal(result.size, bytes.length);
+			assert.equal(result.mediaType, "text/plain");
+		}
+		if (result.blob !== undefined) {
+			assert(result.blob instanceof Blob);
+			assert.equal(result.blob.type, "text/plain");
+			assert.deepEqual(Buffer.from(await result.blob.arrayBuffer()), bytes);
+			representations.blobBytes = result.blob.size;
+		}
+		if (result.arrayBuffer !== undefined) {
+			assert(result.arrayBuffer instanceof ArrayBuffer);
+			assert.deepEqual(Buffer.from(result.arrayBuffer), bytes);
+			representations.arrayBufferBytes = result.arrayBuffer.byteLength;
+		}
 		if (result.data !== undefined) {
 			assert.deepEqual(Buffer.from(result.data), bytes);
 			representations.binaryBytes = result.data.byteLength;

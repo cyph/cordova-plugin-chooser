@@ -47,7 +47,7 @@ function fixture(input = [Buffer.from('abc')], options = {}) {
 
 test('managed selection dispatches synchronously, normalizes filters, and returns only a reference', async () => {
 	const f = fixture();
-	const pending = f.chooser.getFile({accept: [' IMAGE/PNG ', 'text/*', 'image/png'], maxFileSize: null, localOnly: true});
+	const pending = f.chooser.getFile({accept: [' IMAGE/PNG ', 'text/*', 'image/png'], maxFileSize: null, preferLocal: true});
 	assert.equal(f.calls.length, 1, 'dispatch must stay in the browser gesture');
 	const wire = f.calls[0].args[0];
 	assert.equal(wire.mode, 'copy');
@@ -56,6 +56,7 @@ test('managed selection dispatches synchronously, normalizes filters, and return
 	assert.equal(wire.maxFileSize, 0);
 	assert.equal(wire.maxTotalSize, 0);
 	assert.equal(wire.localOnly, true);
+	assert.equal('preferLocal' in wire, false, 'native wire keeps localOnly');
 	assert.equal(typeof wire.requestId, 'string');
 	const file = await pending;
 	assert.equal(file.id, id(1));
@@ -84,9 +85,9 @@ test('strict public options reject before dispatch, including every callback ove
 		{maxFileSize: '10'}, {maxFileSize: null, maxFilesize: 1}, {maxFileSize: null, mimeTypes: 'text/csv'},
 		{maxFileSize: null, accept: ''}, {maxFileSize: null, accept: []}, {maxFileSize: null, accept: ['text/plain', 1]},
 		{maxFileSize: null, source: 'camera'}, {maxFileSize: null, mediaTypes: ['image']},
-		{maxFileSize: null, source: 'photos', accept: 'image/*'}, {maxFileSize: null, source: 'photos', localOnly: false},
+		{maxFileSize: null, source: 'photos', accept: 'image/*'}, {maxFileSize: null, source: 'photos', preferLocal: false},
 		{maxFileSize: null, source: 'photos', mediaTypes: []}, {maxFileSize: null, source: 'photos', mediaTypes: ['audio']},
-		{maxFileSize: null, localOnly: 1}, {maxFileSize: null, signal: {}}, {maxFileSize: null, cancel: 'return'}]) {
+		{maxFileSize: null, preferLocal: 1}, {maxFileSize: null, signal: {}}, {maxFileSize: null, cancel: 'return'}]) {
 		await assert.rejects(chooser.getFile(options), code('INVALID_ARGUMENT'));
 	}
 	for (const method of ['getFile', 'getFiles', 'getFileData', 'getFilesData', 'getFileMetadata', 'getFilesMetadata']) {
@@ -177,21 +178,95 @@ test('late duplicate callbacks cannot settle a newer picker or release an accept
 });
 
 test('direct formats read a transient source and always release it, including empty files', async () => {
-	for (const format of ['bytes', 'text', 'dataURI', 'bytesAndDataURI']) {
+	for (const format of ['bytes', 'text', 'dataURI', 'bytesAndDataURI', 'blob', 'arrayBuffer']) {
 		for (const bytes of [Buffer.alloc(0), Buffer.from('hello')]) {
 			const f = fixture([bytes]);
 			const result = await f.chooser.getFileData({maxFileSize: null, format});
 			assert.equal(result.size, bytes.length);
 			assert.equal(result.format, format);
+			assert.equal(result.name, 'file-0');
+			assert.equal(result.mediaType, info.mediaType);
+			assert.equal(result.sourceUri, info.sourceUri);
 			assert.equal('id' in result, false);
 			assert.equal('uri' in result, false);
 			if (format === 'bytes' || format === 'bytesAndDataURI') assert.deepEqual(Buffer.from(result.data), bytes);
 			if (format === 'text') assert.equal(result.text, bytes.toString());
+			if (format === 'blob') {
+				assert.ok(result.blob instanceof Blob);
+				assert.equal(result.blob.type, info.mediaType);
+				assert.deepEqual(Buffer.from(await result.blob.arrayBuffer()), bytes);
+			}
+			if (format === 'arrayBuffer') {
+				assert.ok(result.arrayBuffer instanceof ArrayBuffer);
+				assert.deepEqual(Buffer.from(result.arrayBuffer), bytes);
+			}
 			if (format === 'dataURI' || format === 'bytesAndDataURI') assert.equal(result.dataURI, 'data:application/octet-stream;base64,' + bytes.toString('base64'));
 			assert.deepEqual(f.released, [id(1)]);
 			assert.equal(f.readers.size, 0);
 		}
 	}
+});
+
+test('obsolete document options and nested decoding reject before dispatch for every picker', async () => {
+	let calls = 0;
+	const chooser = loadChooser(() => { calls++; });
+	for (const method of ['getFile', 'getFiles', 'getFileMetadata', 'getFilesMetadata', 'getFileData', 'getFilesData']) {
+		const options = {
+			...(!method.endsWith('Metadata') ? {maxFileSize: null} : {}),
+			...(method.startsWith('getFiles') && !method.endsWith('Metadata') ? {maxTotalSize: null} : {}),
+			...(method.endsWith('Data') ? {format: 'text'} : {})
+		};
+		for (const localOnly of [true, false, undefined]) {
+			await assert.rejects(chooser[method]({...options, localOnly}), code('INVALID_ARGUMENT'));
+		}
+		if (method.endsWith('Data')) {
+			await assert.rejects(chooser[method]({...options, decoding: {fatal: false}}), code('INVALID_ARGUMENT'));
+		}
+	}
+	for (const format of ['bytes', 'dataURI', 'bytesAndDataURI', 'blob', 'arrayBuffer']) {
+		for (const textOption of [{encoding: 'utf-8'}, {fatal: false}, {fatal: undefined}]) {
+			await assert.rejects(chooser.getFileData({maxFileSize: null, format, ...textOption}), code('INVALID_ARGUMENT'));
+		}
+	}
+	assert.equal(calls, 0);
+});
+
+test('Blob and ArrayBuffer formats preserve arbitrary bytes, actual limits, and cleanup outcomes', async () => {
+	const bytes = Buffer.from(Array.from({length: 524293}, (_, i) => i * 37 & 255));
+	for (const format of ['blob', 'arrayBuffer']) {
+		const f = fixture([bytes, Buffer.alloc(0)], {reportedSize: 1, shortReads: 65537});
+		const results = await f.chooser.getFilesData({format, maxFileSize: bytes.length, maxTotalSize: bytes.length});
+		for (let i = 0; i < results.length; i++) {
+			const result = results[i];
+			const actual = format === 'blob' ? await result.blob.arrayBuffer() : result.arrayBuffer;
+			assert.deepEqual(Buffer.from(actual), i === 0 ? bytes : Buffer.alloc(0));
+			assert.equal(result.size, actual.byteLength);
+			assert.equal('data' in result, false);
+		}
+		assert.deepEqual(f.released, [id(1), id(2)]);
+		assert.equal(f.readers.size, 0);
+		for (const limits of [{maxFileSize: bytes.length - 1, maxTotalSize: null}, {maxFileSize: null, maxTotalSize: bytes.length - 1}]) {
+			const limited = fixture([bytes, Buffer.from('unused')], {reportedSize: 0});
+			await assert.rejects(limited.chooser.getFilesData({format, ...limits}), code(limits.maxFileSize ? 'FILE_TOO_LARGE' : 'TOTAL_SIZE_EXCEEDED'));
+			assert.deepEqual(limited.released, [id(1), id(2)]);
+		}
+		const locked = fixture([bytes], {releaseFailure: true});
+		await assert.rejects(locked.chooser.getFileData({format, maxFileSize: null}), asyncError => {
+			assert.ok(asyncError instanceof locked.chooser.CleanupError);
+			assert.equal(asyncError.outcome.status, 'fulfilled');
+			assert.equal(asyncError.outcome.value.format, format);
+			assert.equal(asyncError.outcome.value.size, bytes.length);
+			assert.equal(asyncError.failures[0].id, id(1));
+			return true;
+		});
+	}
+});
+
+test('flat text decoding works for single and plural direct data', async () => {
+	const f = fixture([Buffer.from([0xe9])]);
+	assert.equal((await f.chooser.getFileData({format: 'text', maxFileSize: null, encoding: 'windows-1252'})).text, 'é');
+	const plural = fixture([Buffer.from([0xff]), Buffer.from('valid')]);
+	assert.deepEqual(Array.from(await plural.chooser.getFilesData({format: 'text', maxFileSize: null, maxTotalSize: null, fatal: false}), result => result.text), ['\ufffd', 'valid']);
 });
 
 test('padded, unpadded, and wrapped base64 preserve bytes and canonical padding', async () => {
@@ -229,7 +304,7 @@ test('read/decode failures release every transient source and malformed results 
 	await assert.rejects(f.chooser.getFilesData({maxFileSize: null, maxTotalSize: null, format: 'text'}), code('DECODE_FAILED'));
 	assert.deepEqual(f.released.sort(), [id(1), id(2)]);
 	const replacement = fixture([Buffer.from([0xff])]);
-	assert.equal((await replacement.chooser.getFileData({maxFileSize: null, format: 'text', decoding: {fatal: false}})).text, '\ufffd');
+	assert.equal((await replacement.chooser.getFileData({maxFileSize: null, format: 'text', fatal: false})).text, '\ufffd');
 });
 
 test('invalid selections roll back all recognizable resources', async () => {
@@ -294,6 +369,22 @@ test('scoped consumer owns its lifetime after selection; later signal cancellati
 	finish(undefined);
 	assert.equal(await result, undefined);
 	assert.deepEqual(f.released, [id(1)]);
+});
+
+test('scoped consumer fulfillment survives later signal abort, including cleanup failure', async () => {
+	for (const releaseFailure of [false, true]) {
+		const f = fixture(undefined, {releaseFailure});
+		const controller = new AbortController();
+		const value = {uploaded: true};
+		const pending = f.chooser.withFile({maxFileSize: null, signal: controller.signal}, () => {
+			controller.abort({afterSelection: true});
+			return value;
+		});
+		if (releaseFailure) await assert.rejects(pending, error => error instanceof f.chooser.CleanupError && error.outcome.status === 'fulfilled' && error.outcome.value === value && error.failures[0].id === id(1));
+		else assert.equal(await pending, value);
+		assert.deepEqual(f.released, [id(1)]);
+		assert.equal(f.calls.some(call => call.action === 'cancelPick'), false);
+	}
 });
 
 test('scoped plural cleanup retains ownership when a JavaScript consumer mutates its selection array', async () => {

@@ -58,19 +58,73 @@ test('whole reads and combined data produce exact bytes across multiple bounded 
 	assert.deepEqual(Buffer.from(await (await file.blob({maxBytes: null})).arrayBuffer()), bytes);
 });
 
+test('managed Blob and ArrayBuffer data include metadata without changing raw read results or ownership', async () => {
+	for (const bytes of [Buffer.alloc(0), Buffer.from([0, 255, 128, 1]), Buffer.alloc(524293, 0xa5)]) {
+		const f = fixture(bytes, {shortReads: 65537});
+		const file = await f.chooser.getFile({maxFileSize: null});
+		for (const format of ['blob', 'arrayBuffer']) {
+			const result = await file.getData({format, maxBytes: bytes.length || 1});
+			assert.equal(result.format, format);
+			assert.equal(result.size, bytes.length);
+			assert.equal(result.name, f.ref.name);
+			assert.equal(result.mediaType, f.ref.mediaType);
+			assert.equal('id' in result, false);
+			assert.equal('uri' in result, false);
+			assert.equal('data' in result, false);
+			const raw = format === 'blob' ? await file.blob({maxBytes: null}) : await file.arrayBuffer({maxBytes: null});
+			assert.ok(raw instanceof (format === 'blob' ? Blob : ArrayBuffer));
+			const actual = format === 'blob' ? await result.blob.arrayBuffer() : result.arrayBuffer;
+			assert.deepEqual(Buffer.from(actual), bytes);
+			if (format === 'blob') assert.equal(result.blob.type, f.ref.mediaType);
+			if (bytes.length > 1) await assert.rejects(file.getData({format, maxBytes: bytes.length - 1}), code('FILE_TOO_LARGE'));
+		}
+		assert.deepEqual(f.releases, []);
+		await file.release();
+		assert.deepEqual(f.releases, [key]);
+	}
+});
+
+test('managed text APIs use flat decoding options and binary APIs reject them before reading', async () => {
+	const f = fixture(Buffer.from([0xe9]));
+	const file = await f.chooser.getFile({maxFileSize: null});
+	assert.equal(file.read, undefined, 'readRange has no legacy alias');
+	assert.equal(await file.text({maxBytes: null, encoding: 'windows-1252'}), 'é');
+	assert.equal((await file.getData({format: 'text', maxBytes: null, encoding: 'windows-1252'})).text, 'é');
+	assert.equal((await file.getData({format: 'text', maxBytes: null, fatal: false})).text, '\ufffd');
+	const reader = file.textStream({encoding: 'windows-1252'}).getReader();
+	assert.equal((await reader.read()).value, 'é');
+	assert.equal((await reader.read()).done, true);
+	const before = f.reads.length;
+	for (const format of ['bytes', 'blob', 'arrayBuffer', 'dataURI', 'bytesAndDataURI']) {
+		for (const option of [{encoding: 'utf-8'}, {fatal: false}, {fatal: undefined}, {decoding: {fatal: false}}]) {
+			await assert.rejects(file.getData({format, maxBytes: null, ...option}), code('INVALID_ARGUMENT'));
+		}
+	}
+	for (const method of ['bytes', 'blob', 'arrayBuffer', 'dataURI']) {
+		await assert.rejects(file[method]({maxBytes: null, fatal: false}), code('INVALID_ARGUMENT'));
+	}
+	await assert.rejects(file.text({maxBytes: null, decoding: {fatal: false}}), code('INVALID_ARGUMENT'));
+	await assert.rejects(file.getData({format: 'text', maxBytes: null, decoding: {fatal: false}}), code('INVALID_ARGUMENT'));
+	assert.throws(() => file.textStream({decoding: {fatal: false}}), code('INVALID_ARGUMENT'));
+	assert.throws(() => file.stream({encoding: 'utf-8'}), code('INVALID_ARGUMENT'));
+	await assert.rejects(file.readRange({length: 1, fatal: false}), code('INVALID_ARGUMENT'));
+	assert.equal(f.reads.length, before);
+	await file.release();
+});
+
 test('ranges larger than internal chunks are supported with exact EOF and zero-length behavior', async () => {
 	const bytes = Buffer.alloc(600000, 0xa5);
 	const f = fixture(bytes);
 	const file = await f.chooser.getFile({maxFileSize: null});
-	assert.equal((await file.read({offset: 100, length: 500000})).length, 500000);
+	assert.equal((await file.readRange({offset: 100, length: 500000})).length, 500000);
 	assert.deepEqual(f.reads, [{offset: 100, length: 262144}, {offset: 262244, length: 237856}]);
-	assert.equal((await file.read({offset: 599999, length: 100})).length, 1);
-	assert.equal((await file.read({offset: 700000, length: 1})).length, 0);
+	assert.equal((await file.readRange({offset: 599999, length: 100})).length, 1);
+	assert.equal((await file.readRange({offset: 700000, length: 1})).length, 0);
 	const count = f.reads.length;
-	assert.equal((await file.read({length: 0})).length, 0);
+	assert.equal((await file.readRange({length: 0})).length, 0);
 	assert.equal(f.reads.length, count);
 	for (const options of [{length: -1}, {length: 1.1}, {length: 1, offset: -1}, {length: 1, offset: Number.MAX_SAFE_INTEGER}]) {
-		await assert.rejects(file.read(options), code('INVALID_ARGUMENT'));
+		await assert.rejects(file.readRange(options), code('INVALID_ARGUMENT'));
 	}
 });
 
@@ -85,7 +139,7 @@ test('managed reads require independent materialization budgets and validate eve
 	}
 	await assert.rejects(file.getData({maxBytes: null}), code('INVALID_ARGUMENT'));
 	await assert.rejects(file.getData({maxBytes: null, format: 'bytes', decoding: {fatal: false}}), code('INVALID_ARGUMENT'));
-	await assert.rejects(file.read({length: 0}, () => {}), code('INVALID_ARGUMENT'));
+	await assert.rejects(file.readRange({length: 0}, () => {}), code('INVALID_ARGUMENT'));
 	assert.throws(() => file.stream({length: -1}), code('INVALID_ARGUMENT'));
 	assert.throws(() => file.textStream({encoding: 'no-such-encoding'}), code('INVALID_ARGUMENT'));
 });
@@ -103,7 +157,7 @@ test('stream backpressure performs no eager read and cancellation closes only it
 	assert.equal(f.reads.length, 1, 'no second chunk before another pull');
 	await reader.cancel();
 	assert.equal(f.releases.length, 0);
-	assert.deepEqual(Array.from(await file.read({length: 2})), [42, 42]);
+	assert.deepEqual(Array.from(await file.readRange({length: 2})), [42, 42]);
 });
 
 test('text streams decode characters split across byte reads and flush final decoder state', async () => {
@@ -134,7 +188,7 @@ test('release stops unread streams without hanging and rejects future reads thro
 	await restored.release();
 	await closed;
 	await assert.rejects(file.bytes({maxBytes: null}), code('FILE_RELEASED'));
-	await assert.rejects(restored.read({length: 1}), code('FILE_RELEASED'));
+	await assert.rejects(restored.readRange({length: 1}), code('FILE_RELEASED'));
 	assert.throws(() => file.stream(), code('FILE_RELEASED'));
 	await f.chooser.releaseFile(file.id);
 	assert.deepEqual(f.releases, [key]);
@@ -146,7 +200,7 @@ test('release waits for an already-started whole read, including its later chunk
 	const file = await f.chooser.getFile({maxFileSize: null});
 	const read = file.bytes({maxBytes: null});
 	const released = file.release();
-	await assert.rejects(file.read({length: 1}), code('FILE_RELEASED'));
+	await assert.rejects(file.readRange({length: 1}), code('FILE_RELEASED'));
 	await tick();
 	assert.equal(f.pending.length, 1);
 	assert.equal(f.releases.length, 0);
@@ -190,7 +244,7 @@ test('stream cancellation does not wait for an unrelated whole-file read', async
 test('the scheduler queues normal concurrent reads behind four active bridge jobs', async () => {
 	const f = fixture(Buffer.from('abc'), {holdReads: true});
 	const file = await f.chooser.getFile({maxFileSize: null});
-	const reads = Array.from({length: 9}, () => file.read({length: 1}));
+	const reads = Array.from({length: 9}, () => file.readRange({length: 1}));
 	await tick();
 	assert.equal(f.pending.length, 4);
 	assert.equal(f.reads.length, 4);
@@ -228,6 +282,32 @@ test('batch release validates every ID first, deduplicates attempts, and reports
 	assert.deepEqual(f.releases, [key, secondKey]);
 	await f.chooser.releaseFiles([key, secondKey]);
 	assert.deepEqual(f.releases, [key, secondKey, key]);
+});
+
+test('batch release rejects holes, inherited entries and invalid IDs before mutating any resource', async () => {
+	const inherited = [key, , secondKey];
+	Object.setPrototypeOf(inherited, Object.assign(Object.create(Array.prototype), {1: secondKey}));
+	for (const ids of [Array(1), [key, , secondKey], [key, undefined], [key, key, , secondKey], inherited]) {
+		const f = fixture();
+		const file = await f.chooser.getFile({maxFileSize: null});
+		const before = f.calls.length;
+		await assert.rejects(f.chooser.releaseFiles(ids), code('INVALID_ARGUMENT'));
+		assert.equal(f.calls.length, before, 'validation must precede every release dispatch');
+		assert.deepEqual(f.releases, []);
+		assert.deepEqual(Array.from(await file.readRange({length: 1})), [97], 'invalid input must not mark the valid file releasing');
+	}
+});
+
+test('batch release validates the exact indexed snapshot it releases, ignoring custom iteration', async () => {
+	const f = fixture();
+	let accesses = 0;
+	const ids = [key, secondKey, key];
+	Object.defineProperty(ids, 0, {get() { return ++accesses === 1 ? key : '../foreign'; }});
+	ids.forEach = () => {};
+	ids[Symbol.iterator] = function* () { yield '../foreign'; };
+	await f.chooser.releaseFiles(ids);
+	assert.equal(accesses, 1, 'no second read of user-controlled entries after validation');
+	assert.deepEqual(f.releases, [key, secondKey]);
 });
 
 test('saved RC1 identifiers remain releasable without an in-memory registration', async () => {
@@ -329,7 +409,7 @@ test('release removes a queued stream read without waiting for unrelated active 
 	});
 	const a = await chooser.restoreFile(ref(key));
 	const b = await chooser.restoreFile(ref(secondKey));
-	const active = Array.from({length: 4}, () => a.read({length: 1}));
+	const active = Array.from({length: 4}, () => a.readRange({length: 1}));
 	await tick();
 	assert.equal(held.length, 4);
 	const reader = b.stream().getReader();
@@ -428,8 +508,8 @@ test('managed whole reads, ranges, and streams reject premature EOF against thei
 		() => file.text({maxBytes: null}),
 		() => file.dataURI({maxBytes: null}),
 		() => file.getData({format: 'bytesAndDataURI', maxBytes: null}),
-		() => file.read({length: 100}),
-		() => file.read({length: 1})
+		() => file.readRange({length: 100}),
+		() => file.readRange({length: 1})
 	]) await assert.rejects(read(), code('READ_FAILED'));
 	for (const stream of [file.stream(), file.stream({length: 1}), file.textStream()]) {
 		const reader = stream.getReader();
@@ -446,15 +526,15 @@ test('managed reads reject overrun and missing EOF while preserving valid short 
 		const f = fixture(Buffer.from('a'), options);
 		const file = await f.chooser.getFile({maxFileSize: null});
 		await assert.rejects(file.bytes({maxBytes: null}), code('READ_FAILED'));
-		await assert.rejects(file.read({length: 2}), code('READ_FAILED'));
+		await assert.rejects(file.readRange({length: 2}), code('READ_FAILED'));
 		await assert.rejects(file.stream().getReader().read(), code('READ_FAILED'));
 	}
 	const f = fixture(Buffer.from('abcd'), {shortReads: 1});
 	const file = await f.chooser.getFile({maxFileSize: null});
 	assert.equal(Buffer.from(await file.bytes({maxBytes: null})).toString(), 'abcd');
-	assert.equal(Buffer.from(await file.read({offset: 1, length: 2})).toString(), 'bc');
-	assert.equal(Buffer.from(await file.read({offset: 3, length: 9})).toString(), 'd');
-	assert.equal((await file.read({offset: 9, length: 2})).length, 0);
+	assert.equal(Buffer.from(await file.readRange({offset: 1, length: 2})).toString(), 'bc');
+	assert.equal(Buffer.from(await file.readRange({offset: 3, length: 9})).toString(), 'd');
+	assert.equal((await file.readRange({offset: 9, length: 2})).length, 0);
 	assert.equal((await file.stream({offset: 9}).getReader().read()).done, true);
 });
 

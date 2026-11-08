@@ -7,7 +7,7 @@ var readQueue = [];
 var activeReads = 0;
 var activePicker;
 var requestSequence = 0;
-var formats = ['bytes', 'text', 'dataURI', 'bytesAndDataURI'];
+var formats = ['bytes', 'text', 'dataURI', 'bytesAndDataURI', 'blob', 'arrayBuffer'];
 var errorCodes = ['INVALID_ARGUMENT', 'BUSY', 'CANCELLED', 'UNSUPPORTED', 'PICKER_FAILED',
 	'PERMISSION_DENIED', 'FILE_TOO_LARGE', 'TOO_MANY_FILES', 'TOTAL_SIZE_EXCEEDED', 'READ_FAILED',
 	'DECODE_FAILED', 'COPY_FAILED', 'CACHE_FAILED', 'FILE_UNAVAILABLE', 'FILE_RELEASED',
@@ -108,6 +108,10 @@ function nativeError(value, fallback) {
 		if (outcome.status === 'fulfilled') outcome = {status: 'fulfilled', value: outcome.value};
 		else {
 			var reason = outcome.reason;
+			if (typeof reason === 'string') {
+				try { var parsed = JSON.parse(reason); if (record(parsed) && typeof parsed.code === 'string') reason = parsed; }
+				catch (_) { /* Unstructured consumer exceptions remain unchanged. */ }
+			}
 			if ((record(reason) && typeof reason.code === 'string') || (typeof reason === 'string' && /^[A-Z_]+:/.test(reason))) {
 				reason = nativeError(reason, 'PICKER_FAILED');
 			}
@@ -116,6 +120,18 @@ function nativeError(value, fallback) {
 		return new CleanupError(outcome, options.failures || []);
 	}
 	return new ChooserError(code, record(value) && typeof value.message === 'string' ? value.message : 'Chooser operation failed.', options);
+}
+function signalFailure(error, signal) {
+	if (!signal || !signal.aborted) return error;
+	if (error instanceof CancellationError) return new CancellationError('signal', {cause: signal.reason});
+	if (error instanceof CleanupError) {
+		var outcome = error.outcome;
+		var reason = outcome.status === 'fulfilled' ? new CancellationError('signal', {cause: signal.reason}) : signalFailure(outcome.reason, signal);
+		if (outcome.status === 'fulfilled' || reason !== outcome.reason) {
+			return new CleanupError({status: 'rejected', reason: reason}, error.failures);
+		}
+	}
+	return error;
 }
 function bridge(action, args, fallback) {
 	return new Promise(function (resolve, reject) {
@@ -240,7 +256,7 @@ function readChunk(entry, offset, length, signal, streamState) {
 		var value;
 		try { value = parseResponse(await bridge('readFile', [entry.id, offset, length], 'READ_FAILED')); }
 		catch (error) {
-			if (error instanceof CleanupError) throw error;
+			if (error instanceof CleanupError) throw signalFailure(error, signal);
 			checkSignal(signal);
 			if (error instanceof ChooserError) throw error;
 			throw new ChooserError('READ_FAILED', 'Invalid read response.', {cause: error});
@@ -286,13 +302,13 @@ function decoded(decoder, bytes, final) {
 }
 function dataOptions(options) {
 	if (formats.indexOf(options.format) < 0) throw invalid('An explicit data format is required.');
-	if (options.format !== 'text' && own(options, 'decoding')) throw invalid('decoding is available only for text.');
-	return options.format === 'text' ? decodingOptions(options.decoding) : undefined;
+	if (options.format !== 'text' && (own(options, 'encoding') || own(options, 'fatal'))) throw invalid('encoding and fatal are available only for text.');
+	return options.format === 'text' ? decodingOptions({encoding: options.encoding, fatal: options.fatal}) : undefined;
 }
 function wholeOptions(value, kind) {
 	var allowed = ['maxBytes', 'signal'];
 	if (kind === 'text') allowed.push('encoding', 'fatal');
-	if (kind === 'data') allowed.push('format', 'decoding');
+	if (kind === 'data') allowed.push('format', 'encoding', 'fatal');
 	var options = objectOptions(value, allowed);
 	var result = {maxBytes: positiveLimit(options.maxBytes, 'maxBytes'), signal: signalOption(options.signal)};
 	if (kind === 'text') result.decoding = decodingOptions({encoding: options.encoding, fatal: options.fatal});
@@ -331,10 +347,10 @@ async function materialize(entry, info, options, format, budget) {
 		var result = Object.assign({}, info, {size: offset, format: format});
 		if (format === 'blob') {
 			if (typeof Blob !== 'function') throw new ChooserError('UNSUPPORTED', 'Blob is unavailable.');
-			return new Blob(chunks, {type: info.mediaType});
+			result.blob = new Blob(chunks, {type: info.mediaType});
 		}
-		if (format === 'bytes' || format === 'bytesAndDataURI' || format === 'arrayBuffer') result.data = combineBytes(chunks, offset);
-		if (format === 'arrayBuffer') return result.data.buffer;
+		if (format === 'bytes' || format === 'bytesAndDataURI') result.data = combineBytes(chunks, offset);
+		if (format === 'arrayBuffer') result.arrayBuffer = combineBytes(chunks, offset).buffer;
 		if (format === 'text') result.text = text.join('');
 		if (format === 'dataURI' || format === 'bytesAndDataURI') result.dataURI = 'data:' + info.mediaType + ';base64,' + encoded.join('');
 		return result;
@@ -415,12 +431,12 @@ function managedFile(ref) {
 	var handle = Object.assign({}, ref);
 	Object.assign(handle, {
 		bytes: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options), 'bytes'); }).then(function (value) { return value.data; }); },
-		arrayBuffer: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options), 'arrayBuffer'); }); },
-		blob: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options), 'blob'); }); },
+		arrayBuffer: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options), 'arrayBuffer'); }).then(function (value) { return value.arrayBuffer; }); },
+		blob: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options), 'blob'); }).then(function (value) { return value.blob; }); },
 		text: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options, 'text'), 'text'); }).then(function (value) { return value.text; }); },
 		dataURI: function (options) { return promiseCall(arguments, 1, function () { return materialize(entry, metadata(ref), wholeOptions(options), 'dataURI'); }).then(function (value) { return value.dataURI; }); },
 		getData: function (options) { return promiseCall(arguments, 1, function () { var parsed = wholeOptions(options, 'data'); return materialize(entry, metadata(ref), parsed, parsed.format); }); },
-		read: function (options) { return promiseCall(arguments, 1, function () { return rangeRead(entry, rangeOptions(options, false)); }); },
+		readRange: function (options) { return promiseCall(arguments, 1, function () { return rangeRead(entry, rangeOptions(options, false)); }); },
 		stream: function (options) { noExtraArguments(arguments, 1); return fileStream(entry, options, false); },
 		textStream: function (options) { noExtraArguments(arguments, 1); return fileStream(entry, options, true); },
 		release: function () { return promiseCall(arguments, 0, function () { return releaseFile(ref.id); }); },
@@ -449,9 +465,12 @@ function releaseFile(id) {
 function releaseFiles(ids) {
 	return promiseCall(arguments, 1, async function () {
 		if (!Array.isArray(ids)) throw invalid('Expected an array of managed file identifiers.');
-		ids.forEach(validateId);
+		/* Read each index once, including holes, before validation or mutation. */
+		var snapshot = [], length = ids.length;
+		for (var i = 0; i < length; i++) snapshot.push(own(ids, i) ? ids[i] : undefined);
+		snapshot.forEach(validateId);
 		var failures = [];
-		await Promise.all(Array.from(new Set(ids)).map(async function (id) {
+		await Promise.all(Array.from(new Set(snapshot)).map(async function (id) {
 			try { await releaseOne(id); }
 			catch (error) { failures.push({id: id, error: nativeError(error, 'RELEASE_FAILED')}); }
 		}));
@@ -486,15 +505,15 @@ function normalizeAccept(value) {
 }
 function pickerOptions(value, mode, multiple) {
 	var options = objectOptions(value === undefined && mode === 'metadata' ? {} : value,
-		['source', 'accept', 'localOnly', 'mediaTypes', 'signal'].concat(multiple ? ['maxFiles'] : [])
+		['source', 'accept', 'preferLocal', 'mediaTypes', 'signal'].concat(multiple ? ['maxFiles'] : [])
 			.concat(mode !== 'metadata' ? ['maxFileSize'].concat(multiple ? ['maxTotalSize'] : []) : [])
-			.concat(mode === 'data' ? ['format', 'decoding'] : []));
+			.concat(mode === 'data' ? ['format', 'encoding', 'fatal'] : []));
 	var source = options.source === undefined ? 'documents' : options.source;
 	if (source !== 'documents' && source !== 'photos') throw invalid('Unknown picker source.');
 	var wire = {requestId: 'chooser-' + (++requestSequence), source: source, accept: '*/*', mode: mode, multiple: multiple,
 		localOnly: false, maxFileSize: 0, maxTotalSize: 0, maxFiles: 0};
 	if (source === 'photos') {
-		if (own(options, 'accept') || own(options, 'localOnly')) throw invalid('Photo selection accepts mediaTypes instead of document options.');
+		if (own(options, 'accept') || own(options, 'preferLocal')) throw invalid('Photo selection accepts mediaTypes instead of document options.');
 		var mediaTypes = options.mediaTypes === undefined ? ['image', 'video'] : options.mediaTypes;
 		if (!Array.isArray(mediaTypes) || !mediaTypes.length || mediaTypes.some(function (type) { return type !== 'image' && type !== 'video'; })) throw invalid('mediaTypes must select images, videos, or both.');
 		wire.mediaTypes = Array.from(new Set(mediaTypes));
@@ -502,8 +521,8 @@ function pickerOptions(value, mode, multiple) {
 	else {
 		if (own(options, 'mediaTypes')) throw invalid('mediaTypes is available only for photos.');
 		wire.accept = normalizeAccept(options.accept);
-		if (options.localOnly !== undefined && typeof options.localOnly !== 'boolean') throw invalid('localOnly must be a boolean.');
-		wire.localOnly = options.localOnly === true;
+		if (options.preferLocal !== undefined && typeof options.preferLocal !== 'boolean') throw invalid('preferLocal must be a boolean.');
+		wire.localOnly = options.preferLocal === true;
 	}
 	if (mode !== 'metadata') {
 		wire.maxFileSize = positiveLimit(options.maxFileSize, 'maxFileSize');
@@ -535,17 +554,12 @@ function callPicker(value, mode, multiple, args) {
 		function detach() { if (options.signal) options.signal.removeEventListener('abort', abort); }
 		function endPicker() { if (activePicker === request) activePicker = undefined; }
 		function finishRejected(error) {
-			if (options.signal && options.signal.aborted && error instanceof CleanupError && error.outcome.status === 'fulfilled') {
-				var cancellation = new CancellationError('signal', {cause: options.signal.reason});
-				error = new CleanupError({status: 'rejected', reason: cancellation}, error.failures);
-			}
-			endPicker(); detach(); reject(error);
+			endPicker(); detach(); reject(signalFailure(error, options.signal));
 		}
 		function failed(error) {
 			if (terminal) return;
 			terminal = true;
 			var failure = nativeError(error, 'PICKER_FAILED');
-			if (aborted && failure instanceof CancellationError) failure = new CancellationError('signal', {cause: options.signal.reason});
 			finishRejected(failure);
 		}
 		function succeeded(response) {
@@ -553,7 +567,7 @@ function callPicker(value, mode, multiple, args) {
 			terminal = true;
 			var raw;
 			Promise.resolve().then(async function () {
-				if (response === 'RESULT_CANCELED') throw new CancellationError(aborted ? 'signal' : 'picker');
+				if (response === 'RESULT_CANCELED') { checkSignal(options.signal); throw new CancellationError('picker'); }
 				try { raw = parseResponse(response); }
 				catch (error) { throw new ChooserError('PICKER_FAILED', 'Invalid picker response.', {cause: error}); }
 				var ids = resultIds(raw);

@@ -32,6 +32,72 @@ test('direct combined data opens synchronously, reads once, and owns no Blob URL
 	assert.equal(f.elements[0].attached, false);
 });
 
+test('browser Blob and ArrayBuffer formats preserve bytes and MIME through direct and managed cleanup', async () => {
+	for (const format of ['blob', 'arrayBuffer']) {
+		const f = browserFixture();
+		const inputs = [file('raw.bin', [0, 255, 128, 42], 'application/x-chooser-test'), file('empty.bin', [], 'text/plain')];
+		const results = await select(f, 'getFilesData', {format, maxFileSize: 4, maxTotalSize: 4}, inputs);
+		assert.equal(results.length, 2);
+		for (let i = 0; i < results.length; i++) {
+			const result = results[i];
+			assert.equal(result.format, format);
+			assert.equal(result.name, inputs[i].name);
+			assert.equal(result.mediaType, inputs[i].type);
+			assert.equal(result.size, inputs[i].size);
+			assert.equal('id' in result, false);
+			assert.equal('uri' in result, false);
+			const buffer = format === 'blob' ? await result.blob.arrayBuffer() : result.arrayBuffer;
+			assert.deepEqual(Array.from(new Uint8Array(buffer)), i ? [] : [0, 255, 128, 42]);
+			if (format === 'blob') assert.equal(result.blob.type, inputs[i].type);
+			assert.equal(inputs[i].reads.length, 1);
+		}
+		assert.equal(f.blobs.size, 0);
+		const handle = await select(f, 'getFile', {maxFileSize: 4, preferLocal: true}, [inputs[0]]);
+		assert.equal(handle.read, undefined);
+		const data = await handle.getData({format, maxBytes: 4});
+		assert.equal(data.name, 'raw.bin');
+		assert.equal(f.blobs.size, 1, 'managed getData retains its handle');
+		await handle.release();
+		const buffer = format === 'blob' ? await data.blob.arrayBuffer() : data.arrayBuffer;
+		assert.deepEqual(Array.from(new Uint8Array(buffer)), [0, 255, 128, 42], 'returned data outlives release');
+		assert.equal(f.blobs.size, 0);
+		for (const limits of [{maxFileSize: 3, maxTotalSize: null}, {maxFileSize: null, maxTotalSize: 3}]) {
+			const pending = f.chooser.getFilesData({format, ...limits});
+			const rejected = assert.rejects(pending, code(limits.maxFileSize ? 'FILE_TOO_LARGE' : 'TOTAL_SIZE_EXCEEDED'));
+			f.elements.at(-1).emit('change', inputs);
+			await rejected;
+			assert.equal(f.blobs.size, 0);
+		}
+	}
+});
+
+test('browser sparse release validation leaves managed URLs and reads intact, including inherited IDs', async () => {
+	const f = browserFixture();
+	const handle = await select(f, 'getFile', {maxFileSize: null}, [file()]);
+	const inherited = [handle.id, , handle.id];
+	Object.setPrototypeOf(inherited, Object.assign(Object.create(Array.prototype), {1: handle.id}));
+	for (const ids of [[handle.id, , handle.id], inherited]) {
+		await assert.rejects(f.chooser.releaseFiles(ids), code('INVALID_ARGUMENT'));
+		assert.equal(f.blobs.size, 1);
+		assert.deepEqual(f.revoked, []);
+		assert.deepEqual(Array.from(await handle.readRange({length: 3})), [0, 1, 255]);
+	}
+	await handle.release();
+	assert.equal(f.blobs.size, 0);
+});
+
+test('obsolete and invalid flat options reject before opening a browser picker', async () => {
+	const f = browserFixture();
+	await assert.rejects(f.chooser.getFileMetadata({localOnly: false}), code('INVALID_ARGUMENT'));
+	await assert.rejects(f.chooser.getFileData({format: 'text', maxFileSize: null, decoding: {fatal: false}}), code('INVALID_ARGUMENT'));
+	for (const format of ['blob', 'arrayBuffer']) {
+		await assert.rejects(f.chooser.getFileData({format, maxFileSize: null, fatal: false}), code('INVALID_ARGUMENT'));
+	}
+	assert.equal(f.elements.length, 0);
+	const result = await select(f, 'getFileData', {format: 'text', maxFileSize: null, encoding: 'windows-1252'}, [file('latin.txt', [0xe9], 'text/plain')]);
+	assert.equal(result.text, 'é');
+});
+
 test('metadata has no reads or owned resources; managed handles read and restore by ID', async () => {
 	const f = browserFixture(), input = file();
 	const info = await select(f, 'getFileMetadata', undefined, [input]);
@@ -42,7 +108,7 @@ test('metadata has no reads or owned resources; managed handles read and restore
 	const managed = await select(f, 'getFile', {maxFileSize: 3}, [input]);
 	assert.equal(input.reads.length, 0);
 	const restored = await f.chooser.restoreFile(JSON.parse(JSON.stringify(managed)));
-	assert.deepEqual(Array.from(await restored.read({offset: 1, length: 20})), [1, 255]);
+	assert.deepEqual(Array.from(await restored.readRange({offset: 1, length: 20})), [1, 255]);
 	await managed.release();
 	await assert.rejects(restored.bytes({maxBytes: 3}), code('FILE_RELEASED'));
 	await restored.release();
@@ -60,9 +126,10 @@ test('native input cancellation, empty selection and AbortSignal use cancellatio
 	f.elements[1].emit('change', []);
 	await emptyRejected;
 	const controller = new AbortController();
+	const reason = {identity: 'browser abort'};
 	const aborted = f.chooser.getFileMetadata({signal: controller.signal});
-	const signalRejected = assert.rejects(aborted, error => error.code === 'CANCELLED' && error.reason === 'signal');
-	controller.abort();
+	const signalRejected = assert.rejects(aborted, error => error.code === 'CANCELLED' && error.reason === 'signal' && error.cause === reason);
+	controller.abort(reason);
 	await signalRejected;
 	const next = await select(f, 'getFileMetadata', undefined, [file('next')]);
 	assert.equal(next.name, 'next');

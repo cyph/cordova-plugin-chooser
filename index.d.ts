@@ -10,7 +10,8 @@ declare namespace chooser {
 		source?: 'documents';
 		accept?: string | readonly string[];
 		/** Android provider hint; default false. */
-		localOnly?: boolean;
+		preferLocal?: boolean;
+		localOnly?: never;
 		mediaTypes?: never;
 	}
 	interface PhotoSourceOptions {
@@ -18,6 +19,7 @@ declare namespace chooser {
 		/** Default: images and videos. */
 		mediaTypes?: readonly ('image' | 'video')[];
 		accept?: never;
+		preferLocal?: never;
 		localOnly?: never;
 	}
 	type SelectionOptions = OperationOptions & (DocumentSourceOptions | PhotoSourceOptions);
@@ -65,16 +67,18 @@ declare namespace chooser {
 	}
 	type TextStreamOptions = StreamOptions & TextDecodingOptions;
 
-	type DataFormat = 'bytes' | 'text' | 'dataURI' | 'bytesAndDataURI';
+	type DataFormat = 'bytes' | 'text' | 'dataURI' | 'bytesAndDataURI' | 'blob' | 'arrayBuffer';
 	interface DataResultMap {
 		bytes: {readonly format: 'bytes'; readonly data: Uint8Array<ArrayBuffer>};
 		text: {readonly format: 'text'; readonly text: string};
 		dataURI: {readonly format: 'dataURI'; readonly dataURI: string};
 		bytesAndDataURI: {readonly format: 'bytesAndDataURI'; readonly data: Uint8Array<ArrayBuffer>; readonly dataURI: string};
+		blob: {readonly format: 'blob'; readonly blob: Blob};
+		arrayBuffer: {readonly format: 'arrayBuffer'; readonly arrayBuffer: ArrayBuffer};
 	}
 	type FileData<F extends DataFormat = DataFormat> = FileMetadata & {readonly size: number} & DataResultMap[F];
-	type DataOptions<F extends DataFormat> = {format: F} & (
-		{decoding?: never} | {format: 'text'; decoding?: TextDecodingOptions}
+	type DataOptions<F extends DataFormat> = {format: F; decoding?: never} & (
+		{encoding?: never; fatal?: never} | ({format: 'text'} & TextDecodingOptions)
 	);
 	type GetFileDataOptions<F extends DataFormat> = GetFileOptions & DataOptions<F>;
 	type GetFilesDataOptions<F extends DataFormat> = GetFilesOptions & DataOptions<F>;
@@ -88,7 +92,7 @@ declare namespace chooser {
 		dataURI(options: WholeFileReadOptions): Promise<string>;
 		getData<F extends DataFormat>(options: ManagedDataOptions<F>): Promise<FileData<F>>;
 		/** Returns a short result at EOF, including an empty result beyond EOF. */
-		read(options: RangeReadOptions): Promise<Uint8Array<ArrayBuffer>>;
+		readRange(options: RangeReadOptions): Promise<Uint8Array<ArrayBuffer>>;
 		stream(options?: StreamOptions): ReadableStream<Uint8Array<ArrayBuffer>>;
 		textStream(options?: TextStreamOptions): ReadableStream<string>;
 		/** Stops streams, waits for started one-shot reads, and releases this ID across all aliases. */
