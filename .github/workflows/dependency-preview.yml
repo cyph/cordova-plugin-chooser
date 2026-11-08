@@ -1,0 +1,81 @@
+name: Dependency preview
+run-name: Dependency preview (${{ inputs.target }})
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Native dependency target to resolve and verify without applying
+        type: choice
+        required: true
+        default: android
+        options: [android, android-sdks, capacitor]
+permissions:
+  contents: read
+concurrency:
+  group: dependency-preview-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CHAINMAN_MODE: host-nix
+      DEPENDENCY_TARGET: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record primary checkout state
+        id: baseline
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/dependency-preview"
+          mkdir -p "$evidence"
+          git rev-parse --verify HEAD > "$evidence/before.head"
+          git rev-parse --symbolic-full-name HEAD >> "$evidence/before.head"
+          git ls-files --stage -v -z > "$evidence/before.index"
+          GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --untracked-files=no -z > "$evidence/before.status"
+          test ! -s "$evidence/before.status"
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Prepare frozen dependencies
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+      - name: Resolve and verify dependency preview
+        shell: bash
+        run: |
+          case "$DEPENDENCY_TARGET" in
+            android|android-sdks|capacitor) ;;
+            *) echo "Unsupported dependency target" >&2; exit 2 ;;
+          esac
+          evidence="$RUNNER_TEMP/dependency-preview"
+          status=0
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- \
+            deps-update mode=dry-run "targets=$DEPENDENCY_TARGET" commit=off --json \
+            > "$evidence/result.json" 2> "$evidence/stderr.log" || status=$?
+          printf '%s\n' "$status" > "$evidence/exit-code.txt"
+          exit "$status"
+      - name: Verify primary checkout is unchanged
+        if: ${{ always() && steps.baseline.outcome == 'success' }}
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/dependency-preview"
+          git rev-parse --verify HEAD > "$evidence/after.head"
+          git rev-parse --symbolic-full-name HEAD >> "$evidence/after.head"
+          git ls-files --stage -v -z > "$evidence/after.index"
+          GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --untracked-files=no -z > "$evidence/after.status"
+          status=0
+          for state in head index status; do
+            if ! cmp -s "$evidence/before.$state" "$evidence/after.$state"; then
+              echo "Primary checkout $state changed during dependency preview" >&2
+              status=1
+            fi
+          done
+          exit "$status"
+      - name: Retain dependency preview evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-preview-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dependency-preview/
+          retention-days: 14
+          if-no-files-found: error

@@ -89,6 +89,8 @@ just deps-update mode=dry-run targets=js
 just deps-update targets=js
 ```
 
+For a GitHub Actions preview, manually run [Dependency preview](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/dependency-preview.yml) and choose `android` (the default, covering the Cordova Android 14/15 graphs), `android-sdks` (evidence for frozen SDK pins), or `capacitor`. On Ubuntu, it runs the pinned Chainman command `just deps-update mode=dry-run targets=<choice> commit=off --json`, including project verification, without applying repository updates or commits. Review the structured JSON result and command log in the workflow artifact. Frozen release qualification remains separate.
+
 Updates use isolated checkouts and normally commit after verification. Run them on Linux for browser coverage, then run the relevant native lanes. Use `targets=nix` to reconcile Nix and toolchain pins with the JavaScript and native dependency graphs. Use `targets=android` for both Cordova Android fixture graphs, `targets=android-sdks` to refresh evidence for the existing SDK pins, and `targets=capacitor` for the emulator graph; preview each with `mode=dry-run`. When refreshing SDK evidence, verify that SDK identities remain unchanged and review both fixtures' locks and checksums.
 
 For a Capacitor upgrade, coordinate core, CLI, Android, policy constraints, the Gradle adapter, and the pnpm and Gradle graphs; then run the emulator lane. Check SDK, JDK, Gradle, and instrumentation compatibility. Use `just chainman deps-audit --targets js` for available published advisories and `just chainman chainman-update` to update the pinned Chainman runtime.
