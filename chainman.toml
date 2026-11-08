@@ -120,6 +120,13 @@ commands = [["node", "scripts/verify.mjs", "ios-simulator-part"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.compare-ios-releases]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/ios-comparison.mjs"]]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.diagnose-ios-simulator]
 profile = "ios"
 setup = ["javascript"]
@@ -233,6 +240,7 @@ check = ["prettier", "--check", "--"]
 [formatters.javascript]
 paths = [
   "scripts/*.mjs",
+  "scripts/*.cjs",
   "tests/browser/*.cjs",
   "tests/browser/www/*.js",
   "tests/tooling/*.cjs",

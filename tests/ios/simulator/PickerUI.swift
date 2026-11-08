@@ -7,6 +7,9 @@ class PickerUI: XCTestCase {
     }
     override func tearDown() {
         continueAfterFailure = true
+        if ProcessInfo.processInfo.environment["CHOOSER_COMPARISON"] == "1" {
+            attachScreen("Comparison case final screen")
+        }
         if let run = testRun, run.failureCount > 0 {
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.lifetime = .keepAlways
@@ -394,9 +397,36 @@ class PickerUI: XCTestCase {
         print("CHOOSER_UI select \(filename) cell=\(item.frame) thumbnail=\(bounds) point=\(point)")
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
             dx: point.x - app.frame.minX, dy: point.y - app.frame.minY)).tap()
+        let expected = "\(resultPrefix):\(filename)"
+        // Keep the existing 30-second outcome deadline. Files may first
+        // expose Open after its provider has finished resolving the selection.
+        let deadline = ProcessInfo.processInfo.systemUptime + 30
         let open = app.buttons["Open"].firstMatch
-        if open.waitForExistence(timeout: 2) { open.tap() }
-        expect(app, "\(resultPrefix):\(filename)")
+        var tappedOpen = false
+        var observed = "unavailable"
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let root = try? app.snapshot() else { return false }
+            var pending = [root]
+            var outcomes: [String] = []
+            while let element = pending.popLast() {
+                pending.append(contentsOf: element.children)
+                if element.elementType == .staticText && element.identifier == "Outcome" {
+                    outcomes.append(element.label)
+                }
+            }
+            observed = outcomes.count == 1 ? outcomes[0] : "unavailable (\(outcomes.count) outcome labels)"
+            if outcomes.count == 1 && outcomes[0] != "ready" && outcomes[0] != "loading" { return true }
+            if !tappedOpen && open.exists && open.isEnabled && open.isHittable &&
+                self.pickerButtonFrame(open, in: app) != nil {
+                tappedOpen = true
+                self.attachScreen("Before Open confirmation")
+                open.tap()
+            }
+            return false
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: max(0, deadline - ProcessInfo.processInfo.systemUptime)),
+                       .completed, "Expected fixture outcome \(expected); last observed \(observed)")
+        XCTAssertEqual(observed, expected, "Unexpected fixture outcome")
     }
 
     func pendingPicker(_ app: XCUIApplication) {

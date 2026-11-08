@@ -1,0 +1,64 @@
+name: iOS release comparison
+run-name: Bounded RC1 versus RC2 comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-release-comparison-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  comparison:
+    if: ${{ !github.event.repository.private }}
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [cordova-ios7, cordova-ios8]
+        device: [iphone, ipad]
+    runs-on: macos-26
+    timeout-minutes: 360
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Prepare frozen dependencies
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+      - name: Compare immutable releases
+        run: >-
+          nix --extra-experimental-features 'nix-command flakes' run .#just --
+          chainman run compare-ios-releases
+          '${{ matrix.framework }}' '${{ matrix.device }}'
+      - name: Verify tracked files are unchanged
+        if: ${{ always() }}
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Retain comparison summaries
+        if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: comparison-ios-${{ matrix.framework }}-${{ matrix.device }}-summary
+          path: |
+            .verification/reports/**/comparison.json
+            .verification/reports/**/*-summary.json
+            .verification/reports/**/*-tests.json
+            .verification/reports/**/*-sources.json
+            .verification/reports/**/*-events.log
+            .verification/reports/**/*-not-started.json
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error
+      - name: Retain comparison evidence
+        if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: comparison-ios-${{ matrix.framework }}-${{ matrix.device }}
+          path: .verification/reports/
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error

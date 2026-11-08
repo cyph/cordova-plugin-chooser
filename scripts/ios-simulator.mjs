@@ -74,6 +74,342 @@ export function prepareSimulatorApp(directory) {
 	writeFileSync(path, config);
 }
 
+export function simulatorNativeOnly(selected) {
+	return (
+		selected.control.length === 0 &&
+		selected.chooser.length > 0 &&
+		selected.chooser.every((id) => /^ChooserPickerTests\/test\w+\(\)$/.test(id))
+	);
+}
+
+export function prepareIosSimulatorFixture({
+	root,
+	generated,
+	packed,
+	assets,
+	directory,
+	alias,
+	run,
+	env,
+	diagnosticScope = "all",
+	deploymentTarget = "15.0",
+	buildSettings = [],
+	uiOnly = false,
+	nativeOnly = false,
+	adapter,
+	comparisonRelease,
+	clean = true,
+}) {
+	if (clean) rmSync(directory, { recursive: true, force: true });
+	else
+		assert(
+			!existsSync(directory),
+			`Fixture directory already exists: ${directory}`,
+		);
+	mkdirSync(directory, { recursive: true });
+	cpSync(join(root, "tests/ios/simulator"), join(directory, "fixture"), {
+		recursive: true,
+	});
+	if (assets)
+		cpSync(assets, join(directory, "fixture/Assets"), { recursive: true });
+	const bridgingHeader = join(directory, "fixture/Host-Bridging-Header.h");
+	writeFileSync(bridgingHeader, "#import <Cordova/Cordova.h>\n");
+	if (alias === "cordova-ios7") prepareBridgingHeader(bridgingHeader);
+	cpSync(join(generated, "platforms/ios/www"), join(directory, "www"), {
+		recursive: true,
+	});
+	cpSync(
+		join(root, "tests/ios/simulator/index.html"),
+		join(directory, "www/index.html"),
+	);
+	writeFileSync(
+		join(directory, "www/unit.html"),
+		"<!doctype html><html><body></body></html>\n",
+	);
+	const name = alias === "cordova-ios7" ? "ChooserFixture" : "App";
+	cpSync(
+		join(generated, "platforms/ios", name, "config.xml"),
+		join(directory, "config.xml"),
+	);
+	if (adapter) {
+		cpSync(adapter, join(directory, "www/ios-comparison-adapter.js"));
+		const page = join(directory, "www/index.html");
+		writeFileSync(
+			page,
+			readFileSync(page, "utf8").replace(
+				'<script src="cordova.js"></script>',
+				`<script>window.iosComparisonRelease = ${JSON.stringify(comparisonRelease)};</script><script src="cordova.js"></script><script src="ios-comparison-adapter.js"></script>`,
+			),
+		);
+	}
+	const common = { platform: "iOS", deploymentTarget };
+	const legacy = alias === "cordova-ios7";
+	const cordova = {
+		target: `Cordova/${legacy ? "CordovaLib" : "Cordova"}`,
+		embed: !legacy,
+	};
+	const spec = {
+		name: "ChooserSimulator",
+		options: {
+			bundleIdPrefix: "com.cyph.chooser",
+			createIntermediateGroups: true,
+		},
+		settings: {
+			base: {
+				SWIFT_VERSION: "5.0",
+				CODE_SIGNING_ALLOWED: "YES",
+				CODE_SIGN_IDENTITY: "-",
+				CODE_SIGN_STYLE: "Manual",
+				DEVELOPMENT_TEAM: "",
+				TARGETED_DEVICE_FAMILY: "1,2",
+				// Cordova 7's old umbrella import needs its scoped pragma;
+				// standalone explicit PCM generation bypasses that header.
+				SWIFT_ENABLE_EXPLICIT_MODULES: legacy ? "NO" : "YES",
+				...(legacy
+					? {
+							HEADER_SEARCH_PATHS: [
+								"$(inherited)",
+								"$(TARGET_BUILD_DIR)/usr/local/lib/include",
+								"$(OBJROOT)/UninstalledProducts/include",
+								"$(OBJROOT)/UninstalledProducts/$(PLATFORM_NAME)/include",
+								"$(BUILT_PRODUCTS_DIR)/include",
+								"$(BUILT_PRODUCTS_DIR)",
+							],
+							OTHER_LDFLAGS: ["$(inherited)", "-ObjC"],
+						}
+					: {}),
+			},
+		},
+		projectReferences: {
+			Cordova: {
+				path: join(
+					generated,
+					legacy
+						? "platforms/ios/CordovaLib/CordovaLib.xcodeproj"
+						: "platforms/ios/packages/cordova-ios/CordovaLib/CordovaLib.xcodeproj",
+				),
+			},
+		},
+		targets: {
+			ChooserVault: {
+				...common,
+				type: "application",
+				sources: [
+					"fixture/FixtureVault.swift",
+					{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
+				],
+				settings: {
+					base: {
+						PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.fixtures",
+						SWIFT_STRICT_CONCURRENCY: "complete",
+						SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
+					},
+				},
+				info: {
+					path: "Vault-Info.plist",
+					properties: {
+						CFBundleDisplayName: "Chooser Fixtures",
+						ChooserSeedMode: diagnosticScope === "provider" ? "copy" : "export",
+						UILaunchScreen: {},
+						UIFileSharingEnabled: true,
+						LSSupportsOpeningDocumentsInPlace: true,
+						UIApplicationSceneManifest: {
+							UIApplicationSupportsMultipleScenes: false,
+						},
+						CFBundleDocumentTypes: [
+							{
+								CFBundleTypeName: "Fixture documents",
+								CFBundleTypeRole: "Editor",
+								LSHandlerRank: "Alternate",
+								LSItemContentTypes: ["public.data"],
+							},
+						],
+						UISupportedInterfaceOrientations: interfaceOrientations,
+					},
+				},
+			},
+			ChooserHost: {
+				...common,
+				type: "application",
+				sources: [
+					join(packed, "src/ios"),
+					"fixture/FixtureApp.swift",
+					"fixture/FixturePresentation.swift",
+					{ path: "www", type: "folder", buildPhase: "resources" },
+					{ path: "config.xml", buildPhase: "resources" },
+				],
+				dependencies: [cordova],
+				settings: {
+					base: {
+						PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.simulator",
+						SWIFT_STRICT_CONCURRENCY: "complete",
+						SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
+						ENABLE_TESTABILITY: "YES",
+						SWIFT_OBJC_BRIDGING_HEADER: "fixture/Host-Bridging-Header.h",
+					},
+				},
+				info: {
+					path: "Info.plist",
+					properties: {
+						CFBundleDisplayName: "Chooser fixture",
+						UILaunchScreen: {},
+						UIApplicationSceneManifest: {
+							UIApplicationSupportsMultipleScenes: false,
+						},
+						LSSupportsOpeningDocumentsInPlace: true,
+						UISupportedInterfaceOrientations: interfaceOrientations,
+						NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+					},
+				},
+			},
+			UIKitControl: {
+				...common,
+				type: "application",
+				sources: [
+					"fixture/UIKitControl.swift",
+					"fixture/FixturePresentation.swift",
+					{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
+				],
+				settings: {
+					base: {
+						PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.uikit",
+						SWIFT_STRICT_CONCURRENCY: "complete",
+						SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
+					},
+				},
+				info: {
+					path: "UIKit-Info.plist",
+					properties: {
+						CFBundleDisplayName: "UIKit picker control",
+						UILaunchScreen: {},
+						UIApplicationSceneManifest: {
+							UIApplicationSupportsMultipleScenes: false,
+						},
+						LSSupportsOpeningDocumentsInPlace: true,
+						UISupportedInterfaceOrientations: interfaceOrientations,
+					},
+				},
+			},
+			UIKitControlTests: {
+				...common,
+				type: "bundle.ui-testing",
+				sources: ["fixture/PickerUI.swift", "fixture/UIKitControlTests.swift"],
+				dependencies: [{ target: "UIKitControl" }],
+				settings: { base: { GENERATE_INFOPLIST_FILE: "YES" } },
+			},
+
+			ChooserPickerTests: {
+				...common,
+				type: "bundle.unit-test",
+				sources: [
+					"fixture/ChooserPickerTests.swift",
+					"fixture/FixtureSink.m",
+					"fixture/FixtureSink.h",
+				],
+				dependencies: [
+					{ target: "ChooserHost" },
+					{ ...cordova, embed: false, link: !legacy },
+				],
+				settings: {
+					base: {
+						GENERATE_INFOPLIST_FILE: "YES",
+						SWIFT_OBJC_BRIDGING_HEADER: "fixture/Test-Bridging-Header.h",
+					},
+				},
+			},
+			ChooserUITests: {
+				...common,
+				type: "bundle.ui-testing",
+				sources: ["fixture/PickerUI.swift", "fixture/ChooserUITests.swift"],
+				dependencies: [{ target: "ChooserHost" }],
+				settings: { base: { GENERATE_INFOPLIST_FILE: "YES" } },
+			},
+		},
+		schemes: {
+			ChooserVault: { build: { targets: { ChooserVault: "all" } } },
+			UIKitControl: {
+				build: { targets: { UIKitControl: "all" } },
+				test: { targets: ["UIKitControlTests"] },
+			},
+			Chooser: {
+				build: { targets: { ChooserHost: "all" } },
+				test: {
+					targets: ["ChooserPickerTests", "ChooserUITests"],
+					gatherCoverageData: true,
+				},
+			},
+		},
+	};
+	// Dedicated schemes avoid building RC2 native contracts against RC1.
+	if (!uiOnly)
+		spec.schemes.ChooserNative = {
+			build: { targets: { ChooserHost: "all" } },
+			test: { targets: ["ChooserPickerTests"] },
+		};
+	if (uiOnly) {
+		delete spec.targets.ChooserPickerTests;
+		spec.schemes.ChooserUI = {
+			build: { targets: { ChooserHost: "all" } },
+			test: { targets: ["ChooserUITests"] },
+		};
+		delete spec.schemes.Chooser;
+	}
+	if (nativeOnly) {
+		for (const target of [
+			"ChooserVault",
+			"UIKitControl",
+			"UIKitControlTests",
+			"ChooserUITests",
+		])
+			delete spec.targets[target];
+		spec.schemes = {
+			ChooserNative: {
+				build: { targets: { ChooserHost: "all" } },
+				test: { targets: ["ChooserPickerTests"] },
+			},
+		};
+	}
+	writeFileSync(join(directory, "project.json"), JSON.stringify(spec, null, 2));
+	run(
+		"xcodegen",
+		["generate", "--spec", "project.json"],
+		directory,
+		false,
+		env,
+	);
+	const schemes = nativeOnly
+		? [["ChooserNative", "build-for-testing"]]
+		: [
+				[uiOnly ? "ChooserUI" : "Chooser", "build-for-testing"],
+				["UIKitControl", "build-for-testing"],
+			];
+	if (!nativeOnly && ["all", "provider"].includes(diagnosticScope))
+		schemes.push(["ChooserVault", "build"]);
+	for (const [scheme, action] of schemes)
+		run(
+			"/usr/bin/xcodebuild",
+			[
+				action,
+				"-project",
+				"ChooserSimulator.xcodeproj",
+				"-scheme",
+				scheme,
+				"-configuration",
+				"Debug",
+				"-destination",
+				"generic/platform=iOS Simulator",
+				"-derivedDataPath",
+				join(directory, "derived"),
+				`ARCHS=${process.arch === "arm64" ? "arm64" : "x86_64"}`,
+				...buildSettings,
+			],
+			directory,
+			false,
+			env,
+		);
+	return { alias, directory };
+}
+
 export function verifyIosSimulator({
 	root,
 	output,
@@ -112,6 +448,13 @@ export function verifyIosSimulator({
 			sourceDocuments: ["all", "provider"].includes(diagnosticScope),
 			required: diagnosticSelection,
 		};
+	const selectionFor = (part) =>
+		diagnostic
+			? diagnosticSelection
+			: simulatorPartitionSelection(part, suiteKind);
+	const nativeOnly = partitions.every((part) =>
+		simulatorNativeOnly(selectionFor(part)),
+	);
 	assert.equal(
 		process.platform,
 		"darwin",
@@ -163,299 +506,57 @@ export function verifyIosSimulator({
 		simctl(["list", "devicetypes", "--json"]),
 	).devicetypes;
 	const packed = pack();
-	const assets = join(output, "simulator-assets");
-	rmSync(assets, { recursive: true, force: true });
-	mkdirSync(assets, { recursive: true });
 	const generator = join(output, "generate-simulator-assets");
-	run(
-		"/usr/bin/xcrun",
-		[
-			"swiftc",
-			"-parse-as-library",
-			"-swift-version",
-			"5",
-			join(root, "tests/ios/simulator/GenerateAssets.swift"),
-			"-o",
-			generator,
-		],
-		root,
-		false,
-		env,
-	);
-	run(generator, [assets], root, false, env);
+	const assets = nativeOnly ? undefined : join(output, "simulator-assets");
+	if (!nativeOnly) {
+		rmSync(assets, { recursive: true, force: true });
+		mkdirSync(assets, { recursive: true });
+
+		run(
+			"/usr/bin/xcrun",
+			[
+				"swiftc",
+				"-parse-as-library",
+				"-swift-version",
+				"5",
+				join(root, "tests/ios/simulator/GenerateAssets.swift"),
+				"-o",
+				generator,
+			],
+			root,
+			false,
+			env,
+		);
+		run(generator, [assets], root, false, env);
+	}
 	report.toolchain.simulators = [];
 	report.toolchain.nativeSwipePolicies = [];
 	const failures = [];
 	const fixtures = [];
 	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
+		const aliasSelections = partitions
+			.filter((part) => part.framework === alias)
+			.map(selectionFor);
+		const aliasNativeOnly =
+			nativeOnly ||
+			(aliasSelections.length > 0 &&
+				aliasSelections.every(simulatorNativeOnly));
 		const generated = app("ios", alias, packed, env, prepareSimulatorApp);
 		const directory = join(output, "simulator-tests", alias);
-		rmSync(directory, { recursive: true, force: true });
-		mkdirSync(directory, { recursive: true });
-		cpSync(join(root, "tests/ios/simulator"), join(directory, "fixture"), {
-			recursive: true,
-		});
-		cpSync(assets, join(directory, "fixture/Assets"), { recursive: true });
-		const bridgingHeader = join(directory, "fixture/Host-Bridging-Header.h");
-		writeFileSync(bridgingHeader, "#import <Cordova/Cordova.h>\n");
-		if (alias === "cordova-ios7") prepareBridgingHeader(bridgingHeader);
-		cpSync(join(generated, "platforms/ios/www"), join(directory, "www"), {
-			recursive: true,
-		});
-		cpSync(
-			join(root, "tests/ios/simulator/index.html"),
-			join(directory, "www/index.html"),
-		);
-		writeFileSync(
-			join(directory, "www/unit.html"),
-			"<!doctype html><html><body></body></html>\n",
-		);
-		const name = alias === "cordova-ios7" ? "ChooserFixture" : "App";
-		cpSync(
-			join(generated, "platforms/ios", name, "config.xml"),
-			join(directory, "config.xml"),
-		);
-		const common = { platform: "iOS", deploymentTarget };
-		const legacy = alias === "cordova-ios7";
-		const cordova = {
-			target: `Cordova/${legacy ? "CordovaLib" : "Cordova"}`,
-			embed: !legacy,
-		};
-		const spec = {
-			name: "ChooserSimulator",
-			options: {
-				bundleIdPrefix: "com.cyph.chooser",
-				createIntermediateGroups: true,
-			},
-			settings: {
-				base: {
-					SWIFT_VERSION: "5.0",
-					CODE_SIGNING_ALLOWED: "YES",
-					CODE_SIGN_IDENTITY: "-",
-					CODE_SIGN_STYLE: "Manual",
-					DEVELOPMENT_TEAM: "",
-					TARGETED_DEVICE_FAMILY: "1,2",
-					// Cordova 7's old umbrella import needs its scoped pragma;
-					// standalone explicit PCM generation bypasses that header.
-					SWIFT_ENABLE_EXPLICIT_MODULES: legacy ? "NO" : "YES",
-					...(legacy
-						? {
-								HEADER_SEARCH_PATHS: [
-									"$(inherited)",
-									"$(TARGET_BUILD_DIR)/usr/local/lib/include",
-									"$(OBJROOT)/UninstalledProducts/include",
-									"$(OBJROOT)/UninstalledProducts/$(PLATFORM_NAME)/include",
-									"$(BUILT_PRODUCTS_DIR)/include",
-									"$(BUILT_PRODUCTS_DIR)",
-								],
-								OTHER_LDFLAGS: ["$(inherited)", "-ObjC"],
-							}
-						: {}),
-				},
-			},
-			projectReferences: {
-				Cordova: {
-					path: join(
-						generated,
-						legacy
-							? "platforms/ios/CordovaLib/CordovaLib.xcodeproj"
-							: "platforms/ios/packages/cordova-ios/CordovaLib/CordovaLib.xcodeproj",
-					),
-				},
-			},
-			targets: {
-				ChooserVault: {
-					...common,
-					type: "application",
-					sources: [
-						"fixture/FixtureVault.swift",
-						{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
-					],
-					settings: {
-						base: {
-							PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.fixtures",
-							SWIFT_STRICT_CONCURRENCY: "complete",
-							SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
-						},
-					},
-					info: {
-						path: "Vault-Info.plist",
-						properties: {
-							CFBundleDisplayName: "Chooser Fixtures",
-							ChooserSeedMode:
-								diagnosticScope === "provider" ? "copy" : "export",
-							UILaunchScreen: {},
-							UIFileSharingEnabled: true,
-							LSSupportsOpeningDocumentsInPlace: true,
-							UIApplicationSceneManifest: {
-								UIApplicationSupportsMultipleScenes: false,
-							},
-							CFBundleDocumentTypes: [
-								{
-									CFBundleTypeName: "Fixture documents",
-									CFBundleTypeRole: "Editor",
-									LSHandlerRank: "Alternate",
-									LSItemContentTypes: ["public.data"],
-								},
-							],
-							UISupportedInterfaceOrientations: interfaceOrientations,
-						},
-					},
-				},
-				ChooserHost: {
-					...common,
-					type: "application",
-					sources: [
-						join(packed, "src/ios"),
-						"fixture/FixtureApp.swift",
-						"fixture/FixturePresentation.swift",
-						{ path: "www", type: "folder", buildPhase: "resources" },
-						{ path: "config.xml", buildPhase: "resources" },
-					],
-					dependencies: [cordova],
-					settings: {
-						base: {
-							PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.simulator",
-							SWIFT_STRICT_CONCURRENCY: "complete",
-							SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
-							ENABLE_TESTABILITY: "YES",
-							SWIFT_OBJC_BRIDGING_HEADER: "fixture/Host-Bridging-Header.h",
-						},
-					},
-					info: {
-						path: "Info.plist",
-						properties: {
-							CFBundleDisplayName: "Chooser fixture",
-							UILaunchScreen: {},
-							UIApplicationSceneManifest: {
-								UIApplicationSupportsMultipleScenes: false,
-							},
-							LSSupportsOpeningDocumentsInPlace: true,
-							UISupportedInterfaceOrientations: interfaceOrientations,
-							NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
-						},
-					},
-				},
-				UIKitControl: {
-					...common,
-					type: "application",
-					sources: [
-						"fixture/UIKitControl.swift",
-						"fixture/FixturePresentation.swift",
-						{ path: "fixture/Assets", type: "folder", buildPhase: "resources" },
-					],
-					settings: {
-						base: {
-							PRODUCT_BUNDLE_IDENTIFIER: "com.cyph.chooser.uikit",
-							SWIFT_STRICT_CONCURRENCY: "complete",
-							SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES",
-						},
-					},
-					info: {
-						path: "UIKit-Info.plist",
-						properties: {
-							CFBundleDisplayName: "UIKit picker control",
-							UILaunchScreen: {},
-							UIApplicationSceneManifest: {
-								UIApplicationSupportsMultipleScenes: false,
-							},
-							LSSupportsOpeningDocumentsInPlace: true,
-							UISupportedInterfaceOrientations: interfaceOrientations,
-						},
-					},
-				},
-				UIKitControlTests: {
-					...common,
-					type: "bundle.ui-testing",
-					sources: [
-						"fixture/PickerUI.swift",
-						"fixture/UIKitControlTests.swift",
-					],
-					dependencies: [{ target: "UIKitControl" }],
-					settings: { base: { GENERATE_INFOPLIST_FILE: "YES" } },
-				},
-
-				ChooserPickerTests: {
-					...common,
-					type: "bundle.unit-test",
-					sources: [
-						"fixture/ChooserPickerTests.swift",
-						"fixture/FixtureSink.m",
-						"fixture/FixtureSink.h",
-					],
-					dependencies: [
-						{ target: "ChooserHost" },
-						{ ...cordova, embed: false, link: !legacy },
-					],
-					settings: {
-						base: {
-							GENERATE_INFOPLIST_FILE: "YES",
-							SWIFT_OBJC_BRIDGING_HEADER: "fixture/Test-Bridging-Header.h",
-						},
-					},
-				},
-				ChooserUITests: {
-					...common,
-					type: "bundle.ui-testing",
-					sources: ["fixture/PickerUI.swift", "fixture/ChooserUITests.swift"],
-					dependencies: [{ target: "ChooserHost" }],
-					settings: { base: { GENERATE_INFOPLIST_FILE: "YES" } },
-				},
-			},
-			schemes: {
-				ChooserVault: { build: { targets: { ChooserVault: "all" } } },
-				UIKitControl: {
-					build: { targets: { UIKitControl: "all" } },
-					test: { targets: ["UIKitControlTests"] },
-				},
-				Chooser: {
-					build: { targets: { ChooserHost: "all" } },
-					test: {
-						targets: ["ChooserPickerTests", "ChooserUITests"],
-						gatherCoverageData: true,
-					},
-				},
-			},
-		};
-		writeFileSync(
-			join(directory, "project.json"),
-			JSON.stringify(spec, null, 2),
-		);
-		run(
-			"xcodegen",
-			["generate", "--spec", "project.json"],
+		prepareIosSimulatorFixture({
+			root,
+			generated,
+			packed,
+			assets,
 			directory,
-			false,
+			alias,
+			run,
 			env,
-		);
-		const schemes = [
-			["Chooser", "build-for-testing"],
-			["UIKitControl", "build-for-testing"],
-		];
-		if (["all", "provider"].includes(diagnosticScope))
-			schemes.push(["ChooserVault", "build"]);
-		for (const [scheme, action] of schemes)
-			run(
-				"/usr/bin/xcodebuild",
-				[
-					action,
-					"-project",
-					"ChooserSimulator.xcodeproj",
-					"-scheme",
-					scheme,
-					"-configuration",
-					"Debug",
-					"-destination",
-					"generic/platform=iOS Simulator",
-					"-derivedDataPath",
-					join(directory, "derived"),
-					`ARCHS=${process.arch === "arm64" ? "arm64" : "x86_64"}`,
-					...buildSettings,
-				],
-				directory,
-				false,
-				env,
-			);
+			diagnosticScope,
+			deploymentTarget,
+			buildSettings,
+			nativeOnly: aliasNativeOnly,
+		});
 		checked(`${alias}:compile`);
 		fixtures.push({ alias, directory });
 	}
@@ -468,12 +569,8 @@ export function verifyIosSimulator({
 		]) {
 			if (diagnostic && kind !== diagnosticDevice) continue;
 			if (partition && kind !== partition.device) continue;
-			const selected = diagnostic
-				? diagnosticSelection
-				: simulatorPartitionSelection(
-						{ framework: alias, device: kind },
-						suiteKind,
-					);
+			const selected = selectionFor({ framework: alias, device: kind });
+			const nativeOnly = simulatorNativeOnly(selected);
 			const type = devices.find((device) => device.name === deviceName);
 			assert(type, `Missing simulator device type: ${deviceName}`);
 			const udid = simctl([
@@ -678,7 +775,7 @@ export function verifyIosSimulator({
 						JSON.stringify({ phase, groups }, null, 2),
 					);
 				};
-				if (["all", "provider"].includes(diagnosticScope)) {
+				if (!nativeOnly && ["all", "provider"].includes(diagnosticScope)) {
 					const derived = join(directory, "derived");
 					simctl([
 						"install",
@@ -777,8 +874,10 @@ export function verifyIosSimulator({
 				withFinalizers(() => {
 					recordIdentities("before-control");
 					try {
-						suite(controlResult, "UIKitControl", selected.control);
-						checked(`${alias}:${kind}:native-control`);
+						if (selected.control.length) {
+							suite(controlResult, "UIKitControl", selected.control);
+							checked(`${alias}:${kind}:native-control`);
+						}
 					} catch (error) {
 						failures.push(
 							new Error(`${alias}/${kind} UIKit control failed`, {
@@ -819,11 +918,16 @@ export function verifyIosSimulator({
 						});
 					}
 					if (selected.chooser.length)
-						suite(result, "Chooser", selected.chooser);
+						suite(
+							result,
+							nativeOnly ? "ChooserNative" : "Chooser",
+							selected.chooser,
+						);
 				}, [
 					() => recordIdentities("after-suites"),
 					() => {
-						if (!["all", "provider"].includes(diagnosticScope)) return;
+						if (nativeOnly || !["all", "provider"].includes(diagnosticScope))
+							return;
 						const after = sourceFingerprint(sources, fingerprintNames);
 						writeFileSync(
 							join(reportDirectory, `${alias}-${kind}-sources.json`),

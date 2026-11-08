@@ -101,3 +101,31 @@ test("main workflow retains PR and manual entry points with only master pushes",
 		/always\(\) && hashFiles\('\.verification\/reports\/\*\*'\) != ''/,
 	);
 });
+
+test("release comparison is manual, bounded and cannot supply qualification artifacts", () => {
+	const workflow = readFileSync(
+		join(__dirname, "../../.github/workflows/ios-release-comparison.yml"),
+		"utf8",
+	);
+	const triggers = workflow.slice(
+		workflow.indexOf("\non:"),
+		workflow.indexOf("\npermissions:"),
+	);
+	assert.match(triggers, /workflow_dispatch:/);
+	assert.doesNotMatch(triggers, /push:|pull_request:|schedule:|workflow_run:/);
+	assert.match(workflow, /framework: \[cordova-ios7, cordova-ios8\]/);
+	assert.match(workflow, /device: \[iphone, ipad\]/);
+	assert.match(workflow, /fail-fast: false/);
+	assert.match(workflow, /cancel-in-progress: false/);
+	assert.match(workflow, /timeout-minutes: 360/);
+	assert.match(workflow, /chainman run compare-ios-releases/);
+	assert.match(workflow, /name: comparison-ios-/);
+	assert.doesNotMatch(
+		workflow,
+		/continue-on-error|\|\| true|name: qualification-/,
+	);
+	assert.match(
+		workflow,
+		/always\(\) && hashFiles\('\.verification\/reports\/\*\*'\) != ''/,
+	);
+});

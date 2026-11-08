@@ -40,6 +40,8 @@ final class UIKitControlTests: PickerUI {
     func testSystemDelegateMOV() { select("Video", "fixture-mov.mov", environment: ["CHOOSER_SYSTEM_PROVIDER": "1"]) }
     func testImportOriginalJSON() { select("JSON", "fixture-json.json") }
     func testOpenOriginalJSON() { select("JSON", "fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
+    func testImportOriginalCSV() { select("CSV", "fixture-csv.csv") }
+    func testOpenOriginalCSV() { select("CSV", "fixture-csv.csv", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testImportExportedJSON() { select("JSON", "exported-fixture-json.json") }
     func testOpenExportedJSON() { select("JSON", "exported-fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testImportOriginalPDF() { select("PDF", "fixture-pdf.pdf") }

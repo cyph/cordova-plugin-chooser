@@ -34,6 +34,7 @@ Xcode is installed separately. The [baseline](https://github.com/cyph/cordova-pl
 | `just chainman run verify-ios-simulator-part cordova-ios7 iphone` | Required cases in one partition; choose `cordova-ios7` or `cordova-ios8`, and `iphone` or `ipad` |
 | `just chainman run verify-ios-simulator-part cordova-ios7 iphone --investigation-only` | Isolated provider cases in that partition |
 | `just chainman run diagnose-ios-simulator` | Focused baseline iPhone picker diagnostic; see below for variants |
+| `just chainman run compare-ios-releases cordova-ios7 iphone` | Manual RC1/RC2 comparison in one partition; choose `cordova-ios7` or `cordova-ios8`, and `iphone` or `ipad` |
 | `just verify-capacitor-android` | Packed plugin through the Capacitor Android bridge on an emulator |
 | `just verify-native` | Android and baseline iOS tasks on a host meeting both requirements |
 | `just clean` | Remove generated verification apps, reports, and Android fixture output |
@@ -67,6 +68,12 @@ Required CI runs all four framework/device partitions with an explicit manifest.
 `just verify-ios-simulator` runs the complete local suite, including the isolated cases. Use partition commands without a flag for required CI coverage, or append `--investigation-only` for the affected cases in that partition. Focused diagnostics and investigation reports cannot substitute for required qualification. The aggregator checks exact case manifests, source revision, package identity, and all required partitions; mixed, missing, or diagnostic coverage is rejected.
 
 Return the isolated cases to required CI after three consecutive clean runs across all affected partitions on fresh simulators. Moving a case to the investigation workflow does not resolve it; keep [known issues](KNOWN-ISSUES.md) aligned with the actual exclusions.
+
+### Manual iOS release comparison
+
+Run the partition command above locally or dispatch the manual-only [iOS release comparison workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-release-comparison.yml), which runs all four framework/device partitions. It compares the checksum-pinned published RC1 with the committed RC2 archive using the same pinned baseline Apple toolchain, simulator runtime, SDK, framework, and harness. Each partition follows the fixed sequence UIKit, RC1, RC2, RC2, RC1, UIKit, with a fresh simulator and provider store for every entry.
+
+The plugin cases cover metadata for six formats and cancellation/reopening; UIKit controls cover JSON, CSV, and PDF import and open. RC1 metadata imports and RC2 opens in place: this difference is intentionally preserved. Stage caps total 340 minutes within the 360-minute job limit. Do not cycle runs until green; retain failures, timeouts, and unstarted cases alongside successes. Reports include `comparison.json`, xcresult bundles, logs, and hash manifests. This comparison cannot count as required qualification.
 
 ## Android dependency ownership
 

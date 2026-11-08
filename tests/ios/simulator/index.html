@@ -5,9 +5,29 @@ const report = text => window.webkit.messageHandlers.fixture.postMessage(text);
 const failed = error => report('error:' + String(error));
 document.addEventListener('deviceready', () => report('ready'), false);
 window.pick = (accept, reopen, method) => {
-  if (!reopen) return (method === 'uri' ? chooser.getFile({accept, maxFileSize: null}) : chooser.getFileMetadata({accept})).then(async file => {
+  if (window.iosComparisonRelease) {
+    if (method !== 'metadata' || (reopen && reopen !== 'promise')) return failed('Unexpected comparison operation');
+    const counts = [0, 0];
+    async function choose(index) {
+      try {
+        const result = await window.iosComparisonMetadata(chooser, window.iosComparisonRelease, accept);
+        counts[index]++;
+        if (result.outcome === 'selected') {
+          if (reopen) throw new Error('Unexpected selection');
+          report('selected:' + result.file.name);
+        } else if (!reopen) report('canceled:1');
+        else if (counts[index] !== 1) throw new Error('Duplicate cancellation');
+        else if (index === 0) choose(1);
+        else report('canceled:2;counts:' + counts.join(','));
+      } catch (error) { failed(error); }
+    }
+    return choose(0);
+  }
+  if (!reopen) return (method === 'uri' ? chooser.getFile({accept, preferLocal: true, maxFileSize: null}) : chooser.getFileMetadata({accept})).then(async file => {
     if (method === 'uri') {
       if (typeof file.id !== 'string' || file.size <= 0) throw new Error('Invalid managed copy');
+      const bytes = await file.readRange({offset: 0, length: Math.min(file.size, 16)});
+      if (bytes.length !== Math.min(file.size, 16)) throw new Error('Invalid managed range');
       await file.release();
     }
     report((method === 'uri' ? 'copied:' : 'selected:') + file.name);
