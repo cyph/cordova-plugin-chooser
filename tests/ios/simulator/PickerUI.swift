@@ -165,7 +165,10 @@ class PickerUI: XCTestCase {
         let start = origin.withOffset(CGVector(dx: point.x - screen.minX, dy: point.y - screen.minY))
         attachScreen("Immediately before swipe")
         print("CHOOSER_UI dismiss screen=\(screen) target=\(bounds) point=\(point) end=\(endPoint)")
+        let tracePlainSheet = name.contains("testPlainSheetSwipe")
+        if tracePlainSheet { print("CHOOSER_PLAIN_SHEET beforeGesture time=\(Date().timeIntervalSince1970)") }
         start.press(forDuration: 0.1, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        if tracePlainSheet { print("CHOOSER_PLAIN_SHEET afterGesture time=\(Date().timeIntervalSince1970)") }
         attachScreen("Immediately after swipe")
     }
     private func attachScreen(_ name: String) {

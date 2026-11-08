@@ -21,11 +21,59 @@ final class UIKitControlScene: UIResponder, UIWindowSceneDelegate {
     }
 }
 
-private final class FixtureSheet: UINavigationController, UIAdaptivePresentationControllerDelegate {
+private final class FixtureSheet: UINavigationController, UISheetPresentationControllerDelegate {
     var onDismissal: (@MainActor (UIViewController) -> Void)?
 
+    // Observe the app-owned sheet without changing dismissal policy, forcing
+    // layout, or loading a view just to collect diagnostics.
+    func recordState(_ phase: String, presentation: UIPresentationController? = nil) {
+        let presentation = presentation ?? presentationController
+        let sheet = presentation as? UISheetPresentationController
+        let frame = viewIfLoaded.flatMap { view in
+            view.window.map { view.convert(view.bounds, to: $0) }
+        }
+        let details: [String: Any] = [
+            "phase": phase,
+            "detent": sheet?.selectedDetentIdentifier?.rawValue ?? "nil",
+            "frameInWindow": frame.map { NSStringFromCGRect($0) } ?? "nil",
+            "presentedFrameInContainer": presentation.map { NSStringFromCGRect($0.frameOfPresentedViewInContainerView) } ?? "nil",
+            "containerBounds": presentation?.containerView.map { NSStringFromCGRect($0.bounds) } ?? "nil",
+            "inWindow": viewIfLoaded?.window != nil,
+            "hasPresenter": presentingViewController != nil,
+            "isBeingPresented": isBeingPresented,
+            "isBeingDismissed": isBeingDismissed,
+            "isModalInPresentation": isModalInPresentation,
+            "hasTransition": transitionCoordinator != nil,
+            "transitionInteractive": transitionCoordinator?.isInteractive ?? false
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: details, options: [.sortedKeys]),
+              let value = String(data: data, encoding: .utf8) else { return }
+        FixtureEvents.record("plainSheet \(value)")
+    }
+
+    func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+        recordState("willDismiss", presentation: presentationController)
+        transitionCoordinator?.notifyWhenInteractionChanges { [weak self] context in
+            let canceled = context.isCancelled
+            // Preserve the transition result now; read UIKit state on the main
+            // actor without retaining the coordinator context across the hop.
+            Task { @MainActor [weak self] in
+                self?.recordState("interactionChanged canceled=\(canceled)")
+            }
+        }
+    }
+
+    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+        recordState("didAttemptToDismiss", presentation: presentationController)
+    }
+
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        recordState("didDismiss", presentation: presentationController)
         onDismissal?(self)
+    }
+
+    func sheetPresentationControllerDidChangeSelectedDetentIdentifier(_ sheetPresentationController: UISheetPresentationController) {
+        recordState("detentChanged", presentation: sheetPresentationController)
     }
 }
 
@@ -132,6 +180,7 @@ final class UIKitControlController: UIViewController, UIDocumentPickerDelegate {
             FixtureEvents.record("UIKit original presentation delegate=\(original) replaced=\(replace)")
             if let sheet = picker as? FixtureSheet { sheet.presentationController?.delegate = sheet }
             self.probe.presented(picker)
+            (picker as? FixtureSheet)?.recordState("presented")
         }
     }
     private func settle(_ picker: UIViewController, _ value: String) {
