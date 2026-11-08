@@ -46,8 +46,20 @@ public final class ChooserBridgeTest {
     private JSONObject result(String expression) throws Exception {
         evaluate("window.outcome = null; Promise.resolve().then(() => " + expression +
             ").then(value => window.outcome = JSON.stringify({ok:true,value:value===undefined?null:value})," +
-            "error => window.outcome = JSON.stringify({ok:false,error:String(error)}));");
+            "error => window.outcome = JSON.stringify({ok:false,error:{text:String(error)," +
+            "name:error&&error.name,code:error&&error.code,message:error&&error.message,reason:error&&error.reason," +
+            "isError:error instanceof Error,isChooserError:error instanceof chooser.ChooserError," +
+            "isCancellationError:error instanceof chooser.CancellationError}}));");
         return new JSONObject(awaitValue("window.outcome"));
+    }
+    private static JSONObject assertChooserError(JSONObject response, String code, String name) throws Exception {
+        assertFalse(response.toString(), response.getBoolean("ok"));
+        JSONObject error = response.getJSONObject("error");
+        assertEquals(response.toString(), code, error.getString("code"));
+        assertEquals(response.toString(), name, error.getString("name"));
+        assertTrue(response.toString(), error.getBoolean("isError"));
+        assertTrue(response.toString(), error.getBoolean("isChooserError"));
+        return error;
     }
     private void select() {
         intending(hasAction(Intent.ACTION_CHOOSER)).respondWith(new ActivityResult(Activity.RESULT_OK,
@@ -93,8 +105,8 @@ public final class ChooserBridgeTest {
                     assertFalse(copy.exists());
                     assertEquals(size, source.length());
                     JSONObject failure = result("chooser.getFile({maxFileSize:" + (size - 1) + "})");
-                    assertFalse(failure.getBoolean("ok"));
-                    assertTrue(failure.getString("error").contains("FILE_TOO_LARGE"));
+                    JSONObject error = assertChooserError(failure, "FILE_TOO_LARGE", "ChooserError");
+                    assertFalse(failure.toString(), error.getBoolean("isCancellationError"));
                     File cache = new File(context.getCacheDir(), "cordova-plugin-chooser");
                     File[] remaining = cache.listFiles(fileInCache -> !fileInCache.getName().equals(".pending"));
                     assertNotNull(remaining);
@@ -112,8 +124,9 @@ public final class ChooserBridgeTest {
                 intending(hasAction(Intent.ACTION_CHOOSER)).respondWith(new ActivityResult(Activity.RESULT_CANCELED, null));
                 for (int i = 0; i < 3; i++) {
                     JSONObject response = result("chooser.getFile({maxFileSize:null})");
-                    assertFalse(response.toString(), response.getBoolean("ok"));
-                    assertTrue(response.getString("error").contains("CANCELLED"));
+                    JSONObject error = assertChooserError(response, "CANCELLED", "CancellationError");
+                    assertEquals(response.toString(), "picker", error.getString("reason"));
+                    assertTrue(response.toString(), error.getBoolean("isCancellationError"));
                 }
             } finally { Intents.release(); }
         }
