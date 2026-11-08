@@ -252,6 +252,7 @@ export function prepareIosSimulatorFixture({
 					path: "Info.plist",
 					properties: {
 						CFBundleDisplayName: "Chooser fixture",
+						ChooserNativeTests: nativeOnly,
 						UILaunchScreen: {},
 						UIApplicationSceneManifest: {
 							UIApplicationSupportsMultipleScenes: false,

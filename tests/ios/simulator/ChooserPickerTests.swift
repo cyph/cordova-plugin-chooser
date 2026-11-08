@@ -21,6 +21,24 @@ private final class PickerPresenter: CDVViewController {
     var onPresentation: (@MainActor (PickerPresentation) -> Void)?
     var deferNextPresentation = false
     private var deferredPresentation: (() -> Void)?
+    private(set) var hasAppeared = false
+
+    // Intentional native-only test double: retain CDVPlugin's CDVViewController
+    // ABI while using a real UIView and ordinary UIKit presentation/dismissal.
+    override func loadView() { view = UIView() }
+    override func viewDidLoad() {
+        // Bypass Cordova's WebView, launch screen and startup plugins.
+    }
+    // Keep the native orientation mask independent of Cordova's settings.
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .all }
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        hasAppeared = true
+    }
+    override func viewWillDisappear(_ animated: Bool) {
+        hasAppeared = false
+        super.viewWillDisappear(animated)
+    }
 
     override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
         let presentation = PickerPresentation(controller)
@@ -57,6 +75,10 @@ private final class PickerPresenter: CDVViewController {
     }
 }
 
+private enum PickerWaitError: Error {
+    case timedOut
+}
+
 @MainActor
 private final class PickerHarness {
     let window: UIWindow
@@ -67,7 +89,6 @@ private final class PickerHarness {
     init() throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         window = UIWindow(windowScene: scene)
-        presenter.startPage = "unit.html"
         window.rootViewController = presenter
         window.makeKeyAndVisible()
         presenter.loadViewIfNeeded()
@@ -83,7 +104,9 @@ private final class PickerHarness {
     func waitUntilAsync(_ predicate: @MainActor () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
         let deadline = Date().addingTimeInterval(10)
         while !predicate() && Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
-        XCTAssertTrue(predicate(), file: file, line: line)
+        let satisfied = predicate()
+        XCTAssertTrue(satisfied, "Native picker fixture predicate timed out after 10 seconds", file: file, line: line)
+        guard satisfied else { throw PickerWaitError.timedOut }
     }
     func waitForSemaphore(_ semaphore: DispatchSemaphore) async -> DispatchTimeoutResult {
         let deadline = DispatchTime.now() + 5
@@ -130,6 +153,13 @@ private final class PickerHarness {
     func duringPresentation(_ callback: String, source: String = "documents", mode: String = "metadata",
                             multiple: Bool = false, maxFiles: Int64 = 0, deferred: Bool = false,
                             perform: @escaping @MainActor (PickerPresentation) -> Void) async throws -> PickerPresentation {
+        // Begin the picker contract only after UIKit has made this presenter ready.
+        try await waitUntilAsync {
+            self.presenter.hasAppeared && self.presenter.viewIfLoaded?.window === self.window &&
+                self.window.isKeyWindow && !self.window.isHidden && self.window.alpha > 0 &&
+                self.window.windowScene?.activationState == .foregroundActive &&
+                self.presenter.presentedViewController == nil && self.presenter.transitionCoordinator == nil
+        }
         var presented: PickerPresentation?
         presenter.deferNextPresentation = deferred
         presenter.onPresentation = { presentation in

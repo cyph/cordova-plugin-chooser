@@ -421,6 +421,10 @@ test("required partitions reach ChooserNative without provider assets, bootstrap
 						"utf8",
 					),
 				);
+				assert.equal(
+					spec.targets.ChooserHost.info.properties.ChooserNativeTests,
+					true,
+				);
 				assert.deepEqual(Object.keys(spec.schemes), ["ChooserNative"]);
 				assert.deepEqual(spec.schemes.ChooserNative.test.targets, [
 					"ChooserPickerTests",
@@ -434,6 +438,204 @@ test("required partitions reach ChooserNative without provider assets, bootstrap
 	} finally {
 		Object.defineProperty(process, "platform", platform);
 	}
+});
+
+test("only native fixture generation opts out of the real Cordova app host", async (t) => {
+	const { prepareIosSimulatorFixture } =
+		await import("../../scripts/ios-simulator.mjs");
+	const root = join(__dirname, "../..");
+	const base = mkdtempSync(join(tmpdir(), "chooser-host-isolation-"));
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const app = readFileSync(
+		join(root, "tests/ios/simulator/FixtureApp.swift"),
+		"utf8",
+	);
+	assert.match(
+		app,
+		/let nativeTests = Bundle\.main\.object\(forInfoDictionaryKey: "ChooserNativeTests"\) as\? Bool == true/,
+	);
+	assert.match(
+		app,
+		/window\.rootViewController = nativeTests \? UIViewController\(\) : FixtureController\(\)/,
+	);
+	assert.match(app, /final class FixtureController: CDVViewController/);
+	assert.match(app, /startPage = "index\.html"\s*super\.viewDidLoad\(\)/);
+	assert.match(app, /userContentController\.add\(messages, name: "fixture"\)/);
+	assert.match(app, /evaluateJavaScript\("window\.pick\.apply/);
+	for (const alias of ["cordova-ios7", "cordova-ios8"]) {
+		const generated = join(base, alias);
+		const config = join(
+			generated,
+			"platforms/ios",
+			alias === "cordova-ios7" ? "ChooserFixture" : "App",
+		);
+		mkdirSync(join(generated, "platforms/ios/www"), { recursive: true });
+		mkdirSync(config, { recursive: true });
+		writeFileSync(join(config, "config.xml"), "<widget/>");
+		for (const [name, options] of [
+			["native", { nativeOnly: true }],
+			["ui", { uiOnly: true }],
+			["full", {}],
+			...["rc1", "rc2"].map((comparisonRelease) => [
+				comparisonRelease,
+				{
+					uiOnly: true,
+					adapter: join(root, "scripts/ios-comparison-adapter.cjs"),
+					comparisonRelease,
+				},
+			]),
+		]) {
+			const directory = join(base, `${alias}-${name}`);
+			// Generate and inspect the spec; all native commands remain stubs.
+			prepareIosSimulatorFixture({
+				root,
+				generated,
+				packed: root,
+				directory,
+				alias,
+				env: {},
+				run: () => "",
+				...options,
+			});
+			const spec = JSON.parse(
+				readFileSync(join(directory, "project.json"), "utf8"),
+			);
+			assert.equal(
+				spec.targets.ChooserHost.info.properties.ChooserNativeTests,
+				name === "native",
+				`${alias} ${name} host flag`,
+			);
+			assert.deepEqual(
+				Object.entries(spec.targets)
+					.filter(([, target]) =>
+						Object.hasOwn(target.info?.properties ?? {}, "ChooserNativeTests"),
+					)
+					.map(([target]) => target),
+				["ChooserHost"],
+			);
+			assert.equal(
+				readFileSync(join(directory, "fixture/FixtureApp.swift"), "utf8"),
+				app,
+			);
+			if (name === "full") {
+				assert.deepEqual(spec.schemes.Chooser.test.targets, [
+					"ChooserPickerTests",
+					"ChooserUITests",
+				]);
+			} else {
+				const scheme = name === "native" ? "ChooserNative" : "ChooserUI";
+				assert.deepEqual(spec.schemes[scheme].test.targets, [
+					name === "native" ? "ChooserPickerTests" : "ChooserUITests",
+				]);
+			}
+		}
+	}
+});
+
+test("native presenter keeps the Cordova ABI without WebView startup or UIKit mocks", () => {
+	const source = readFileSync(
+		join(__dirname, "../ios/simulator/ChooserPickerTests.swift"),
+		"utf8",
+	);
+	const code = source.replace(/\/\/[^\n]*/g, "");
+	const presenter = code
+		.split("private final class PickerPresenter: CDVViewController {")[1]
+		?.split("\n}\n")[0];
+	assert(
+		presenter,
+		"CDVPlugin.viewController requires the CDVViewController ABI",
+	);
+	assert.match(code, /plugin\.viewController = presenter/);
+	assert.match(presenter, /override func loadView\(\) \{ view = UIView\(\) \}/);
+	assert.match(presenter, /override func viewDidLoad\(\) \{\s*\}/);
+	assert.doesNotMatch(
+		presenter,
+		/\bsuper\.(?:loadView|viewDidLoad)\(|\b(?:startPage|webView|webViewEngine|loadSettings|createGapView|createLaunchView|getCommandInstance)\b/,
+	);
+	assert.doesNotMatch(code, /presenter\.startPage\s*=/);
+	assert.match(
+		presenter,
+		/override var supportedInterfaceOrientations: UIInterfaceOrientationMask \{ \.all \}/,
+	);
+	assert.match(
+		presenter,
+		/override func viewDidAppear\(_ animated: Bool\) \{\s*super\.viewDidAppear\(animated\)\s*hasAppeared = true/,
+	);
+	assert.match(
+		presenter,
+		/override func viewWillDisappear\(_ animated: Bool\) \{\s*hasAppeared = false\s*super\.viewWillDisappear\(animated\)/,
+	);
+	assert.match(
+		presenter,
+		/deferredPresentation = \{ \[self\] in\s*presentUsingUIKit\(presentation, animated: animated, completion: completion\)\s*\}/,
+	);
+	assert.match(presenter, /\}\s*observe\?\(presentation\)/);
+	assert.match(
+		presenter,
+		/presentation\.started = true\s*super\.present\(presentation\.controller, animated: animated\) \{\s*presentation\.completed = true\s*completion\?\(\)\s*\}/,
+	);
+	assert.doesNotMatch(presenter, /override func dismiss\(/);
+	assert.deepEqual(code.match(/\b(?:super\.present|presenter\.dismiss)\(/g), [
+		"super.present(",
+		"presenter.dismiss(",
+		"presenter.dismiss(",
+	]);
+});
+
+test("native readiness precedes pick and predicate timeouts throw at the unchanged deadline", () => {
+	const source = readFileSync(
+		join(__dirname, "../ios/simulator/ChooserPickerTests.swift"),
+		"utf8",
+	);
+	const wait = source
+		.split("    func waitUntilAsync(")[1]
+		.split("    func waitForSemaphore(")[0];
+	assert.match(
+		source,
+		/private enum PickerWaitError: Error \{\s*case timedOut\s*\}/,
+	);
+	assert.match(wait, /let deadline = Date\(\)\.addingTimeInterval\(10\)/);
+	assert.match(
+		wait,
+		/while !predicate\(\) && Date\(\) < deadline \{ try await Task\.sleep\(nanoseconds: 20_000_000\) \}/,
+	);
+	assert.match(
+		wait,
+		/let satisfied = predicate\(\)\s*XCTAssertTrue\(satisfied, [^\n]+\)\s*guard satisfied else \{ throw PickerWaitError\.timedOut \}/,
+	);
+	const during = source
+		.split("    func duringPresentation(")[1]
+		.split("    func waitForDismissalAsync(")[0];
+	assert.match(
+		during,
+		/try await waitUntilAsync \{[\s\S]+?\}\s*var presented: PickerPresentation\?/,
+	);
+	const ready = during.slice(
+		during.indexOf("try await waitUntilAsync"),
+		during.indexOf("var presented:"),
+	);
+	for (const condition of [
+		"self.presenter.hasAppeared",
+		"self.presenter.viewIfLoaded?.window === self.window",
+		"self.window.isKeyWindow",
+		"!self.window.isHidden",
+		"self.window.alpha > 0",
+		"self.window.windowScene?.activationState == .foregroundActive",
+		"self.presenter.presentedViewController == nil",
+		"self.presenter.transitionCoordinator == nil",
+	])
+		assert(
+			ready.includes(condition),
+			`Missing readiness observation: ${condition}`,
+		);
+	assert.match(
+		during,
+		/XCTAssertTrue\(Thread\.isMainThread, [^\n]+\)\s*XCTAssertFalse\(presentation\.completed, [^\n]+\)\s*perform\(presentation\)/,
+	);
+	assert.match(
+		during,
+		/invoke\("pick", [^\n]+\)\s*try await waitUntilAsync \{ presented != nil \}/,
+	);
 });
 
 test("qualification rejects full, investigation, missing and altered case manifests", async (t) => {

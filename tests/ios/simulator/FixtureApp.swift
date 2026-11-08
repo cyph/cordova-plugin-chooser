@@ -20,7 +20,9 @@ final class FixtureScene: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
-        window.rootViewController = FixtureController()
+        // Native contracts need a foreground UIKit host without Cordova startup.
+        let nativeTests = Bundle.main.object(forInfoDictionaryKey: "ChooserNativeTests") as? Bool == true
+        window.rootViewController = nativeTests ? UIViewController() : FixtureController()
         window.makeKeyAndVisible()
         self.window = window
         (UIApplication.shared.delegate as? FixtureApp)?.window = window
