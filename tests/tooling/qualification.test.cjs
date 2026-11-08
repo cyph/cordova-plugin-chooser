@@ -25,12 +25,13 @@ test("captured xcresult trees retain exact case identities and failure outcomes"
 			simulatorCases
 				.filter(
 					(id) =>
-						!id.startsWith("ChooserPickerTests/") ||
-						[
-							"ChooserPickerTests/testAdaptiveDismissalAndStaleCallbacks()",
-							"ChooserPickerTests/testResetAndDuplicateSelectionCannotSettleANewerRequest()",
-							"ChooserPickerTests/testMovieWildcardIncludesMP4AndQuickTime()",
-						].includes(id),
+						!id.startsWith("ChooserBridgeTests/") &&
+						(!id.startsWith("ChooserPickerTests/") ||
+							[
+								"ChooserPickerTests/testAdaptiveDismissalAndStaleCallbacks()",
+								"ChooserPickerTests/testResetAndDuplicateSelectionCannotSettleANewerRequest()",
+								"ChooserPickerTests/testMovieWildcardIncludesMP4AndQuickTime()",
+							].includes(id)),
 				)
 				.map((id) => id.replace("ScopedReopen", "CallbackReopen")),
 		],
@@ -252,6 +253,7 @@ test("simulator evidence requires exact passing case identities and consistent t
 			{ passedTests: 0 },
 			{ failedTests: 1 },
 			{ skippedTests: 1 },
+			{ expectedFailures: 1 },
 		])
 			assert.throws(() =>
 				checkSimulatorResults(
@@ -358,7 +360,7 @@ test("qualification requires every successful job, complete reports and the same
 		() => aggregateReports(directory, sha, jobs),
 		/Missing ios-simulator check/,
 	);
-	assert.equal(simulator.checks.length, 7);
+	assert.equal(simulator.checks.length, 11);
 	for (const check of simulator.checks) {
 		save({
 			...simulator,

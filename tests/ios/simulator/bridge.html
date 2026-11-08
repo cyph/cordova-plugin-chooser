@@ -1,0 +1,117 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chooser Cordova bridge smoke test</title></head><body>
+<script>
+'use strict';
+(function () {
+    const nonce = window.__chooserBridgeNonce;
+    let readyCount = 0;
+    let completionCount = 0;
+    let started = false;
+    let failed = false;
+    let operationTimer;
+    const startupTimer = setTimeout(function () {
+        fail(new Error('deviceready timed out after 60 seconds'));
+    }, 60000);
+
+    function post(kind, fields) {
+        window.webkit.messageHandlers.chooserBridge.postMessage(Object.assign({
+            kind: kind, nonce: nonce, readyCount: readyCount, completionCount: completionCount
+        }, fields));
+    }
+    function fail(error) {
+        failed = true;
+        clearTimeout(startupTimer);
+        clearTimeout(operationTimer);
+        post('error', {
+            message: String(error && error.message || error),
+            stack: String(error && error.stack || '')
+        });
+    }
+    function assert(condition, message) {
+        if (!condition) throw new Error(message);
+    }
+    // Install before loading cordova.js so startup/resource failures are fatal too.
+    window.addEventListener('error', function (event) {
+        fail(event.error || new Error(event.message || 'Resource failed: ' +
+            (event.target && event.target.src || 'unknown')));
+    }, true);
+    window.addEventListener('unhandledrejection', function (event) { fail(event.reason); });
+
+    document.addEventListener('deviceready', function () {
+        try {
+            readyCount++;
+            assert(readyCount === 1 && !started, 'Duplicate deviceready');
+            assert(typeof nonce === 'string' && nonce.length > 0, 'Missing native nonce');
+            assert(window.cordova && cordova.platformId === 'ios', 'Expected real iOS Cordova');
+            assert(window.chooser && typeof chooser.restoreFile === 'function' &&
+                typeof chooser.ChooserError === 'function', 'Public chooser module was not installed');
+            clearTimeout(startupTimer);
+            if (!failed) post('ready');
+        } catch (error) { fail(error); }
+    }, false);
+
+    async function roundTrip(args) {
+        const steps = [];
+        const file = await chooser.restoreFile(args.reference);
+        const restored = file.toJSON();
+        const keys = Object.keys(args.expected).sort();
+        assert(JSON.stringify(Object.keys(restored).sort()) === JSON.stringify(keys), 'Restored metadata keys differ');
+        keys.forEach(function (key) {
+            assert(restored[key] === args.expected[key], 'Restore did not return authoritative ' + key);
+        });
+        assert(restored.uri !== args.reference.uri && restored.size !== args.reference.size,
+            'Restore trusted stale saved URI/size');
+        steps.push('restore');
+
+        const bytes = await file.readRange({offset: 0, length: args.bytes.length});
+        assert(bytes instanceof Uint8Array && bytes.length === args.bytes.length, 'Unexpected readRange byte count/type');
+        args.bytes.forEach(function (byte, index) {
+            assert(bytes[index] === byte, 'readRange byte mismatch at ' + index);
+        });
+        steps.push('readRange');
+        await file.release();
+        steps.push('release');
+
+        // Do not reuse file.id: its JS released state would bypass native statFile.
+        assert(args.missingReference.id !== file.id, 'Missing reference reused released ID');
+        let missingError;
+        try { await chooser.restoreFile(args.missingReference); }
+        catch (error) { missingError = error; }
+        assert(missingError instanceof chooser.ChooserError, 'Native stat error is not a ChooserError');
+        assert(missingError.code === 'FILE_UNAVAILABLE', 'Wrong missing-file error: ' + missingError.code);
+        assert(missingError.cause && missingError.cause.code === 'FILE_UNAVAILABLE',
+            'Missing-file failure did not carry the native statFile error');
+        steps.push('missingStat');
+
+        if (failed) return;
+        completionCount++;
+        assert(completionCount === 1, 'Duplicate completion');
+        post('complete', {
+            restored: restored, bytes: Array.from(bytes), released: true, steps: steps,
+            missingError: {isChooserError: missingError instanceof chooser.ChooserError,
+                code: missingError.code, causeCode: missingError.cause.code}
+        });
+        clearTimeout(operationTimer);
+    }
+
+    window.chooserBridgeRun = function (args) {
+        try {
+            assert(args && args.nonce === nonce, 'Operation nonce mismatch');
+            assert(readyCount === 1 && !started && !failed, 'Operation invoked before readiness or more than once');
+            started = true;
+            operationTimer = setTimeout(function () {
+                fail(new Error('Bridge operation sequence timed out after 30 seconds'));
+            }, 30000);
+            roundTrip(args).catch(fail);
+            return true;
+        } catch (error) {
+            fail(error);
+            return false;
+        }
+    };
+}());
+</script>
+<script src="cordova.js"></script>
+</body></html>

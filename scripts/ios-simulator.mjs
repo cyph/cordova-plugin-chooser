@@ -19,6 +19,7 @@ import {
 	simulatorPartitions,
 	simulatorPartitionSelection,
 	simulatorManifest,
+	bridgeCases,
 } from "./simulator-results.mjs";
 import { runSimulatorSuite } from "./simulator-evidence.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
@@ -78,7 +79,9 @@ export function simulatorNativeOnly(selected) {
 	return (
 		selected.control.length === 0 &&
 		selected.chooser.length > 0 &&
-		selected.chooser.every((id) => /^ChooserPickerTests\/test\w+\(\)$/.test(id))
+		selected.chooser.every((id) =>
+			/^Chooser(?:Picker|Bridge)Tests\/test\w+\(\)$/.test(id),
+		)
 	);
 }
 
@@ -122,6 +125,11 @@ export function prepareIosSimulatorFixture({
 		join(root, "tests/ios/simulator/index.html"),
 		join(directory, "www/index.html"),
 	);
+	if (!uiOnly)
+		cpSync(
+			join(root, "tests/ios/simulator/bridge.html"),
+			join(directory, "www/bridge.html"),
+		);
 	writeFileSync(
 		join(directory, "www/unit.html"),
 		"<!doctype html><html><body></body></html>\n",
@@ -341,6 +349,35 @@ export function prepareIosSimulatorFixture({
 			},
 		},
 	};
+	if (!uiOnly) {
+		// The bridge smoke has its own host process; controlled picker tests
+		// retain their plain presenter even when the full UI suite is selected.
+		const bridgeHost = structuredClone(spec.targets.ChooserHost);
+		bridgeHost.info.path = "Bridge-Info.plist";
+		bridgeHost.info.properties.ChooserNativeTests = true;
+		bridgeHost.settings.base.PRODUCT_BUNDLE_IDENTIFIER =
+			"com.cyph.chooser.bridge";
+		spec.targets.ChooserBridgeHost = bridgeHost;
+		spec.targets.ChooserBridgeTests = {
+			...common,
+			type: "bundle.unit-test",
+			sources: ["fixture/ChooserBridgeTests.swift"],
+			dependencies: [
+				{ target: "ChooserBridgeHost" },
+				{ ...cordova, embed: false, link: !legacy },
+			],
+			settings: {
+				base: {
+					GENERATE_INFOPLIST_FILE: "YES",
+					SWIFT_OBJC_BRIDGING_HEADER: "fixture/Host-Bridging-Header.h",
+				},
+			},
+		};
+		spec.schemes.ChooserBridge = {
+			build: { targets: { ChooserBridgeHost: "all" } },
+			test: { targets: ["ChooserBridgeTests"] },
+		};
+	}
 	// Dedicated schemes avoid building RC2 native contracts against RC1.
 	if (!uiOnly)
 		spec.schemes.ChooserNative = {
@@ -364,6 +401,7 @@ export function prepareIosSimulatorFixture({
 		])
 			delete spec.targets[target];
 		spec.schemes = {
+			ChooserBridge: spec.schemes.ChooserBridge,
 			ChooserNative: {
 				build: { targets: { ChooserHost: "all" } },
 				test: { targets: ["ChooserPickerTests"] },
@@ -384,6 +422,7 @@ export function prepareIosSimulatorFixture({
 				[uiOnly ? "ChooserUI" : "Chooser", "build-for-testing"],
 				["UIKitControl", "build-for-testing"],
 			];
+	if (!uiOnly) schemes.push(["ChooserBridge", "build-for-testing"]);
 	if (!nativeOnly && ["all", "provider"].includes(diagnosticScope))
 		schemes.push(["ChooserVault", "build"]);
 	for (const [scheme, action] of schemes)
@@ -677,7 +716,9 @@ export function verifyIosSimulator({
 									udid,
 									scheme === "UIKitControl"
 										? "com.cyph.chooser.uikit"
-										: "com.cyph.chooser.simulator",
+										: scheme === "ChooserBridge"
+											? "com.cyph.chooser.bridge"
+											: "com.cyph.chooser.simulator",
 									"data",
 								]);
 								const trace = join(
@@ -872,6 +913,7 @@ export function verifyIosSimulator({
 					);
 				}
 
+				let chooserPassed = true;
 				withFinalizers(() => {
 					recordIdentities("before-control");
 					try {
@@ -918,12 +960,44 @@ export function verifyIosSimulator({
 							...reference,
 						});
 					}
-					if (selected.chooser.length)
-						suite(
-							result,
-							nativeOnly ? "ChooserNative" : "Chooser",
-							selected.chooser,
+					const regularCases = selected.chooser.filter(
+						(id) => !bridgeCases.includes(id),
+					);
+					try {
+						if (regularCases.length)
+							suite(
+								result,
+								nativeOnly ? "ChooserNative" : "Chooser",
+								regularCases,
+							);
+					} catch (error) {
+						chooserPassed = false;
+						failures.push(
+							new Error(`${alias}/${kind} picker cases failed`, {
+								cause: error,
+							}),
 						);
+					}
+					const selectedBridge = selected.chooser.filter((id) =>
+						bridgeCases.includes(id),
+					);
+					if (selectedBridge.length) {
+						try {
+							suite(
+								join(reportDirectory, `${alias}-${kind}-bridge.xcresult`),
+								"ChooserBridge",
+								selectedBridge,
+							);
+							checked(`${alias}:${kind}:bridge`);
+						} catch (error) {
+							chooserPassed = false;
+							failures.push(
+								new Error(`${alias}/${kind} Cordova bridge failed`, {
+									cause: error,
+								}),
+							);
+						}
+					}
 				}, [
 					() => recordIdentities("after-suites"),
 					() => {
@@ -942,7 +1016,8 @@ export function verifyIosSimulator({
 					},
 				]);
 
-				if (selected.chooser.length) checked(`${alias}:${kind}`);
+				if (selected.chooser.length && chooserPassed)
+					checked(`${alias}:${kind}`);
 			} catch (error) {
 				failures.push(
 					new Error(`${alias}/${kind} qualification failed`, { cause: error }),

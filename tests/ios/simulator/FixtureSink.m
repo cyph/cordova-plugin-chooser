@@ -16,6 +16,9 @@
     NSAssert([NSThread isMainThread], @"Callbacks must return on the main thread");
     if (!self.results[callback]) self.results[callback] = [NSMutableArray new];
     [self.results[callback] addObject:result];
+    // Keep this invocation alive if it clears/replaces the property or sends a nested result.
+    void (^observer)(NSString *, CDVPluginResult *) = self.resultObserver;
+    if (observer) observer(callback, result);
 }
 - (void)evalJs:(NSString *)js {}
 - (void)evalJs:(NSString *)js scheduledOnRunLoop:(BOOL)scheduled {}

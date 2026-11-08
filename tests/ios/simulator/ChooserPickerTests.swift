@@ -85,8 +85,9 @@ private final class PickerHarness {
     let presenter = PickerPresenter()
     let plugin = Chooser()
     let sink = FixtureSink()
+    private(set) var isObservingResult = false
 
-    init() throws {
+    init() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         window = UIWindow(windowScene: scene)
         window.rootViewController = presenter
@@ -94,8 +95,22 @@ private final class PickerHarness {
         presenter.loadViewIfNeeded()
         plugin.viewController = presenter
         plugin.commandDelegate = sink
+        // Wait once for initial UIKit readiness. Later picks must exercise the
+        // plugin's readiness at dispatch time, including inside result delivery.
+        do {
+            try await waitUntilAsync {
+                self.presenter.hasAppeared && self.presenter.viewIfLoaded?.window === self.window &&
+                    self.window.isKeyWindow && !self.window.isHidden && self.window.alpha > 0 &&
+                    self.window.windowScene?.activationState == .foregroundActive &&
+                    self.presenter.presentedViewController == nil && self.presenter.transitionCoordinator == nil
+            }
+        } catch {
+            close()
+            throw error
+        }
     }
     func close() {
+        sink.resultObserver = nil
         presenter.clearObservation()
         plugin.onReset()
         presenter.dismiss(animated: false)
@@ -153,25 +168,55 @@ private final class PickerHarness {
     func duringPresentation(_ callback: String, source: String = "documents", mode: String = "metadata",
                             multiple: Bool = false, maxFiles: Int64 = 0, deferred: Bool = false,
                             perform: @escaping @MainActor (PickerPresentation) -> Void) async throws -> PickerPresentation {
-        // Begin the picker contract only after UIKit has made this presenter ready.
-        try await waitUntilAsync {
-            self.presenter.hasAppeared && self.presenter.viewIfLoaded?.window === self.window &&
-                self.window.isKeyWindow && !self.window.isHidden && self.window.alpha > 0 &&
-                self.window.windowScene?.activationState == .foregroundActive &&
-                self.presenter.presentedViewController == nil && self.presenter.transitionCoordinator == nil
-        }
         var presented: PickerPresentation?
+        dispatchPresentation(callback, source: source, mode: mode, multiple: multiple, maxFiles: maxFiles, deferred: deferred) { presentation in
+            presented = presentation
+            perform(presentation)
+        }
+        try await waitUntilAsync { presented != nil }
+        return try XCTUnwrap(presented)
+    }
+    // Synchronous dispatch is separate from async observation: result observers
+    // must enter the next UIKit presentation before their own call stack returns.
+    func dispatchPresentation(_ callback: String, source: String = "documents", mode: String = "metadata",
+                              multiple: Bool = false, maxFiles: Int64 = 0, deferred: Bool = false,
+                              perform: @escaping @MainActor (PickerPresentation) -> Void) {
+        XCTAssertNil(presenter.onPresentation)
         presenter.deferNextPresentation = deferred
         presenter.onPresentation = { presentation in
-            presented = presentation
             XCTAssertTrue(Thread.isMainThread, "Observe and cancel the UIKit presentation on the main thread")
             XCTAssertFalse(presentation.completed, "Cancel before UIKit's presentation completion")
             perform(presentation)
         }
-        defer { presenter.onPresentation = nil }
         invoke("pick", [options(callback, source: source, mode: mode, multiple: multiple, maxFiles: maxFiles)], callback)
-        try await waitUntilAsync { presented != nil }
-        return try XCTUnwrap(presented)
+    }
+    func observeResult(_ callback: String, perform: @escaping @MainActor () -> Void) {
+        XCTAssertNil(sink.resultObserver)
+        sink.resultObserver = { [weak self] observed, _ in
+            // The Objective-C sink asserts main-thread delivery. This checked,
+            // synchronous actor bridge also works below iOS 17; it never queues.
+            ChooserMain.invokeLegacy {
+                guard let self = self, observed == callback else { return }
+                // One shot: nested acknowledgments/results cannot run this action
+                // again, and teardown can release captures even on timeout.
+                self.sink.resultObserver = nil
+                XCTAssertEqual(self.messages(callback).count, 1, "Record the result before observing it")
+                XCTAssertFalse(self.isObservingResult)
+                self.isObservingResult = true
+                defer { self.isObservingResult = false }
+                perform()
+            }
+        }
+    }
+    func assertFinishedPresentation(_ presentation: PickerPresentation, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(presentation.started, file: file, line: line)
+        XCTAssertTrue(presentation.completed, "Result delivery must follow presentation completion", file: file, line: line)
+        XCTAssertNil(presentation.controller.presentingViewController, file: file, line: line)
+        XCTAssertFalse(presentation.controller.isBeingPresented, file: file, line: line)
+        XCTAssertFalse(presentation.controller.isBeingDismissed, file: file, line: line)
+        XCTAssertNil(presentation.controller.transitionCoordinator, file: file, line: line)
+        XCTAssertNil(presenter.presentedViewController, "Reopen without an existing modal", file: file, line: line)
+        XCTAssertNil(presenter.transitionCoordinator, "Reopen without an existing transition", file: file, line: line)
     }
     func waitForDismissalAsync(_ presentation: PickerPresentation) async throws {
         try await waitUntilAsync {
@@ -188,44 +233,60 @@ private final class PickerHarness {
     func messages(_ callback: String) -> [CDVPluginResult] {
         sink.results[callback] as? [CDVPluginResult] ?? []
     }
-    func dismissAsync() async throws {
-        guard presenter.presentedViewController != nil else { return }
-        var completed = false
-        presenter.dismiss(animated: false) { completed = true }
-        try await waitUntilAsync { completed }
-        XCTAssertNil(presenter.presentedViewController)
-    }
 }
 
 final class ChooserPickerTests: XCTestCase {
     @MainActor
     func testAdaptiveDismissalAndStaleCallbacks() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let plugin = h.plugin
-        let first = try await h.openAsync("first")
+        let firstPresentation = try await h.duringPresentation("first") { _ in }
+        try await h.waitUntilAsync { firstPresentation.completed }
+        let first = try XCTUnwrap(firstPresentation.controller as? UIDocumentPickerViewController)
+        XCTAssertTrue(h.presenter.presentedViewController === first)
         let views = first.view.subviews.map { ObjectIdentifier($0) }
         FixturePresentation().presented(first)
         XCTAssertEqual(first.view.subviews.map { ObjectIdentifier($0) }, views,
                        "Presentation diagnostics must preserve the system picker's view hierarchy")
         XCTAssertTrue(first.presentationController?.delegate === plugin)
-        plugin.presentationControllerDidDismiss(first.presentationController!)
+        let adaptive = try XCTUnwrap(first.presentationController)
+        var reopened: PickerPresentation?
+        h.observeResult("first") {
+            h.assertFinishedPresentation(firstPresentation)
+            h.dispatchPresentation("second") { presentation in
+                XCTAssertTrue(h.isObservingResult, "Start the next presentation inside cancellation result delivery")
+                XCTAssertTrue(presentation.started)
+                reopened = presentation
+                plugin.presentationControllerDidDismiss(adaptive)
+                plugin.documentPickerWasCancelled(first)
+                XCTAssertTrue(h.messages("second").isEmpty)
+                guard let second = presentation.controller as? UIDocumentPickerViewController else {
+                    XCTFail("Expected document picker"); return
+                }
+                plugin.documentPickerWasCancelled(second)
+                plugin.documentPickerWasCancelled(second)
+            }
+            XCTAssertNotNil(reopened, "The next presentation must start before the result observer returns")
+        }
+        plugin.presentationControllerDidDismiss(adaptive)
         plugin.documentPickerWasCancelled(first)
         let canceled = try await h.objectAsync("first")
         XCTAssertEqual(h.messages("first").count, 1)
         XCTAssertEqual(canceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(canceled["reason"] as? String, "picker")
-        try await h.dismissAsync()
-        let second = try await h.openAsync("second")
-        plugin.documentPickerWasCancelled(first)
-        XCTAssertTrue(h.messages("second").isEmpty)
-        plugin.documentPickerWasCancelled(second)
-        _ = try await h.objectAsync("second")
+        let secondPresentation = try XCTUnwrap(reopened)
+        let secondCanceled = try await h.objectAsync("second")
+        h.assertFinishedPresentation(secondPresentation)
+        XCTAssertEqual(secondCanceled["code"] as? String, "CANCELLED")
+        XCTAssertEqual(secondCanceled["reason"] as? String, "picker")
+        XCTAssertFalse(h.isObservingResult)
+        XCTAssertEqual(h.messages("first").count, 1)
         XCTAssertEqual(h.messages("second").count, 1)
     }
     @MainActor
     func testResetAndDuplicateSelectionCannotSettleANewerRequest() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let plugin = h.plugin
         let pending = try await h.duringPresentation("reset", deferred: true) { presentation in
@@ -267,7 +328,7 @@ final class ChooserPickerTests: XCTestCase {
     }
     @MainActor
     func testSignalCancellationIdentityAndImmediateReopen() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let blocked = try PickerBlockedSource(store: h.plugin.resources)
         defer { blocked.unblock() }
@@ -299,27 +360,33 @@ final class ChooserPickerTests: XCTestCase {
         XCTAssertEqual(busy["code"] as? String, "BUSY")
         XCTAssertTrue(h.messages("signal-first").isEmpty, "Cancellation must not settle before UIKit completion")
         XCTAssertFalse(pending.completed)
+        let first = try XCTUnwrap(pending.controller as? UIDocumentPickerViewController)
+        var reopened: PickerPresentation?
+        h.observeResult("signal-first") {
+            h.assertFinishedPresentation(pending)
+            h.dispatchPresentation("signal-second") { presentation in
+                XCTAssertTrue(h.isObservingResult, "Start the next presentation inside cancellation result delivery")
+                XCTAssertTrue(presentation.started, "Exercise cancellation immediately after real present returns")
+                reopened = presentation
+                h.plugin.documentPickerWasCancelled(first)
+                h.invoke("cancelPick", ["signal-first"], "late-cancel")
+                XCTAssertTrue(h.messages("signal-second").isEmpty)
+                h.invoke("cancelPick", ["signal-second"], "reopened-cancel")
+            }
+            XCTAssertNotNil(reopened, "The next presentation must start before the result observer returns")
+        }
         h.presenter.resumePresentation()
         let canceled = try await h.objectAsync("signal-first")
-        XCTAssertTrue(pending.completed)
         XCTAssertEqual(canceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(canceled["reason"] as? String, "signal")
-        XCTAssertNil(h.presenter.presentedViewController)
-        let first = try XCTUnwrap(pending.controller as? UIDocumentPickerViewController)
-        let reopened = try await h.duringPresentation("signal-second") { presentation in
-            XCTAssertTrue(presentation.started, "Exercise cancellation immediately after real present returns")
-            h.plugin.documentPickerWasCancelled(first)
-            h.invoke("cancelPick", ["signal-first"], "late-cancel")
-            XCTAssertTrue(h.messages("signal-second").isEmpty)
-            h.invoke("cancelPick", ["signal-second"], "reopened-cancel")
-        }
+        let reopenedPresentation = try XCTUnwrap(reopened)
         _ = try await h.objectAsync("late-cancel")
         _ = try await h.objectAsync("reopened-cancel")
         let secondCanceled = try await h.objectAsync("signal-second")
         XCTAssertEqual(secondCanceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(secondCanceled["reason"] as? String, "signal")
-        XCTAssertTrue(reopened.completed)
-        XCTAssertNil(h.presenter.presentedViewController)
+        h.assertFinishedPresentation(reopenedPresentation)
+        XCTAssertFalse(h.isObservingResult)
         XCTAssertEqual(h.messages("signal-first").count, 1)
         XCTAssertEqual(h.messages("signal-second").count, 1)
         XCTAssertEqual(blocked.input.closeCount, 0, "Reset closed the source while native I/O was blocked")
@@ -332,7 +399,7 @@ final class ChooserPickerTests: XCTestCase {
 
     @MainActor
     func testDirectDataSessionsAreLazyBoundedAndCancelable() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let picker = try await h.openAsync("source", mode: "data")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bin")
@@ -367,7 +434,7 @@ final class ChooserPickerTests: XCTestCase {
 
     @MainActor
     func testManagedCopySurvivesResetAndReadsPositionally() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let picker = try await h.openAsync("copy", mode: "copy")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bin")
@@ -402,7 +469,7 @@ final class ChooserPickerTests: XCTestCase {
 
     @MainActor
     func testNativeOptionValidationAndMetadataCountLimit() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let invalid: [[String: Any]] = [["source": "camera"], ["maxFileSize": true], ["maxFiles": -1],
                                       ["maxTotalSize": 1.5], ["multiple": 1], ["requestId": ""]]
@@ -425,7 +492,7 @@ final class ChooserPickerTests: XCTestCase {
 
     @MainActor
     func testPhotoPickerConfigurationAndCancellation() async throws {
-        let h = try PickerHarness()
+        let h = try await PickerHarness()
         defer { h.close() }
         let configuration = ChooserPhotos.configuration(mediaTypes: ["image", "video"], multiple: true, maxFiles: 3)
         XCTAssertEqual(configuration.preferredAssetRepresentationMode, .current)
@@ -446,26 +513,31 @@ final class ChooserPickerTests: XCTestCase {
         XCTAssertEqual(busy["code"] as? String, "BUSY")
         XCTAssertFalse(pending.completed)
         XCTAssertTrue(h.messages("photos").isEmpty, "Photo cancellation must wait for UIKit completion")
+        var reopenedPresentation: PickerPresentation?
+        h.observeResult("photos") {
+            h.assertFinishedPresentation(pending)
+            h.dispatchPresentation("photos-reopened", source: "photos") { presentation in
+                XCTAssertTrue(h.isObservingResult, "Start the next presentation inside cancellation result delivery")
+                XCTAssertTrue(presentation.started, "Reopen through an ordinary UIKit presentation")
+                reopenedPresentation = presentation
+                guard let reopened = presentation.controller as? PHPickerViewController else { XCTFail("Expected photo picker"); return }
+                h.plugin.picker(picker, didFinishPicking: [])
+                XCTAssertTrue(h.messages("photos-reopened").isEmpty)
+                h.plugin.picker(reopened, didFinishPicking: [])
+                h.plugin.picker(reopened, didFinishPicking: [])
+            }
+            XCTAssertNotNil(reopenedPresentation, "The next presentation must start before the result observer returns")
+        }
         h.presenter.resumePresentation()
         let canceled = try await h.objectAsync("photos")
-        XCTAssertTrue(pending.completed)
         XCTAssertEqual(canceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(canceled["reason"] as? String, "picker")
-        XCTAssertNil(h.presenter.presentedViewController)
-        XCTAssertEqual(h.messages("photos").count, 1)
-        let reopenedPresentation = try await h.duringPresentation("photos-reopened", source: "photos") { presentation in
-            XCTAssertTrue(presentation.started, "Reopen through an ordinary UIKit presentation")
-            guard let reopened = presentation.controller as? PHPickerViewController else { XCTFail("Expected photo picker"); return }
-            h.plugin.picker(picker, didFinishPicking: [])
-            XCTAssertTrue(h.messages("photos-reopened").isEmpty)
-            h.plugin.picker(reopened, didFinishPicking: [])
-            h.plugin.picker(reopened, didFinishPicking: [])
-        }
+        let reopened = try XCTUnwrap(reopenedPresentation)
         let reopenedCanceled = try await h.objectAsync("photos-reopened")
-        XCTAssertTrue(reopenedPresentation.completed)
+        h.assertFinishedPresentation(reopened)
         XCTAssertEqual(reopenedCanceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(reopenedCanceled["reason"] as? String, "picker")
-        XCTAssertNil(h.presenter.presentedViewController)
+        XCTAssertFalse(h.isObservingResult)
         XCTAssertEqual(h.messages("photos").count, 1)
         XCTAssertEqual(h.messages("photos-reopened").count, 1)
     }

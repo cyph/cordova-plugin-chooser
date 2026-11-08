@@ -44,6 +44,7 @@ const pickerCases = [
 	"testPhotoPickerConfigurationAndCancellation",
 	"testPhotoMetadataDoesNotLoadContentsAndProviderURLIsConsumedInHandler",
 ].map((name) => `ChooserPickerTests/${name}()`);
+export const bridgeCases = ["ChooserBridgeTests/testCordovaBridgeRoundTrip()"];
 const chooserUICases = [
 	...formats.map((name) => `ChooserUITests/test${name}()`),
 	...[
@@ -53,7 +54,11 @@ const chooserUICases = [
 		"testSwipeScopedReopen",
 	].map((name) => `ChooserUITests/${name}()`),
 ];
-export const simulatorCases = [...pickerCases, ...chooserUICases];
+export const simulatorCases = [
+	...pickerCases,
+	...bridgeCases,
+	...chooserUICases,
+];
 export const controlCases = [
 	...formats.map((name) => `UIKitControlTests/test${name}()`),
 	"UIKitControlTests/testCancel()",
@@ -71,7 +76,7 @@ export function simulatorPartitionSelection(partition, suite = "required") {
 		"Unexpected simulator suite",
 	);
 	const selections = {
-		required: { control: [], chooser: pickerCases },
+		required: { control: [], chooser: [...pickerCases, ...bridgeCases] },
 		investigation: { control: controlCases, chooser: chooserUICases },
 		full: { control: controlCases, chooser: simulatorCases },
 	};
@@ -261,4 +266,9 @@ export function checkSimulatorResults(
 	);
 	assert.equal(summary.skippedTests, 0, "Simulator tests were skipped");
 	assert.equal(summary.failedTests, 0, "Simulator tests failed");
+	assert.equal(
+		summary.expectedFailures ?? 0,
+		0,
+		"Simulator tests had expected failures",
+	);
 }

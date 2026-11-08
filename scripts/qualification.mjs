@@ -35,6 +35,9 @@ export function simulatorSuiteChecks(suite, partitions = simulatorPartitions) {
 							]
 						: []),
 					...(control.length ? [`${prefix}:native-control`] : []),
+					...(chooser.some((id) => id.startsWith("ChooserBridgeTests/"))
+						? [`${prefix}:bridge`]
+						: []),
 					...(chooser.length ? [prefix] : []),
 				];
 			},

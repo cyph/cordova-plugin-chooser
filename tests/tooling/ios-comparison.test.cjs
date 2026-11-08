@@ -1761,7 +1761,10 @@ test("UI-only RC1 scheme excludes native contracts; native selection builds and 
 		});
 		const spec = JSON.parse(readFileSync(join(directory, "project.json")));
 		if (nativeOnly) {
-			assert.deepEqual(Object.keys(spec.schemes), ["ChooserNative"]);
+			assert.deepEqual(Object.keys(spec.schemes), [
+				"ChooserBridge",
+				"ChooserNative",
+			]);
 			assert(
 				!spec.targets.UIKitControl &&
 					!spec.targets.ChooserVault &&
@@ -1769,6 +1772,9 @@ test("UI-only RC1 scheme excludes native contracts; native selection builds and 
 			);
 		} else {
 			assert(!spec.targets.ChooserPickerTests);
+			assert(
+				!spec.targets.ChooserBridgeTests && !spec.targets.ChooserBridgeHost,
+			);
 			assert.deepEqual(spec.schemes.ChooserUI.test.targets, ["ChooserUITests"]);
 			assert.match(
 				readFileSync(join(directory, "www/index.html"), "utf8"),
@@ -1778,7 +1784,8 @@ test("UI-only RC1 scheme excludes native contracts; native selection builds and 
 	}
 	const nativeCommands = commands
 		.filter((c) => c.cmd === "/usr/bin/xcodebuild")
-		.slice(-1);
-	assert.equal(nativeCommands.length, 1);
+		.slice(-2);
+	assert.equal(nativeCommands.length, 2);
 	assert(nativeCommands[0].args.includes("ChooserNative"));
+	assert(nativeCommands[1].args.includes("ChooserBridge"));
 });
