@@ -35,9 +35,9 @@ private final class FixtureSheet: UINavigationController, UISheetPresentationCon
         let details: [String: Any] = [
             "phase": phase,
             "detent": sheet?.selectedDetentIdentifier?.rawValue ?? "nil",
-            "frameInWindow": frame.map { NSStringFromCGRect($0) } ?? "nil",
-            "presentedFrameInContainer": presentation.map { NSStringFromCGRect($0.frameOfPresentedViewInContainerView) } ?? "nil",
-            "containerBounds": presentation?.containerView.map { NSStringFromCGRect($0.bounds) } ?? "nil",
+            "frameInWindow": frame.map { NSCoder.string(for: $0) } ?? "nil",
+            "presentedFrameInContainer": presentation.map { NSCoder.string(for: $0.frameOfPresentedViewInContainerView) } ?? "nil",
+            "containerBounds": presentation?.containerView.map { NSCoder.string(for: $0.bounds) } ?? "nil",
             "inWindow": viewIfLoaded?.window != nil,
             "hasPresenter": presentingViewController != nil,
             "isBeingPresented": isBeingPresented,
