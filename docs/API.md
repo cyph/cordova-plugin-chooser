@@ -77,11 +77,13 @@ Release these managed files after use; [scoped helpers](#scoped-cleanup) handle 
 | `name` | Display name, with a fallback when unavailable; never a trusted filesystem path |
 | `mediaType` | Reported or inferred MIME type; fallback `application/octet-stream` |
 | `size` | Bytes; metadata can report `null`, while managed and direct-data results report actual size |
-| `sourceUri` | Optional borrowed native source reference; no persistence or continuing-access guarantee |
+| `sourceUri` | Optional borrowed native source reference, which may identify an iOS temporary import; no persistence or continuing-access guarantee |
 | `id` | Opaque ID on managed results only |
 | `uri` | Private native cache URI or browser Blob URL on managed results only |
 
-`FileMetadata` contains `name`, `mediaType`, `size`, and optional `sourceUri`. Metadata selection does not read complete file contents or retain plugin-owned resources. The OS or provider can still download or import an item; Photos metadata may be incomplete.
+`FileMetadata` contains `name`, `mediaType`, `size`, and optional `sourceUri`. Metadata selection does not read or send complete file contents across the bridge, has no byte budgets, and retains no plugin-managed resource or release obligation. Photos metadata may be incomplete.
+
+On iOS, document metadata selection requests an import: UIKit or the provider may copy or download the entire file, adding latency and disk use outside plugin byte budgets. iOS manages the temporary import’s lifetime. A borrowed `sourceUri` can refer to that import rather than the original provider location; it is not a managed URI and must not be passed to release methods, which accept managed IDs.
 
 `ManagedFile` adds `id`, `uri`, and the reading and lifetime methods below. Native results are snapshots in app-private cache. Browser results retain the selected `File`. Releasing a managed file leaves the selected original untouched.
 

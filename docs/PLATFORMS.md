@@ -61,7 +61,9 @@ Keep an existing higher target. Chooser's prepare hook rejects an absent deploym
 
 The document source selects regular files from Files and document providers. It does not select directories or document packages. Present it from a visible app view after other modal transitions finish. The picker follows the app's supported orientations and uses an appropriate anchor on iPad.
 
-Reads use coordinated, security-scoped access where required. Managed selection copies into private cache; the provider or OS may import or download a document for other modes as well. Metadata does not trigger a full-content read in plugin code. No persistent security-scoped bookmark is created.
+Reads use coordinated, security-scoped access where required. Document metadata selection asks UIKit to [import a copy](https://developer.apple.com/documentation/uikit/uidocumentpickerviewcontroller/init(foropeningcontenttypes:ascopy:)); managed-copy and direct-data selection open in place. The plugin does not read or bridge complete contents for metadata, but UIKit or the provider may copy or download the entire file, adding latency and disk use outside plugin byte budgets. Metadata methods have no byte budgets or managed resource to release.
+
+iOS manages imported copies; Apple says they are temporary and available only until the app terminates. See the [document picker delegate documentation](https://developer.apple.com/documentation/uikit/uidocumentpickerdelegate/documentpicker(_:didpickdocumentsat:)). A metadata result’s borrowed `sourceUri` may identify the temporary import rather than the original provider location. It is not persistent, carries no continuing-access guarantee, and is not a managed ID. No persistent security-scoped bookmark is created. Managed selection separately copies into private cache.
 
 Provider operations can outlive a cancellation request or reset. See the [known Files issue](KNOWN-ISSUES.md#intermittent-ios-files-selection) if selection remains pending.
 

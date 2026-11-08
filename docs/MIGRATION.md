@@ -48,11 +48,11 @@ const file = await chooser.getFileData({
 const value = JSON.parse(file.text);
 ```
 
-Metadata methods accept no byte budgets because they do not materialize contents. Managed whole-file reads require a separate `maxBytes`; a copy allowed onto disk may still be too large to load into memory. Use `file.readRange({offset, length})` and streams for incremental access. Text methods accept `encoding` and `fatal` as top-level options; data formats other than `text` reject them.
+Metadata methods accept no byte budgets and do not read or bridge complete file contents, but the OS or provider may still materialize an entire file. Managed whole-file reads require a separate `maxBytes`; a copy allowed onto disk may still be too large to load into memory. Use `file.readRange({offset, length})` and streams for incremental access. Text methods accept `encoding` and `fatal` as top-level options; data formats other than `text` reject them.
 
 Android document methods now allow remote providers by default, including single-file metadata selection. Set `preferLocal: true` if the app wants to request the earlier local-provider preference.
 
-On iOS, RC1 metadata selection asked UIKit to import a copy; RC2 opens documents in place for all file methods. This avoids requesting a UIKit import copy, but can change provider behavior. Review the [known iOS Files issue](KNOWN-ISSUES.md) and test the providers and workflows your app uses before adopting RC2.
+On iOS, document metadata selection asks UIKit to import a copy, as in RC1; managed-copy and direct-data selection open in place. The import may copy or download the entire file, adding latency and disk use outside plugin byte budgets. iOS manages the temporary import, and the optional borrowed `sourceUri` may identify it rather than the original provider location. It is not persistent or a managed resource and has no release obligation. Review the [known iOS Files issue](KNOWN-ISSUES.md) and test the providers and workflows your app uses before adopting RC2.
 
 ## Handle cancellation and cleanup
 

@@ -53,23 +53,66 @@ export function checkComparisonPackage(directory, release) {
 	return manifest;
 }
 
-// The experimental package differs at one picker argument. Preserve the
-// unmodified archive and record both identities; never describe this as a
-// published release or modify the checkout used to produce it.
-export function applyMetadataImportExperiment(directory) {
-	const path = join(directory, "src/ios/Chooser.swift");
-	const before = readFileSync(path, "utf8");
-	const original =
-		"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: false)";
-	const replacement =
-		"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: request.mode == .metadata)";
-	assert.equal(
-		before.split(original).length,
-		2,
-		"Expected exactly one unmodified picker initializer",
+const metadataPickerPath = "src/ios/Chooser.swift";
+const metadataPickerInitializers = [
+	"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: false)",
+	"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: request.mode == .metadata)",
+];
+
+export function comparisonMetadataAsCopy(directory) {
+	const source = readFileSync(join(directory, metadataPickerPath), "utf8");
+	const known = metadataPickerInitializers.filter((value) =>
+		source.includes(value),
 	);
+	assert(
+		(source.match(/\bChooserDocumentPicker\s*\(/g) ?? []).length === 1 &&
+			known.length === 1,
+		"Expected exactly one known comparison picker initializer",
+	);
+	return known[0] === metadataPickerInitializers[1];
+}
+
+export function comparisonPluginAsCopy(descriptors) {
+	return Object.fromEntries(
+		Object.entries(descriptors).map(([release, descriptor]) => {
+			assert(
+				["rc1", "rc2", "rc2-open", "rc2-import"].includes(release),
+				"Unknown comparison release",
+			);
+			const asCopy =
+				release === "rc1" ? true : comparisonMetadataAsCopy(descriptor.package);
+			if (descriptor.metadataAsCopy !== undefined)
+				assert.equal(
+					asCopy,
+					descriptor.metadataAsCopy,
+					"Comparison package mode mismatch",
+				);
+			return [release, asCopy];
+		}),
+	);
+}
+
+// Patch only an isolated copy of the committed source. Both directions use
+// exact known initializers; the canonical package is never an experiment.
+export function applyMetadataModeExperiment(directory, asCopy) {
+	assert.equal(typeof asCopy, "boolean", "Unknown metadata picker mode");
+	const beforeMode = comparisonMetadataAsCopy(directory);
+	assert.notEqual(
+		beforeMode,
+		asCopy,
+		"Metadata experiment must change picker mode",
+	);
+	const path = join(directory, metadataPickerPath);
+	const before = readFileSync(path, "utf8");
+	const original = metadataPickerInitializers[Number(beforeMode)];
+	const replacement = metadataPickerInitializers[Number(asCopy)];
 	writeFileSync(path, before.replace(original, replacement));
-	return { path: "src/ios/Chooser.swift", original, replacement };
+	return { path: metadataPickerPath, original, replacement };
+}
+
+// Preserve the original helper's false-source import experiment.
+export function applyMetadataImportExperiment(directory) {
+	return applyMetadataModeExperiment(directory, true);
 }
 
 export function prepareComparisonDescriptors({ root, plan, run }) {
@@ -88,9 +131,45 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 	const archive = join(plan.output, "rc2-source.tar");
 	run("git", ["archive", "--format=tar", `--output=${archive}`, commit], root);
 	run("tar", ["-xf", archive, "-C", source], root);
+	const sourceAsCopy = comparisonMetadataAsCopy(source);
+	const releases = Object.keys(plan.packages);
+	assert(
+		releases.every((release) =>
+			["rc1", "rc2", "rc2-open", "rc2-import"].includes(release),
+		),
+		"Unknown comparison release",
+	);
+	const variants =
+		releases.includes("rc2-open") || releases.includes("rc2-import");
+	if (variants)
+		assert.deepEqual(
+			releases,
+			["rc2-open", "rc2-import"],
+			"Incorrect metadata variants",
+		);
+	const canonicalRelease = variants
+		? sourceAsCopy
+			? "rc2-import"
+			: "rc2-open"
+		: "rc2";
+	// Prepare the actual baseline first, preserving the plan and returned order.
+	const preparationOrder = variants
+		? [
+				canonicalRelease,
+				...releases.filter((release) => release !== canonicalRelease),
+			]
+		: releases;
+	const sourceFiles = comparisonFiles(source);
 	const descriptors = {};
-	for (const release of Object.keys(plan.packages)) {
+	for (const release of preparationOrder) {
 		const paths = plan.packages[release];
+		const metadataAsCopy = variants ? release === "rc2-import" : sourceAsCopy;
+		if (variants)
+			assert.equal(
+				paths.metadataAsCopy,
+				metadataAsCopy,
+				"Incorrect metadata variant mode",
+			);
 		mkdirSync(paths.directory, { recursive: true });
 		mkdirSync(paths.evidence);
 		let tarball;
@@ -115,10 +194,13 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 			);
 		} else {
 			let packSource = source;
-			if (release === "rc2-import") {
+			if (metadataAsCopy !== sourceAsCopy) {
 				packSource = join(paths.directory, "experimental-source");
 				cpSync(source, packSource, { recursive: true });
-				experimentPatch = applyMetadataImportExperiment(packSource);
+				experimentPatch = applyMetadataModeExperiment(
+					packSource,
+					metadataAsCopy,
+				);
 			}
 			[pack] = JSON.parse(
 				run(
@@ -189,10 +271,32 @@ with tarfile.open(sys.argv[1]) as t:
 			integrity,
 			package: directory,
 			files: comparisonFiles(directory),
-			...(release === "rc1" ? { url: rc1.url } : { commit, tree }),
+			...(release === "rc1"
+				? { url: rc1.url }
+				: { commit, tree, metadataAsCopy }),
 		};
-		if (release === "rc2-import") {
-			const baseline = descriptors["rc2-open"];
+		if (release !== "rc1") {
+			assert.equal(
+				comparisonMetadataAsCopy(directory),
+				metadataAsCopy,
+				"Comparison package mode mismatch",
+			);
+			if (!experimentPatch) {
+				assert.equal(
+					readFileSync(join(directory, metadataPickerPath), "utf8"),
+					readFileSync(join(source, metadataPickerPath), "utf8"),
+					"Canonical package changed picker source",
+				);
+				for (const file of descriptors[release].files)
+					assert.deepEqual(
+						file,
+						sourceFiles.find((original) => original.name === file.name),
+						"Canonical package changed committed source",
+					);
+			}
+		}
+		if (experimentPatch) {
+			const baseline = descriptors[canonicalRelease];
 			assert(baseline, "Unmodified RC2 must be prepared first");
 			assert.deepEqual(
 				descriptors[release].files.filter(
@@ -201,8 +305,16 @@ with tarfile.open(sys.argv[1]) as t:
 				baseline.files.filter((file) => file.name !== "src/ios/Chooser.swift"),
 				"Metadata experiment changed other package files",
 			);
+			assert.equal(
+				readFileSync(join(directory, metadataPickerPath), "utf8"),
+				readFileSync(
+					join(baseline.package, metadataPickerPath),
+					"utf8",
+				).replace(experimentPatch.original, experimentPatch.replacement),
+				"Metadata experiment changed more than its exact picker argument",
+			);
 			descriptors[release].experiment = {
-				kind: "metadata-import",
+				kind: metadataAsCopy ? "metadata-import" : "metadata-open",
 				baseIntegrity: baseline.integrity,
 				changedFile: "src/ios/Chooser.swift",
 				patch: experimentPatch,
@@ -213,6 +325,11 @@ with tarfile.open(sys.argv[1]) as t:
 			JSON.stringify(descriptors[release], null, 2) + "\n",
 		);
 	}
+	assert.deepEqual(
+		comparisonFiles(source),
+		sourceFiles,
+		"Committed comparison source changed",
+	);
 	return {
 		source,
 		commit,
@@ -220,6 +337,8 @@ with tarfile.open(sys.argv[1]) as t:
 		trackedClean: true,
 		sourceArchive: archive,
 		sourceIntegrity: comparisonIntegrity(readFileSync(archive)),
-		descriptors,
+		descriptors: Object.fromEntries(
+			releases.map((release) => [release, descriptors[release]]),
+		),
 	};
 }

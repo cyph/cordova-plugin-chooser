@@ -19,6 +19,7 @@ import { spawnVerified } from "./verification-command.mjs";
 import { checkSimulatorResults } from "./simulator-results.mjs";
 import {
 	comparisonFiles,
+	comparisonPluginAsCopy,
 	prepareComparisonDescriptors,
 } from "./ios-comparison-packages.mjs";
 import {
@@ -269,11 +270,7 @@ export function prepareIosComparison({ root, plan, report, deadline }) {
 			files: (plan.documents ?? comparisonDocuments).map((d) => d.name),
 			freshSimulatorPerArm: true,
 		},
-		pluginAsCopy:
-			plan.experiment === "metadata-mode" ||
-			plan.experiment === "metadata-restoration"
-				? { "rc2-open": false, "rc2-import": true }
-				: { rc1: true, rc2: false },
+		pluginAsCopy: comparisonPluginAsCopy(context.descriptors),
 		locale: "en_US",
 		language: "en",
 	};

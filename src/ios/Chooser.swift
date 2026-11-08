@@ -234,8 +234,8 @@ class Chooser: CDVPlugin {
 			controller = photos
 		} else {
 			let types = ChooserTypes.identifiers(for: request.accept).compactMap { UTType($0) }
-			// Opening in place keeps metadata selection free of document imports.
-			let documents = ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: false)
+			// Import metadata selections for providers that cannot open in place.
+			let documents = ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: request.mode == .metadata)
 			documents.request = request
 			documents.delegate = self
 			documents.allowsMultipleSelection = request.multiple

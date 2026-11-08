@@ -11,7 +11,7 @@ const { tmpdir } = require("node:os");
 const test = require("node:test");
 
 test("metadata mode experiment changes one argument and rejects source drift", async (t) => {
-	const { applyMetadataImportExperiment } =
+	const { applyMetadataModeExperiment, comparisonMetadataAsCopy } =
 		await import("../../scripts/ios-comparison-packages.mjs");
 	const directory = mkdtempSync(join(tmpdir(), "chooser-metadata-mode-"));
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -22,21 +22,24 @@ test("metadata mode experiment changes one argument and rejects source drift", a
 		"utf8",
 	);
 	writeFileSync(path, source);
-	const patch = applyMetadataImportExperiment(directory);
+	assert.equal(comparisonMetadataAsCopy(directory), true);
+	const patch = applyMetadataModeExperiment(directory, false);
 	assert.equal(patch.path, "src/ios/Chooser.swift");
 	assert.equal(
 		readFileSync(path, "utf8"),
 		source.replace(patch.original, patch.replacement),
 	);
-	assert.equal(
-		patch.replacement.split("asCopy: ")[1],
-		"request.mode == .metadata)",
+	assert.equal(patch.replacement.split("asCopy: ")[1], "false)");
+	assert.throws(
+		() => applyMetadataModeExperiment(directory, false),
+		/must change/,
 	);
-	assert.throws(() => applyMetadataImportExperiment(directory), /exactly one/);
+	applyMetadataModeExperiment(directory, true);
+	assert.equal(readFileSync(path, "utf8"), source);
 	for (const invalid of ["unexpected source", `${source}\n${source}`]) {
 		writeFileSync(path, invalid);
 		assert.throws(
-			() => applyMetadataImportExperiment(directory),
+			() => applyMetadataModeExperiment(directory, false),
 			/exactly one/,
 		);
 		assert.equal(readFileSync(path, "utf8"), invalid);

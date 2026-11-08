@@ -8,7 +8,7 @@ const {
 	rmSync,
 } = require("node:fs");
 const { tmpdir } = require("node:os");
-const { join } = require("node:path");
+const { dirname, join } = require("node:path");
 const test = require("node:test");
 const childProcess = require("node:child_process");
 const { syncBuiltinESMExports } = require("node:module");
@@ -16,6 +16,7 @@ const vm = require("node:vm");
 const { metadata } = require("../../scripts/ios-comparison-adapter.cjs");
 const load = () => import("../../scripts/ios-comparison.mjs");
 const loadModel = () => import("../../scripts/ios-comparison-model.mjs");
+const loadPackages = () => import("../../scripts/ios-comparison-packages.mjs");
 function temporary(t) {
 	const directory = mkdtempSync(join(tmpdir(), "chooser-comparison-"));
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -96,6 +97,129 @@ function metadataFixture(m, experiment, framework = "cordova-ios8") {
 		),
 	};
 	return { plan, context };
+}
+
+const pickerInitializers = [
+	"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: false)",
+	"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: request.mode == .metadata)",
+];
+
+// Stub command/archive transport without npm, network or Apple tools. Package
+// files, integrity checks, exact patches and descriptor preparation stay real.
+function descriptorFixture(
+	t,
+	m,
+	sourceAsCopy,
+	{ experiment = "metadata-restoration", fault } = {},
+) {
+	const directory = temporary(t);
+	const root = join(directory, "repo"),
+		output = join(directory, "report");
+	const files = {
+		"package.json": JSON.stringify({
+			name: "cordova-plugin-chooser",
+			version: "2.0.0-rc.2",
+			main: "www/chooser.js",
+		}),
+		"plugin.xml": "<plugin/>\n",
+		"www/chooser.js": "module.exports = {};\n",
+		"src/ios/Other.swift": "// Unchanged package source.\n",
+		"src/ios/Chooser.swift": `import UIKit\nlet documents = ${pickerInitializers[Number(sourceAsCopy)]}\n`,
+	};
+	if (fault === "unknown-mode")
+		files["src/ios/Chooser.swift"] = pickerInitializers[0].replace(
+			"asCopy: false",
+			"asCopy: true",
+		);
+	function unpack(bytes, destination) {
+		for (const [name, contents] of Object.entries(JSON.parse(bytes))) {
+			const path = join(destination, name);
+			mkdirSync(dirname(path), { recursive: true });
+			writeFileSync(path, contents);
+		}
+	}
+	unpack(JSON.stringify(files), root);
+	mkdirSync(output);
+	const plan = m.createComparisonPlan({
+		framework: "cordova-ios8",
+		device: "ipad",
+		output,
+		experiment,
+	});
+	// Isolate release RC2 preparation from downloading the pinned RC1 archive.
+	// This changes only this test fixture, never the plan factory or arm order.
+	if (experiment === "metadata-regression")
+		plan.packages = { rc2: plan.packages.rc2 };
+	const calls = [];
+	const run = (command, args, cwd) => {
+		calls.push({ command, args, cwd });
+		if (command === "git") {
+			if (args[0] === "status") return "";
+			if (args[0] === "rev-parse")
+				return args[1] === "HEAD" ? "a".repeat(40) : "b".repeat(40);
+			assert.equal(args[0], "archive");
+			assert.equal(args.at(-1), "a".repeat(40));
+			writeFileSync(args[2].slice("--output=".length), JSON.stringify(files));
+		} else if (command === "tar") {
+			unpack(readFileSync(args[1], "utf8"), args[3]);
+		} else if (command === "npm") {
+			assert.deepEqual(args.slice(0, 4), [
+				"pack",
+				"--json",
+				"--ignore-scripts",
+				"--pack-destination",
+			]);
+			const packed = Object.fromEntries(
+				m
+					.comparisonFiles(cwd)
+					.map(({ name }) => [name, readFileSync(join(cwd, name), "utf8")]),
+			);
+			const patched = cwd.endsWith("experimental-source");
+			if (
+				(patched && fault === "other-file") ||
+				(!patched && fault === "canonical-other")
+			)
+				packed["plugin.xml"] += "changed";
+			if (patched && fault === "extra-file") packed["extra.txt"] = "unexpected";
+			if (patched && fault === "missing-file")
+				delete packed["src/ios/Other.swift"];
+			if (
+				(patched && fault === "swift") ||
+				(!patched && fault === "canonical-swift")
+			)
+				packed["src/ios/Chooser.swift"] +=
+					"// Unexpected additional Swift change.\n";
+			if (fault === "manifest")
+				packed["package.json"] = JSON.stringify({
+					...JSON.parse(packed["package.json"]),
+					name: "substitute",
+				});
+			if (fault === "source")
+				writeFileSync(join(cwd, "plugin.xml"), "changed committed source");
+			const bytes = Buffer.from(JSON.stringify(packed));
+			const filename = "cordova-plugin-chooser-2.0.0-rc.2.tgz";
+			writeFileSync(
+				join(args[4], filename),
+				fault === "integrity"
+					? Buffer.concat([bytes, Buffer.from("tampered")])
+					: bytes,
+			);
+			return JSON.stringify([
+				{ filename, integrity: m.comparisonIntegrity(bytes) },
+			]);
+		} else if (command === "python3") {
+			unpack(readFileSync(args[2], "utf8"), join(args[3], "package"));
+		} else assert.fail(`Unexpected fixture command ${command}`);
+		return "";
+	};
+	return {
+		root,
+		output,
+		plan,
+		calls,
+		files,
+		prepare: () => m.prepareComparisonDescriptors({ root, plan, run }),
+	};
 }
 
 test("RC1 integrity pin rejects altered bytes and package name/version are checked", async (t) => {
@@ -274,6 +398,208 @@ test("dirty tracked source is rejected before resolving, archiving, packing or d
 	assert.deepEqual(calls, [
 		["git", ["status", "--porcelain", "--untracked-files=no"]],
 	]);
+});
+
+test("metadata variants preserve the actual canonical archive in either source mode", async (t) => {
+	const m = { ...(await load()), ...(await loadPackages()) };
+	for (const sourceAsCopy of [false, true])
+		for (const experiment of ["metadata-mode", "metadata-restoration"])
+			await t.test(
+				`${experiment}: canonical ${sourceAsCopy ? "import" : "open"}`,
+				(t) => {
+					const fixture = descriptorFixture(t, m, sourceAsCopy, { experiment });
+					const plan = structuredClone(fixture.plan);
+					const context = fixture.prepare();
+					const canonical =
+						context.descriptors[sourceAsCopy ? "rc2-import" : "rc2-open"];
+					const patched =
+						context.descriptors[sourceAsCopy ? "rc2-open" : "rc2-import"];
+					assert.deepEqual(fixture.plan, plan);
+					assert.deepEqual(Object.keys(context.descriptors), [
+						"rc2-open",
+						"rc2-import",
+					]);
+					assert.equal(canonical.experiment, undefined);
+					assert.equal(canonical.metadataAsCopy, sourceAsCopy);
+					assert.equal(patched.metadataAsCopy, !sourceAsCopy);
+					assert.deepEqual(patched.experiment, {
+						kind: sourceAsCopy ? "metadata-open" : "metadata-import",
+						baseIntegrity: canonical.integrity,
+						changedFile: "src/ios/Chooser.swift",
+						patch: {
+							path: "src/ios/Chooser.swift",
+							original: pickerInitializers[Number(sourceAsCopy)],
+							replacement: pickerInitializers[Number(!sourceAsCopy)],
+						},
+					});
+					assert.notEqual(patched.integrity, canonical.integrity);
+					for (const descriptor of [canonical, patched]) {
+						assert.equal(
+							descriptor.integrity,
+							m.comparisonIntegrity(readFileSync(descriptor.tarball)),
+						);
+						assert.equal(descriptor.commit, context.commit);
+						assert.equal(descriptor.tree, context.tree);
+						assert.deepEqual(
+							JSON.parse(
+								readFileSync(join(descriptor.evidence, "descriptor.json")),
+							),
+							descriptor,
+						);
+					}
+					assert.equal(context.trackedClean, true);
+					assert.equal(
+						context.sourceIntegrity,
+						m.comparisonIntegrity(readFileSync(context.sourceArchive)),
+					);
+					for (const [name, original] of Object.entries(fixture.files)) {
+						assert.equal(
+							readFileSync(join(fixture.root, name), "utf8"),
+							original,
+						);
+						assert.equal(
+							readFileSync(join(context.source, name), "utf8"),
+							original,
+						);
+						assert.equal(
+							readFileSync(join(canonical.package, name), "utf8"),
+							original,
+						);
+						assert.equal(
+							readFileSync(join(patched.package, name), "utf8"),
+							name === "src/ios/Chooser.swift"
+								? original.replace(
+										patched.experiment.patch.original,
+										patched.experiment.patch.replacement,
+									)
+								: original,
+						);
+					}
+					assert.deepEqual(m.comparisonPluginAsCopy(context.descriptors), {
+						"rc2-open": false,
+						"rc2-import": true,
+					});
+					assert.deepEqual(
+						fixture.calls
+							.filter(({ command }) => command === "npm")
+							.map(({ cwd }) => cwd),
+						[context.source, join(patched.directory, "experimental-source")],
+					);
+				},
+			);
+});
+
+test("release profiles report the committed RC2 package mode and pinned RC1 import mode", async (t) => {
+	const m = { ...(await load()), ...(await loadPackages()) };
+	for (const sourceAsCopy of [false, true]) {
+		const fixture = descriptorFixture(t, m, sourceAsCopy, {
+			experiment: "metadata-regression",
+		});
+		const context = fixture.prepare();
+		assert.equal(context.descriptors.rc2.experiment, undefined);
+		assert.equal(context.descriptors.rc2.metadataAsCopy, sourceAsCopy);
+		assert.deepEqual(
+			m.comparisonPluginAsCopy({ rc1: {}, ...context.descriptors }),
+			{
+				rc1: true,
+				rc2: sourceAsCopy,
+			},
+		);
+		assert.throws(
+			() => m.comparisonPluginAsCopy({ unknown: {} }),
+			/Unknown comparison release/,
+		);
+		assert.throws(
+			() =>
+				m.comparisonPluginAsCopy({
+					rc2: { ...context.descriptors.rc2, metadataAsCopy: !sourceAsCopy },
+				}),
+			/mode mismatch/,
+		);
+	}
+});
+
+test("metadata inference rejects unknown, duplicated and drifted initializers without writing", async (t) => {
+	const m = await loadPackages();
+	const directory = temporary(t),
+		path = join(directory, "src/ios/Chooser.swift");
+	mkdirSync(dirname(path), { recursive: true });
+	for (const source of [
+		"// Missing initializer.\n",
+		pickerInitializers[0].replace("asCopy: false", "asCopy: true"),
+		pickerInitializers[1].replace(
+			"request.mode == .metadata",
+			"request.mode != .copy",
+		),
+		pickerInitializers[0].replace("types.isEmpty ? [.item] : types", "types"),
+		pickerInitializers[0].replace("asCopy: false", "asCopy:  false"),
+		pickerInitializers[0] + "\n" + pickerInitializers[0],
+		pickerInitializers[0] + "\n" + pickerInitializers[1],
+		pickerInitializers[0] +
+			"\nChooserDocumentPicker(documentTypes: [], in: .open)",
+	]) {
+		writeFileSync(path, source);
+		assert.throws(
+			() => m.comparisonMetadataAsCopy(directory),
+			/exactly one known/,
+		);
+		for (const asCopy of [false, true]) {
+			assert.throws(
+				() => m.applyMetadataModeExperiment(directory, asCopy),
+				/exactly one known/,
+			);
+			assert.equal(readFileSync(path, "utf8"), source);
+		}
+	}
+	writeFileSync(path, pickerInitializers[0]);
+	for (const mode of [undefined, null, "import", 1]) {
+		assert.throws(
+			() => m.applyMetadataModeExperiment(directory, mode),
+			/Unknown metadata picker mode/,
+		);
+		assert.equal(readFileSync(path, "utf8"), pickerInitializers[0]);
+	}
+	assert.throws(
+		() => m.applyMetadataModeExperiment(directory, false),
+		/must change/,
+	);
+	assert.deepEqual(m.applyMetadataImportExperiment(directory), {
+		path: "src/ios/Chooser.swift",
+		original: pickerInitializers[0],
+		replacement: pickerInitializers[1],
+	});
+	assert.throws(
+		() => m.applyMetadataImportExperiment(directory),
+		/must change/,
+	);
+});
+
+test("descriptor preparation rejects drift, other mutations and invalid integrity or identity", async (t) => {
+	const m = { ...(await load()), ...(await loadPackages()) };
+	for (const sourceAsCopy of [false, true])
+		for (const [fault, expected] of [
+			["unknown-mode", /exactly one known/],
+			["other-file", /changed other package files/],
+			["extra-file", /changed other package files/],
+			["missing-file", /changed other package files/],
+			["swift", /more than its exact picker argument/],
+			["canonical-swift", /Canonical package changed picker source/],
+			["canonical-other", /Canonical package changed committed source/],
+			["integrity", /integrity mismatch/],
+			["manifest", /Unexpected comparison package name/],
+			["source", /Committed comparison source changed/],
+		]) {
+			const fixture = descriptorFixture(t, m, sourceAsCopy, {
+				fault,
+				experiment:
+					fault === "source" ? "metadata-regression" : "metadata-restoration",
+			});
+			assert.throws(fixture.prepare, expected);
+			if (fault === "unknown-mode")
+				assert(!fixture.calls.some(({ command }) => command === "npm"));
+			if (fault === "integrity")
+				assert(!fixture.calls.some(({ command }) => command === "python3"));
+		}
 });
 
 test("command deadlines reject before starting and preserve owned-command output", async (t) => {

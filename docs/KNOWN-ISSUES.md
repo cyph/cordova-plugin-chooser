@@ -4,7 +4,7 @@
 
 In simulator tests, Files has intermittently remained open after selecting local CSV, JSON, PDF, image, or video files. Both open-in-place and import picker modes can stall, and cancellation has also stalled during investigation. Without a selection or dismissal callback, the request can remain pending and later picker calls can report `BUSY`.
 
-Native FileProvider URL or bookmark resolution errors have been observed in some cases. Failures occurred with RC1, RC2, and a plain UIKit reference app without Cordova or Chooser. Some metadata cases passed with RC1 and failed with RC2 in simulator testing. The cause and impact on physical devices and other providers remain unknown. Import mode is not a verified workaround, and requiring iOS 15 does not establish a fix.
+Native FileProvider URL or bookmark resolution errors have been observed in some cases, including in a plain UIKit reference app without Cordova or Chooser. Document metadata selection uses import mode, but Files and provider stalls remain possible for PNG and other file types. The cause and impact on physical devices and other providers remain unknown. Import mode is not a verified general workaround, and requiring iOS 15 does not establish a fix.
 
 If Files responds, cancel and wait for the request to settle before retrying. An `AbortSignal` requests cancellation through the plugin, but cannot guarantee recovery of an unresponsive system picker. An app restart may be necessary if Files remains stuck.
 
