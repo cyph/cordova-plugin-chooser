@@ -8,9 +8,23 @@ import PhotosUI
 @testable import ChooserHost
 
 @MainActor
+private final class PickerPresenter: CDVViewController {
+    var onPresentation: (@MainActor (UIViewController) -> Void)?
+
+    override func present(_ controller: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
+        let observe = onPresentation
+        onPresentation = nil
+        super.present(controller, animated: animated, completion: completion)
+        // Capture the actual UIKit controller without assuming the presenter's
+        // presentedViewController relationship is already observable by XCTest.
+        observe?(controller)
+    }
+}
+
+@MainActor
 private final class PickerHarness {
     let window: UIWindow
-    let presenter = CDVViewController()
+    let presenter = PickerPresenter()
     let plugin = Chooser()
     let sink = FixtureSink()
 
@@ -33,6 +47,19 @@ private final class PickerHarness {
         let deadline = Date().addingTimeInterval(10)
         while !predicate() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
         XCTAssertTrue(predicate(), file: file, line: line)
+    }
+    func waitUntilAsync(_ predicate: @MainActor () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = Date().addingTimeInterval(10)
+        while !predicate() && Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertTrue(predicate(), file: file, line: line)
+    }
+    func waitForSemaphore(_ semaphore: DispatchSemaphore) async -> DispatchTimeoutResult {
+        let deadline = DispatchTime.now() + 5
+        return await withCheckedContinuation { continuation in
+            ChooserWork.dispatch(on: .global()) {
+                continuation.resume(returning: semaphore.wait(timeout: deadline))
+            }
+        }
     }
     func options(_ callback: String, source: String = "documents", mode: String = "metadata", multiple: Bool = false,
                  maxFileSize: Int64 = 0, maxTotalSize: Int64 = 0, maxFiles: Int64 = 0) -> [String: Any] {
@@ -59,6 +86,13 @@ private final class PickerHarness {
         let text = try XCTUnwrap(message as? String)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
     }
+    func objectAsync(_ callback: String) async throws -> [String: Any] {
+        try await waitUntilAsync { !self.messages(callback).isEmpty }
+        let message = try XCTUnwrap(messages(callback).first?.message)
+        if let object = message as? [String: Any] { return object }
+        let text = try XCTUnwrap(message as? String)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+    }
     func open(_ callback: String, mode: String = "metadata", multiple: Bool = false, maxFiles: Int64 = 0) -> UIDocumentPickerViewController {
         invoke("pick", [options(callback, mode: mode, multiple: multiple, maxFiles: maxFiles)], callback)
         // UIKit exposes presentedViewController before the presentation
@@ -68,6 +102,32 @@ private final class PickerHarness {
             return picker.presentationController?.delegate === self.plugin && !picker.isBeingPresented
         }
         return presenter.presentedViewController as! UIDocumentPickerViewController
+    }
+    func openAsync(_ callback: String) async throws -> UIDocumentPickerViewController {
+        invoke("pick", [options(callback)], callback)
+        try await waitUntilAsync {
+            guard let picker = self.presenter.presentedViewController as? UIDocumentPickerViewController else { return false }
+            return picker.presentationController?.delegate === self.plugin && !picker.isBeingPresented
+        }
+        return try XCTUnwrap(presenter.presentedViewController as? UIDocumentPickerViewController)
+    }
+    func duringPresentation<Picker: UIViewController>(_ callback: String, source: String = "documents", as type: Picker.Type,
+                                                      perform: @escaping @MainActor (Picker) -> Void) async throws -> Picker {
+        var presented: UIViewController?
+        presenter.onPresentation = { controller in
+            presented = controller
+            XCTAssertTrue(Thread.isMainThread, "Observe and cancel the UIKit presentation on the main thread")
+            guard let picker = controller as? Picker else { XCTFail("Expected \(type)"); return }
+            perform(picker)
+        }
+        defer { presenter.onPresentation = nil }
+        invoke("pick", [options(callback, source: source)], callback)
+        // Wait for a latched event, never poll the transient isBeingPresented
+        // flag. The cancellation itself runs in the hook without a run-loop hop.
+        // Yield after the hook so UIKit and worker completions can settle.
+        await Task.yield()
+        try await waitUntilAsync { presented != nil }
+        return try XCTUnwrap(presented as? Picker)
     }
     func messages(_ callback: String) -> [CDVPluginResult] {
         sink.results[callback] as? [CDVPluginResult] ?? []
@@ -131,49 +191,51 @@ final class ChooserPickerTests: XCTestCase {
         XCTAssertEqual(value["size"] as? Int, 2)
     }
     @MainActor
-    func testSignalCancellationIdentityAndImmediateReopen() throws {
+    func testSignalCancellationIdentityAndImmediateReopen() async throws {
         let h = try PickerHarness()
         defer { h.close() }
         let blocked = try PickerBlockedSource(store: h.plugin.resources)
         defer { blocked.unblock() }
         blocked.start()
-        XCTAssertEqual(blocked.input.entered.wait(timeout: .now() + 5), .success)
+        let entered = await h.waitForSemaphore(blocked.input.entered)
+        XCTAssertEqual(entered, .success)
         h.plugin.onReset()
         let cache = try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
         let unrelated = try ChooserFiles.create(in: cache)
         defer { try? ChooserFiles.release(in: cache, id: unrelated.lastPathComponent) }
         h.invoke("releaseFile", [unrelated.lastPathComponent], "unrelated-release")
-        let released = try h.object("unrelated-release")
+        let released = try await h.objectAsync("unrelated-release")
         XCTAssertNil(released["code"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: unrelated.path))
-        h.invoke("pick", [h.options("signal-first")], "signal-first")
-        let first = try XCTUnwrap(h.presenter.presentedViewController as? UIDocumentPickerViewController)
-        XCTAssertTrue(first.isBeingPresented, "Exercise AbortSignal cancellation during presentation")
-        h.invoke("cancelPick", ["stale-identity"], "stale-cancel")
-        _ = try h.object("stale-cancel")
-        XCTAssertTrue(h.messages("signal-first").isEmpty)
-        h.invoke("cancelPick", ["signal-first"], "cancel-ack")
-        h.invoke("cancelPick", ["signal-first"], "duplicate-cancel-ack")
-        _ = try h.object("cancel-ack")
-        _ = try h.object("duplicate-cancel-ack")
-        let canceled = try h.object("signal-first")
+        let first = try await h.duringPresentation("signal-first", as: UIDocumentPickerViewController.self) { first in
+            h.invoke("cancelPick", ["stale-identity"], "stale-cancel")
+            XCTAssertTrue(h.messages("signal-first").isEmpty)
+            XCTAssertTrue(first.isBeingPresented, "Exercise AbortSignal cancellation during presentation")
+            h.invoke("cancelPick", ["signal-first"], "cancel-ack")
+            h.invoke("cancelPick", ["signal-first"], "duplicate-cancel-ack")
+        }
+        _ = try await h.objectAsync("stale-cancel")
+        _ = try await h.objectAsync("cancel-ack")
+        _ = try await h.objectAsync("duplicate-cancel-ack")
+        let canceled = try await h.objectAsync("signal-first")
         XCTAssertEqual(canceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(canceled["reason"] as? String, "signal")
         XCTAssertNil(h.presenter.presentedViewController)
-        let second = h.open("signal-second")
+        let second = try await h.openAsync("signal-second")
         h.plugin.documentPickerWasCancelled(first)
         h.invoke("cancelPick", ["signal-first"], "late-cancel")
-        _ = try h.object("late-cancel")
+        _ = try await h.objectAsync("late-cancel")
         XCTAssertTrue(h.messages("signal-second").isEmpty)
         h.plugin.documentPickerWasCancelled(second)
-        _ = try h.object("signal-second")
+        _ = try await h.objectAsync("signal-second")
         XCTAssertEqual(h.messages("signal-first").count, 1)
         XCTAssertEqual(h.messages("signal-second").count, 1)
         XCTAssertEqual(blocked.input.closeCount, 0, "Reset closed the source while native I/O was blocked")
         XCTAssertTrue(FileManager.default.fileExists(atPath: blocked.imported.path))
         blocked.unblock()
-        XCTAssertEqual(blocked.finished.wait(timeout: .now() + 5), .success)
-        h.waitUntil { blocked.input.closeCount == 1 && !FileManager.default.fileExists(atPath: blocked.imported.path) }
+        let finished = await h.waitForSemaphore(blocked.finished)
+        XCTAssertEqual(finished, .success)
+        try await h.waitUntilAsync { blocked.input.closeCount == 1 && !FileManager.default.fileExists(atPath: blocked.imported.path) }
     }
 
     @MainActor
@@ -260,7 +322,7 @@ final class ChooserPickerTests: XCTestCase {
     }
 
     @MainActor
-    func testPhotoPickerConfigurationAndCancellation() throws {
+    func testPhotoPickerConfigurationAndCancellation() async throws {
         let h = try PickerHarness()
         defer { h.close() }
         let configuration = ChooserPhotos.configuration(mediaTypes: ["image", "video"], multiple: true, maxFiles: 3)
@@ -268,23 +330,25 @@ final class ChooserPickerTests: XCTestCase {
         XCTAssertEqual(configuration.selection, .ordered)
         XCTAssertEqual(configuration.selectionLimit, 3)
         XCTAssertNotNil(configuration.filter)
-        h.invoke("pick", [h.options("photos", source: "photos")], "photos")
-        let picker = try XCTUnwrap(h.presenter.presentedViewController as? PHPickerViewController)
-        XCTAssertTrue(picker.isBeingPresented, "Exercise delegate cancellation during presentation")
-        h.plugin.picker(picker, didFinishPicking: [])
-        h.plugin.picker(picker, didFinishPicking: [])
-        let canceled = try h.object("photos")
+        let picker = try await h.duringPresentation("photos", source: "photos", as: PHPickerViewController.self) { picker in
+            XCTAssertTrue(picker.isBeingPresented, "Exercise delegate cancellation during presentation")
+            h.plugin.picker(picker, didFinishPicking: [])
+            h.plugin.picker(picker, didFinishPicking: [])
+        }
+        let canceled = try await h.objectAsync("photos")
         XCTAssertEqual(canceled["code"] as? String, "CANCELLED")
         XCTAssertEqual(canceled["reason"] as? String, "picker")
         XCTAssertNil(h.presenter.presentedViewController)
         XCTAssertEqual(h.messages("photos").count, 1)
-        h.invoke("pick", [h.options("photos-reopened", source: "photos")], "photos-reopened")
-        let reopened = try XCTUnwrap(h.presenter.presentedViewController as? PHPickerViewController)
-        h.plugin.picker(picker, didFinishPicking: [])
-        XCTAssertTrue(h.messages("photos-reopened").isEmpty)
-        h.plugin.picker(reopened, didFinishPicking: [])
-        h.plugin.picker(reopened, didFinishPicking: [])
-        XCTAssertEqual(try h.object("photos-reopened")["code"] as? String, "CANCELLED")
+        _ = try await h.duringPresentation("photos-reopened", source: "photos", as: PHPickerViewController.self) { reopened in
+            h.plugin.picker(picker, didFinishPicking: [])
+            XCTAssertTrue(h.messages("photos-reopened").isEmpty)
+            XCTAssertTrue(reopened.isBeingPresented, "Exercise delegate cancellation during the reopened presentation")
+            h.plugin.picker(reopened, didFinishPicking: [])
+            h.plugin.picker(reopened, didFinishPicking: [])
+        }
+        let reopenedCanceled = try await h.objectAsync("photos-reopened")
+        XCTAssertEqual(reopenedCanceled["code"] as? String, "CANCELLED")
         XCTAssertNil(h.presenter.presentedViewController)
         XCTAssertEqual(h.messages("photos").count, 1)
         XCTAssertEqual(h.messages("photos-reopened").count, 1)
