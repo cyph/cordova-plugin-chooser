@@ -382,7 +382,11 @@ class Chooser: CDVPlugin {
 	private func deliver(_ request: ChooserRequest, result: Result<Any, Error>) {
 		guard active === request else { request.finishResources(delivered: false); return }
 		guard request.complete() else { return }
+		var finalized = false
 		let finalize: ChooserMainAction = {
+			guard !finalized else { return }
+			// Claim completion before asynchronous cancellation rollback starts.
+			finalized = true
 			guard self.active === request else { request.finishResources(delivered: false); return }
 			if request.canceled {
 				self.rollbackCancellation(request)
@@ -413,16 +417,24 @@ class Chooser: CDVPlugin {
 	private func finishPresentation(_ request: ChooserRequest, completion: @escaping ChooserMainAction) {
 		guard active === request else { request.finishResources(delivered: false); return }
 		guard let controller = picker else { completion(); return }
+		var recheckScheduled = false
+		let recheck: ChooserMainAction = {
+			guard !recheckScheduled else { return }
+			recheckScheduled = true
+			// Recheck after UIKit has returned from its completion callback.
+			Self.deferMain { self.finishPresentation(request, completion: completion) }
+		}
 		// The system document picker may already be dismissing when its delegate
 		// runs. Join that transition instead of completing a second dismissal early.
 		if controller.isBeingPresented || controller.isBeingDismissed {
 			if let transition = controller.transitionCoordinator,
-				transition.animate(alongsideTransition: nil, completion: { _ in self.finishPresentation(request, completion: completion) }) { return }
-			Self.deferMain { self.finishPresentation(request, completion: completion) }
+				transition.animate(alongsideTransition: nil, completion: { _ in recheck() }) { return }
+			// A false return can still invoke the callback; share its one-shot wakeup.
+			recheck()
 			return
 		}
 		if controller.presentingViewController != nil {
-			controller.dismiss(animated: true) { self.finishPresentation(request, completion: completion) }
+			controller.dismiss(animated: true) { recheck() }
 		} else { completion() }
 	}
 
