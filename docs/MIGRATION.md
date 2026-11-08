@@ -52,6 +52,8 @@ Metadata methods accept no byte budgets because they do not materialize contents
 
 Android document methods now allow remote providers by default, including single-file metadata selection. Set `preferLocal: true` if the app wants to request the earlier local-provider preference.
 
+On iOS, RC1 metadata selection asked UIKit to import a copy; RC2 opens documents in place for all file methods. This avoids requesting a UIKit import copy, but can change provider behavior. Review the [known iOS Files issue](KNOWN-ISSUES.md) and test the providers and workflows your app uses before adopting RC2.
+
 ## Handle cancellation and cleanup
 
 Picker dismissal and `AbortSignal` cancellation reject with `CancellationError`. Its `reason` distinguishes `'picker'` from `'signal'`. When an operation is canceled by its supplied `AbortSignal`, `cause` preserves that signal's reason. There is no cancellation-related `undefined` result or boolean success flag.
