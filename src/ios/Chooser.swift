@@ -12,6 +12,24 @@ private final class ChooserDocumentPicker: UIDocumentPickerViewController {
 	override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .all }
 }
 
+#if compiler(>=5.9)
+@MainActor
+#endif
+private final class ChooserPresentation {
+	let request: ChooserRequest
+	let controller: UIViewController
+	// UIKit may defer presentation without setting any controller flags yet.
+	var pending = true
+	var finishing = false
+	var animated = true
+	var completion: ChooserMainAction?
+
+	init(request: ChooserRequest, controller: UIViewController) {
+		self.request = request
+		self.controller = controller
+	}
+}
+
 @objc(Chooser)
 class Chooser: CDVPlugin {
 	#if compiler(>=5.9)
@@ -21,7 +39,7 @@ class Chooser: CDVPlugin {
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private var picker: UIViewController?
+	private var presentation: ChooserPresentation?
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
@@ -199,7 +217,7 @@ class Chooser: CDVPlugin {
 	@MainActor
 	#endif
 	private func begin(_ request: ChooserRequest) {
-		guard active == nil else {
+		guard active == nil, presentation == nil else {
 			request.finish()
 			sendFailure(ChooserFailure(code: .busy, detail: "A file picker is already active."), callback: request.callback)
 			return
@@ -230,8 +248,16 @@ class Chooser: CDVPlugin {
 			popover.permittedArrowDirections = []
 		}
 		active = request
-		picker = controller
-		presenter.present(controller, animated: true) { controller.presentationController?.delegate = self }
+		let presentation = ChooserPresentation(request: request, controller: controller)
+		self.presentation = presentation
+		presenter.present(controller, animated: true) {
+			guard presentation.pending else { return }
+			presentation.pending = false
+			if self.active === request { controller.presentationController?.delegate = self }
+			if presentation.finishing {
+				Self.deferMain { self.finishPresentation(presentation) }
+			}
+		}
 	}
 
 	#if compiler(>=5.9)
@@ -392,7 +418,7 @@ class Chooser: CDVPlugin {
 				self.rollbackCancellation(request)
 				return
 			}
-			self.active = nil; self.picker = nil
+			self.active = nil
 			defer { request.finish() }
 			if let cleanup = request.cleanupError { self.send(cleanup, .error, request.callback); return }
 			var delivered = false
@@ -408,21 +434,35 @@ class Chooser: CDVPlugin {
 			}
 			request.finishResources(delivered: delivered)
 		}
-		finishPresentation(request, completion: finalize)
+		if let presentation = presentation, presentation.request === request {
+			finishPresentation(presentation, animated: true, completion: finalize)
+		} else { finalize() }
 	}
 
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private func finishPresentation(_ request: ChooserRequest, completion: @escaping ChooserMainAction) {
-		guard active === request else { request.finishResources(delivered: false); return }
-		guard let controller = picker else { completion(); return }
+	private func finishPresentation(_ presentation: ChooserPresentation, animated: Bool, completion: @escaping ChooserMainAction) {
+		presentation.animated = animated
+		presentation.completion = completion
+		// Reset can replace delivery with cleanup without starting another loop.
+		guard !presentation.finishing else { return }
+		presentation.finishing = true
+		finishPresentation(presentation)
+	}
+
+	#if compiler(>=5.9)
+	@MainActor
+	#endif
+	private func finishPresentation(_ presentation: ChooserPresentation) {
+		guard self.presentation === presentation, !presentation.pending else { return }
+		let controller = presentation.controller
 		var recheckScheduled = false
 		let recheck: ChooserMainAction = {
 			guard !recheckScheduled else { return }
 			recheckScheduled = true
 			// Recheck after UIKit has returned from its completion callback.
-			Self.deferMain { self.finishPresentation(request, completion: completion) }
+			Self.deferMain { self.finishPresentation(presentation) }
 		}
 		// The system document picker may already be dismissing when its delegate
 		// runs. Join that transition instead of completing a second dismissal early.
@@ -434,8 +474,13 @@ class Chooser: CDVPlugin {
 			return
 		}
 		if controller.presentingViewController != nil {
-			controller.dismiss(animated: true) { recheck() }
-		} else { completion() }
+			controller.dismiss(animated: presentation.animated) { recheck() }
+		} else {
+			self.presentation = nil
+			let completion = presentation.completion
+			presentation.completion = nil
+			completion?()
+		}
 	}
 
 	private static func deferMain(_ action: @escaping ChooserMainAction) {
@@ -448,7 +493,7 @@ class Chooser: CDVPlugin {
 			ChooserMain.run {
 				let (plugin, request) = reference.value
 				guard plugin.active === request else { return }
-				plugin.active = nil; plugin.picker = nil
+				plugin.active = nil
 				request.finish()
 				let canceled: [String: Any] = ["code": "CANCELLED", "reason": request.cancellationReason ?? "signal", "message": "Selection canceled."]
 				if var cleanup = request.cleanupError {
@@ -488,8 +533,11 @@ class Chooser: CDVPlugin {
 			// its rollback even if UIKit drops the pending dismissal completion.
 			if phase != .processing { abandoned?.finishResources(delivered: false) }
 			plugin.active = nil
-			plugin.picker?.dismiss(animated: false, completion: nil)
-			plugin.picker = nil
+			// Retain UI ownership across reset, including UIKit's delayed present.
+			// Its captured controller must finish dismissal before another pick.
+			if let presentation = plugin.presentation {
+				plugin.finishPresentation(presentation, animated: false, completion: {})
+			}
 			plugin.resources.resetSources()
 		}
 	}
@@ -515,7 +563,7 @@ extension Chooser: UIDocumentPickerDelegate {
 #endif
 extension Chooser: PHPickerViewControllerDelegate {
 	func picker(_ controller: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-		guard picker === controller, let request = active, request.process() else { return }
+		guard presentation?.controller === controller, let request = active, request.process() else { return }
 		var assets = Set<String>()
 		var identities = Set<ObjectIdentifier>()
 		var providers: [NSItemProvider] = []
@@ -534,7 +582,7 @@ extension Chooser: PHPickerViewControllerDelegate {
 #endif
 extension Chooser: UIAdaptivePresentationControllerDelegate {
 	func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-		guard presentationController.presentedViewController === picker, let request = active, request.state == .selecting else { return }
+		guard presentationController.presentedViewController === presentation?.controller, let request = active, request.state == .selecting else { return }
 		request.signalCancel(reason: "picker")
 		deliver(request, result: .success([:]))
 	}
