@@ -46,6 +46,8 @@ final class UIKitControlTests: PickerUI {
     func testOpenExportedJSON() { select("JSON", "exported-fixture-json.json", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testImportOriginalPDF() { select("PDF", "fixture-pdf.pdf") }
     func testOpenOriginalPDF() { select("PDF", "fixture-pdf.pdf", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
+    func testImportOriginalImage() { select("Image", "fixture-image.png") }
+    func testOpenOriginalImage() { select("Image", "fixture-image.png", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testImportExportedPDF() { select("PDF", "exported-fixture-pdf.pdf") }
     func testOpenExportedPDF() { select("PDF", "exported-fixture-pdf.pdf", environment: ["CHOOSER_PROVIDER_MODE": "open"]) }
     func testExportJSON() { export("fixture-json.json") }

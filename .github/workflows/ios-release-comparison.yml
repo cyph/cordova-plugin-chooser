@@ -1,11 +1,18 @@
 name: iOS release comparison
-run-name: Bounded RC1 versus RC2 comparison
+run-name: Bounded iOS comparison (${{ inputs.experiment }})
 on:
   workflow_dispatch:
+    inputs:
+      experiment:
+        description: Fixed release comparison or metadata picker-mode discriminator
+        type: choice
+        options: [releases, metadata-mode]
+        default: releases
+        required: true
 permissions:
   contents: read
 concurrency:
-  group: ios-release-comparison-${{ github.ref }}
+  group: ios-release-comparison-${{ github.ref }}-${{ inputs.experiment }}
   cancel-in-progress: false
 jobs:
   comparison:
@@ -13,8 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        framework: [cordova-ios7, cordova-ios8]
-        device: [iphone, ipad]
+        include: ${{ fromJSON(inputs.experiment == 'metadata-mode' && '[{"framework":"cordova-ios8","device":"ipad"}]' || '[{"framework":"cordova-ios7","device":"iphone"},{"framework":"cordova-ios7","device":"ipad"},{"framework":"cordova-ios8","device":"iphone"},{"framework":"cordova-ios8","device":"ipad"}]') }}
     runs-on: macos-26
     timeout-minutes: 360
     env:
@@ -27,10 +33,12 @@ jobs:
       - name: Prepare frozen dependencies
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
       - name: Compare immutable releases
+        env:
+          COMPARISON_EXPERIMENT: ${{ inputs.experiment }}
         run: >-
           nix --extra-experimental-features 'nix-command flakes' run .#just --
           chainman run compare-ios-releases
-          '${{ matrix.framework }}' '${{ matrix.device }}'
+          '${{ matrix.framework }}' '${{ matrix.device }}' "$COMPARISON_EXPERIMENT"
       - name: Verify tracked files are unchanged
         if: ${{ always() }}
         run: |

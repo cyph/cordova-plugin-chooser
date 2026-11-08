@@ -73,9 +73,15 @@ Focused diagnostic, investigation, and release comparison reports cannot substit
 
 ### Manual iOS release comparison
 
-Run the partition command above locally or dispatch the manual-only [iOS release comparison workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-release-comparison.yml), which runs all four framework/device partitions. It compares the checksum-pinned published RC1 with the committed RC2 archive using the same pinned baseline Apple toolchain, simulator runtime, SDK, framework, and harness. Each partition follows the fixed sequence UIKit, RC1, RC2, RC2, RC1, UIKit, with a fresh simulator and provider store for every entry.
+Run the partition command above locally or dispatch the manual-only [iOS release comparison workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-release-comparison.yml). The default `releases` experiment runs all four framework/device partitions. It compares the checksum-pinned published RC1 with the committed RC2 archive using the same pinned baseline Apple toolchain, simulator runtime, SDK, framework, and harness. Each partition follows the fixed sequence UIKit, RC1, RC2, RC2, RC1, UIKit, with a fresh simulator and provider store for every entry.
 
 The plugin cases cover metadata for six formats and cancellation/reopening; UIKit controls cover JSON, CSV, and PDF import and open. RC1 metadata imports and RC2 opens in place: this difference is intentionally preserved. Stage caps total 340 minutes within the 360-minute job limit. Do not cycle runs until green; retain failures, timeouts, and unstarted cases alongside successes. Reports include `comparison.json`, xcresult bundles, logs, and hash manifests. This comparison cannot count as required qualification.
+
+The `metadata-mode` experiment runs only Cordova iOS 8 on iPad in the workflow. It isolates the picker mode using a PNG and two RC2 variants: unmodified `asCopy: false` and a one-argument patch setting `asCopy: true` only for metadata requests. Reports record package identities and the exact patch. Six fresh simulators and provider stores run in UIKit, open, import, import, open, UIKit order; the UIKit PNG import/open controls reverse order in the final entry. The same deadlines apply; retain both successful and failing results. Run it locally with:
+
+```sh
+just chainman run compare-ios-releases cordova-ios8 ipad metadata-mode
+```
 
 ## Android dependency ownership
 

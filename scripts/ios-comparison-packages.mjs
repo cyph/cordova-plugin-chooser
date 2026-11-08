@@ -53,6 +53,25 @@ export function checkComparisonPackage(directory, release) {
 	return manifest;
 }
 
+// The experimental package differs at one picker argument. Preserve the
+// unmodified archive and record both identities; never describe this as a
+// published release or modify the checkout used to produce it.
+export function applyMetadataImportExperiment(directory) {
+	const path = join(directory, "src/ios/Chooser.swift");
+	const before = readFileSync(path, "utf8");
+	const original =
+		"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: false)";
+	const replacement =
+		"ChooserDocumentPicker(forOpeningContentTypes: types.isEmpty ? [.item] : types, asCopy: request.mode == .metadata)";
+	assert.equal(
+		before.split(original).length,
+		2,
+		"Expected exactly one unmodified picker initializer",
+	);
+	writeFileSync(path, before.replace(original, replacement));
+	return { path: "src/ios/Chooser.swift", original, replacement };
+}
+
 export function prepareComparisonDescriptors({ root, plan, run }) {
 	// Ignore untracked evidence, but never describe tracked local edits as a
 	// committed RC2 candidate. Archive the resolved object, never the worktree.
@@ -70,12 +89,13 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 	run("git", ["archive", "--format=tar", `--output=${archive}`, commit], root);
 	run("tar", ["-xf", archive, "-C", source], root);
 	const descriptors = {};
-	for (const release of ["rc1", "rc2"]) {
+	for (const release of Object.keys(plan.packages)) {
 		const paths = plan.packages[release];
 		mkdirSync(paths.directory, { recursive: true });
 		mkdirSync(paths.evidence);
 		let tarball;
 		let pack;
+		let experimentPatch;
 		if (release === "rc1") {
 			tarball = join(paths.directory, "cordova-plugin-chooser-2.0.0-rc.1.tgz");
 			run(
@@ -94,6 +114,12 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 				root,
 			);
 		} else {
+			let packSource = source;
+			if (release === "rc2-import") {
+				packSource = join(paths.directory, "experimental-source");
+				cpSync(source, packSource, { recursive: true });
+				experimentPatch = applyMetadataImportExperiment(packSource);
+			}
 			[pack] = JSON.parse(
 				run(
 					"npm",
@@ -104,7 +130,7 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 						"--pack-destination",
 						paths.directory,
 					],
-					source,
+					packSource,
 					true,
 				),
 			);
@@ -165,6 +191,23 @@ with tarfile.open(sys.argv[1]) as t:
 			files: comparisonFiles(directory),
 			...(release === "rc1" ? { url: rc1.url } : { commit, tree }),
 		};
+		if (release === "rc2-import") {
+			const baseline = descriptors["rc2-open"];
+			assert(baseline, "Unmodified RC2 must be prepared first");
+			assert.deepEqual(
+				descriptors[release].files.filter(
+					(file) => file.name !== "src/ios/Chooser.swift",
+				),
+				baseline.files.filter((file) => file.name !== "src/ios/Chooser.swift"),
+				"Metadata experiment changed other package files",
+			);
+			descriptors[release].experiment = {
+				kind: "metadata-import",
+				baseIntegrity: baseline.integrity,
+				changedFile: "src/ios/Chooser.swift",
+				patch: experimentPatch,
+			};
+		}
 		writeFileSync(
 			join(paths.evidence, "descriptor.json"),
 			JSON.stringify(descriptors[release], null, 2) + "\n",

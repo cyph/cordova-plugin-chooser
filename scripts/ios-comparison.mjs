@@ -97,26 +97,35 @@ export function comparisonCommandRunner({
 			timeout,
 		});
 		writeFileSync(log, `${result.stdout ?? ""}${result.stderr ?? ""}`);
+		const partialOutput =
+			Boolean(result.status === 124 || result.signal || result.error) &&
+			Boolean(result.stdout?.length || result.stderr?.length);
 		Object.assign(record, {
 			status: result.status,
 			signal: result.signal,
+			partialOutput,
 			finished: now(),
 		});
 		if (!capture) {
 			process.stdout.write(result.stdout ?? "");
 			process.stderr.write(result.stderr ?? "");
 		}
-		if (result.status === 124 || result.error?.code === "ETIMEDOUT")
-			throw Object.assign(new Error(`${command} timed out`), {
-				code: "ETIMEDOUT",
-				status: 124,
-			});
-		if (result.error) throw result.error;
-		assert.equal(
-			result.status,
-			0,
-			`${command} failed (${result.status ?? result.signal}); see ${log}`,
-		);
+		try {
+			if (result.status === 124 || result.error?.code === "ETIMEDOUT")
+				throw Object.assign(new Error(`${command} timed out`), {
+					code: "ETIMEDOUT",
+					status: 124,
+				});
+			if (result.error) throw result.error;
+			assert.equal(
+				result.status,
+				0,
+				`${command} failed (${result.status ?? result.signal})`,
+			);
+		} catch (error) {
+			error.message += `; ${partialOutput ? "partial output retained; " : ""}see ${log}`;
+			throw Object.assign(error, { log, partialOutput });
+		}
 		return result.stdout?.trim() ?? "";
 	};
 }
@@ -257,16 +266,19 @@ export function prepareIosComparison({ root, plan, report, deadline }) {
 		),
 		seed: {
 			method: "system-export",
-			files: comparisonDocuments.map((d) => d.name),
+			files: (plan.documents ?? comparisonDocuments).map((d) => d.name),
 			freshSimulatorPerArm: true,
 		},
-		pluginAsCopy: { rc1: true, rc2: false },
+		pluginAsCopy:
+			plan.experiment === "metadata-mode"
+				? { "rc2-open": false, "rc2-import": true }
+				: { rc1: true, rc2: false },
 		locale: "en_US",
 		language: "en",
 	};
 	Object.assign(context, { profile, env, assets });
 	writeJSON(join(plan.output, "profile.json"), profile);
-	for (const release of ["rc1", "rc2"]) {
+	for (const release of Object.keys(plan.packages)) {
 		const descriptor = context.descriptors[release];
 		descriptor.framework = createApplication({
 			root,
@@ -288,7 +300,7 @@ export function prepareIosComparison({ root, plan, report, deadline }) {
 			uiOnly: true,
 			clean: false,
 			adapter: join(context.source, "scripts/ios-comparison-adapter.cjs"),
-			comparisonRelease: release,
+			comparisonRelease: release === "rc1" ? "rc1" : "rc2",
 			buildSettings: settings,
 		});
 		writeJSON(join(descriptor.evidence, "descriptor.json"), descriptor);
@@ -313,7 +325,13 @@ function armRunner({
 	});
 }
 function fixtureFor(arm, report) {
-	return report.context.descriptors[arm.release === "rc1" ? "rc1" : "rc2"];
+	return report.context.descriptors[
+		arm.release === "uikit"
+			? report.plan.experiment === "metadata-mode"
+				? "rc2-open"
+				: "rc2"
+			: arm.release
+	];
 }
 function simctl(run, args, root, options) {
 	return run("/usr/bin/xcrun", ["simctl", ...args], root, true, {}, options);
@@ -383,6 +401,7 @@ function executeCase({
 		item.error = comparisonError(error);
 	}
 	// Extract exact results even after xcodebuild reports a test failure.
+	item.xctestStatus = "not-validated";
 	if (existsSync(bundle)) {
 		try {
 			for (const part of ["summary", "tests"]) {
@@ -403,6 +422,8 @@ function executeCase({
 				json(item.artifacts.tests),
 				[item.id],
 			);
+			// Keep the validated observation even if execution or collection fails.
+			item.xctestStatus = "passed";
 			if (item.status === "awaiting-results") item.status = "passed";
 		} catch (error) {
 			if (item.status !== "timed-out")
@@ -432,6 +453,36 @@ function executeCase({
 	} catch (error) {
 		item.eventsError = comparisonError(error);
 		if (item.status === "passed") item.status = "failed";
+	}
+	if (report.plan.experiment === "metadata-mode") {
+		try {
+			item.artifacts.provider = join(arm.directory, `${name}-provider.log`);
+			writeFileSync(
+				item.artifacts.provider,
+				simctl(
+					run,
+					[
+						"spawn",
+						record.udid,
+						"log",
+						"show",
+						"--last",
+						"4m",
+						"--style",
+						"compact",
+						"--info",
+						"--debug",
+						"--predicate",
+						'subsystem CONTAINS[c] "DocumentManager" OR subsystem CONTAINS[c] "FileProvider" OR eventMessage CONTAINS "CHOOSER_FIXTURE"',
+					],
+					root,
+					{ timeout: 10_000 },
+				),
+			);
+		} catch (error) {
+			item.providerError = comparisonError(error);
+			if (item.status === "passed") item.status = "failed";
+		}
 	}
 	if (!existsSync(bundle))
 		writeJSON(join(arm.directory, `${name}-not-started.json`), item);
@@ -507,7 +558,9 @@ export function executeIosComparisonArm({
 		{},
 		{ timeout: 65_000 },
 	);
-	for (const [index, document] of comparisonDocuments.entries()) {
+	for (const [index, document] of (
+		report.plan.documents ?? comparisonDocuments
+	).entries()) {
 		const item = record.setup[index + 1];
 		executeCase({
 			root,
@@ -685,6 +738,7 @@ export async function verifyIosComparison({
 	output,
 	framework,
 	device,
+	experiment = "releases",
 	prepare,
 	executeArm,
 	collectArm,
@@ -699,7 +753,7 @@ export async function verifyIosComparison({
 				`ios-comparison-${framework}-${device}`,
 			),
 	);
-	const plan = createComparisonPlan({ framework, device, output });
+	const plan = createComparisonPlan({ framework, device, output, experiment });
 	assert(!existsSync(output), `Comparison output already exists: ${output}`);
 	mkdirSync(output, { recursive: true });
 	for (const arm of plan.arms) mkdirSync(arm.directory, { recursive: true });
@@ -749,14 +803,14 @@ if (
 	import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
 	try {
-		assert.equal(
-			process.argv.length,
-			4,
-			"Usage: node scripts/ios-comparison.mjs <cordova-ios7|cordova-ios8> <iphone|ipad>",
+		assert(
+			[4, 5].includes(process.argv.length),
+			"Usage: node scripts/ios-comparison.mjs <cordova-ios7|cordova-ios8> <iphone|ipad> [releases|metadata-mode]",
 		);
 		const report = await verifyIosComparison({
 			framework: process.argv[2],
 			device: process.argv[3],
+			experiment: process.argv[4] ?? "releases",
 		});
 		console.log(
 			`Comparison ${report.status}: ${report.plan.output}/comparison.json`,

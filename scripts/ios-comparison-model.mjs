@@ -56,47 +56,86 @@ export function comparisonIntegrity(bytes, expected) {
 	return actual;
 }
 
-export function createComparisonPlan({ framework, device, output }) {
+export function createComparisonPlan({
+	framework,
+	device,
+	output,
+	experiment,
+}) {
 	assert(
 		comparisonPartitions.some(
 			(p) => p.framework === framework && p.device === device,
 		),
 		"Unexpected comparison partition",
 	);
+	assert(
+		experiment === undefined ||
+			experiment === "releases" ||
+			experiment === "metadata-mode",
+		"Unexpected comparison experiment",
+	);
+	const metadataMode = experiment === "metadata-mode";
+	const documents = comparisonDocuments
+		.filter(({ format }) => !metadataMode || format === "Image")
+		.map((document) => ({ ...document }));
+	const setup = metadataMode
+		? ["UIKitControlTests/testCancel()", "UIKitControlTests/testSeedImage()"]
+		: comparisonSetupCases;
+	const releases = metadataMode
+		? ["uikit", "rc2-open", "rc2-import", "rc2-import", "rc2-open", "uikit"]
+		: ["uikit", "rc1", "rc2", "rc2", "rc1", "uikit"];
 	output = resolve(output);
 	const packages = Object.fromEntries(
-		["rc1", "rc2"].map((release) => [
-			release,
-			{
+		(metadataMode ? ["rc2-open", "rc2-import"] : ["rc1", "rc2"]).map(
+			(release) => [
 				release,
-				directory: join(output, "packages", release),
-				generated: join(output, "packages", release, "app"),
-				build: join(output, "packages", release, "build"),
-				evidence: join(output, "packages", release, "evidence"),
-			},
-		]),
+				{
+					release,
+					...(metadataMode
+						? {
+								comparisonRelease: "rc2",
+								metadataAsCopy: release === "rc2-import",
+							}
+						: {}),
+					directory: join(output, "packages", release),
+					generated: join(output, "packages", release, "app"),
+					build: join(output, "packages", release, "build"),
+					evidence: join(output, "packages", release, "evidence"),
+				},
+			],
+		),
 	);
 	return {
 		schema: 1,
 		framework,
 		device,
 		output,
+		...(metadataMode ? { experiment, documents } : {}),
 		budgets: { ...comparisonBudgets },
 		packages,
-		arms: ["uikit", "rc1", "rc2", "rc2", "rc1", "uikit"].map(
-			(release, index) => {
-				const id = `${String(index + 1).padStart(2, "0")}-${release}`;
-				return {
-					id,
-					release,
-					ordinal: index + 1,
-					directory: join(output, "arms", id),
-					minutes: release === "uikit" ? 45 : 50,
-					setup: [...comparisonSetupCases],
-					cases: [...(release === "uikit" ? controlCases : pluginCases)],
-				};
-			},
-		),
+		arms: releases.map((release, index) => {
+			const id = `${String(index + 1).padStart(2, "0")}-${release}`;
+			let cases = release === "uikit" ? controlCases : pluginCases;
+			if (metadataMode) {
+				cases =
+					release === "uikit"
+						? ["Import", "Open"].map(
+								(mode) => `UIKitControlTests/test${mode}OriginalImage()`,
+							)
+						: ["ChooserUITests/testImage()"];
+				// Reverse both the package order and the paired UIKit controls.
+				if (index === 5) cases.reverse();
+			}
+			return {
+				id,
+				release,
+				ordinal: index + 1,
+				directory: join(output, "arms", id),
+				minutes: release === "uikit" ? 45 : 50,
+				setup: [...setup],
+				cases: [...cases],
+			};
+		}),
 	};
 }
 
@@ -115,6 +154,13 @@ export function comparisonError(error) {
 	return {
 		message: String(error?.message ?? error),
 		...(error?.code ? { code: error.code } : {}),
+		...(error?.log ? { log: error.log } : {}),
+		...(typeof error?.partialOutput === "boolean"
+			? { partialOutput: error.partialOutput }
+			: {}),
+		...(Array.isArray(error?.errors)
+			? { errors: error.errors.map(comparisonError) }
+			: {}),
 	};
 }
 export function comparisonTimedOut(error) {
@@ -128,6 +174,23 @@ export function checkComparisonResults(report, plan) {
 		"passed",
 		"Comparison preparation failed",
 	);
+	if (plan.experiment === "metadata-mode") {
+		const descriptors = report.context?.descriptors ?? {};
+		assert.deepEqual(
+			Object.keys(descriptors).sort(),
+			Object.keys(plan.packages).sort(),
+			"Incorrect metadata-mode descriptors",
+		);
+		// Preparation verifies the archives and exact patch. Bind its complete
+		// descriptors to the planned variant, not just their shared RC2 API.
+		for (const [release, expected] of Object.entries(plan.packages))
+			for (const [field, value] of Object.entries(expected))
+				assert.deepEqual(
+					descriptors[release][field],
+					value,
+					`Incorrect descriptor ${release}.${field}`,
+				);
+	}
 	assert.deepEqual(
 		report.arms.map((a) => a.id),
 		plan.arms.map((a) => a.id),
@@ -146,6 +209,12 @@ export function checkComparisonResults(report, plan) {
 		"Comparison reused a simulator/provider store",
 	);
 	for (const [index, arm] of report.arms.entries()) {
+		if (plan.experiment === "metadata-mode")
+			assert.equal(
+				arm.release,
+				plan.arms[index].release,
+				`Incorrect arm release ${arm.id}`,
+			);
 		assert.equal(arm.status, "passed", `Unsuccessful arm ${arm.id}`);
 		assert.equal(arm.evidence.status, "passed", `Missing evidence ${arm.id}`);
 		for (const group of ["setup", "cases"]) {
@@ -182,6 +251,7 @@ export async function runComparisonSchedule({
 		prepare: { status: "not-started" },
 		arms: plan.arms.map((arm) => ({
 			id: arm.id,
+			...(plan.experiment === "metadata-mode" ? { release: arm.release } : {}),
 			status: "not-started",
 			setup: arm.setup.map((id) => ({ id, status: "not-started" })),
 			cases: arm.cases.map((id) => ({ id, status: "not-started" })),
