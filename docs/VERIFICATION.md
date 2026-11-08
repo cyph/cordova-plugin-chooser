@@ -32,7 +32,7 @@ Xcode is installed separately. The [baseline](https://github.com/cyph/cordova-pl
 | `just verify-ios-modern` | iOS builds with the modern Apple profile and Foundation sanitizers |
 | `just verify-ios-simulator` | Full iPhone/iPad and Cordova iOS 7/8 simulator matrix |
 | `just chainman run verify-ios-simulator-part cordova-ios7 iphone` | Required cases in one partition; choose `cordova-ios7` or `cordova-ios8`, and `iphone` or `ipad` |
-| `just chainman run verify-ios-simulator-part cordova-ios7 iphone --investigation-only` | Isolated provider cases in that partition |
+| `just chainman run verify-ios-simulator-part cordova-ios7 iphone --investigation-only` | Picker and provider UI investigation in that partition |
 | `just chainman run diagnose-ios-simulator` | Focused baseline iPhone picker diagnostic; see below for variants |
 | `just chainman run compare-ios-releases cordova-ios7 iphone` | Manual RC1/RC2 comparison in one partition; choose `cordova-ios7` or `cordova-ios8`, and `iphone` or `ipad` |
 | `just verify-capacitor-android` | Packed plugin through the Capacitor Android bridge on an emulator |
@@ -47,7 +47,7 @@ Portable tests exercise the Promise API, cancellation exceptions, decoding, expl
 
 Android fixtures exercise production code through Cordova, including provider behavior, streams, limits, lifecycle, and cleanup. Robolectric covers API 24, 28, 30, 33, and 35; packed builds and lint cover both supported Cordova Android families. The Capacitor emulator runs the real bridge and provider reads with controlled intent responses; it does not exercise the system picker UI or real cloud providers.
 
-iOS Foundation fixtures test I/O, budgets, transactions, recovery, and worker ownership. The archive tasks compile the plugin with both supported Cordova iOS families and check privacy-resource coexistence. Their deployment target is iOS 15, matching the plugin minimum. Builds alone do not establish picker behavior on every supported iOS version. The simulator matrix adds app-hosted and Files UI tests, including selection, cancellation, reopening, and independent UIKit controls. See [known limitations](KNOWN-ISSUES.md) for iOS Files failures observed in simulator tests.
+iOS Foundation fixtures test I/O, budgets, transactions, recovery, and worker ownership. The archive tasks compile the plugin with both supported Cordova iOS families and check privacy-resource coexistence. Their deployment target is iOS 15, matching the plugin minimum. Builds alone do not establish picker behavior on every supported iOS version. Required simulator coverage tests controlled native contracts; separate manual coverage exercises Files UI selection, cancellation, reopening, and independent UIKit controls. See [known limitations](KNOWN-ISSUES.md) for iOS Files failures observed in simulator tests.
 
 ### File-reading comparison
 
@@ -61,13 +61,15 @@ Replace `<path>` with the destination JSON file. This is a synthetic JavaScript 
 
 ### Simulator and framework integration
 
-For a focused investigation, run `just chainman run diagnose-ios-simulator` for baseline Cordova iOS 7 on iPhone. Use `diagnose-ios-simulator-ipad`, `diagnose-ios-simulator-modern`, or `diagnose-ios-simulator-modern-ipad` for the other device and Apple profile combinations. Append `--dismissal-only` for cancellation and dismissal checks or `--provider-only` for the provider comparison. The [Verify workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/verify.yml) also offers manual diagnostic profile, device, and scope inputs.
+For a focused investigation, run `just chainman run diagnose-ios-simulator` for baseline Cordova iOS 7 on iPhone. Use `diagnose-ios-simulator-ipad`, `diagnose-ios-simulator-modern`, or `diagnose-ios-simulator-modern-ipad` for the other device and Apple profile combinations. Append `--dismissal-only` for cancellation and dismissal checks or `--provider-only` for the provider comparison. The manual [iOS simulator diagnostic workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-simulator-diagnostic.yml) offers profiles `baseline`, `baseline-intel`, and `modern`, devices `iphone` and `ipad`, and scopes `all`, `dismissal`, and `provider`.
 
-Required CI runs all four framework/device partitions with an explicit manifest. Seven known case/partition combinations are isolated: UIKit CSV in all four partitions, UIKit PDF in both iPhone partitions, and Chooser CSV in Cordova iOS 8/iPad. They remain in the manually dispatched [iOS provider investigation workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-provider-investigation.yml), with their assertions and artifacts intact. Preparation and test failures still fail that workflow.
+Required CI runs nine controlled `ChooserPickerTests` in each of four framework/device partitions, for 36 cases, with an explicit manifest. These app-hosted tests exercise native picker contracts such as cancellation, request ownership, validation, and file handling without Files bootstrap or seeding. They do not establish real provider UI behavior.
 
-`just verify-ios-simulator` runs the complete local suite, including the isolated cases. Use partition commands without a flag for required CI coverage, or append `--investigation-only` for the affected cases in that partition. Focused diagnostics and investigation reports cannot substitute for required qualification. The aggregator checks exact case manifests, source revision, package identity, and all required partitions; mixed, missing, or diagnostic coverage is rejected.
+The manually dispatched [iOS picker investigation workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-provider-investigation.yml) runs all ten `ChooserUITests` and ten `UIKitControlTests` per partition: 80 UI cases plus 28 setup checks across the matrix, or 108 checks. Setup and every test assertion still gate that workflow. `just verify-ios-simulator` runs the complete local matrix of 144 checks, including the 36 required cases and 108 investigation checks. Use the partition command without a flag for required coverage, or append `--investigation-only` for UI investigation in that partition.
 
-Return the isolated cases to required CI after three consecutive clean runs across all affected partitions on fresh simulators. Moving a case to the investigation workflow does not resolve it; keep [known issues](KNOWN-ISSUES.md) aligned with the actual exclusions.
+Simulator investigations have also encountered plain UIKit app startup, launch, and gesture failures. No fix has been established for these failures, and their relationship to Files selection stalls remains unproven.
+
+Focused diagnostic, investigation, and release comparison reports cannot substitute for required qualification. The aggregator checks exact case manifests, source revision, package identity, and all required partitions; mixed, missing, or diagnostic coverage is rejected. Return UI cases to required CI only with evidence explaining the failure and demonstrating a fix, bounded validation on fresh simulators across affected partitions, and review of the exact required manifest. Do not rerun until green; retain failures and update [known issues](KNOWN-ISSUES.md) to reflect the evidence.
 
 ### Manual iOS release comparison
 
@@ -117,7 +119,7 @@ Exercise document and Photos selection, cancellation and abort signals, repeat a
 ## Release preparation
 
 1. Align package and plugin versions, exact-version installation examples, migration guide, and changelog before packing. Describe the version without development-only wording or a claim that publication has occurred. Use a version link for the changelog heading and leave its date unset until publication is verified.
-2. Run the main workflow for the release revision and package, inspect every required gate, and perform relevant interactive checks. Run the separate provider investigation workflow and retain its evidence. Do not count its accepted failures as fixed or substitute its reports for required coverage. Document unverified device/provider behavior in the release review.
+2. Run the main workflow for the release revision and package, inspect every required gate, and perform relevant interactive checks. Run the separate iOS picker investigation workflow and retain its evidence. Do not count its failures as fixed or substitute its reports for required coverage. Document unverified device/provider behavior in the release review.
 3. Inspect the npm archive for documentation links, types, native resources, license, and notices. Verify the resulting package after any packaged change.
 4. Publish the reviewed artifact with an explicit distribution tag. Use a prerelease tag such as `next` for a prerelease: the version suffix alone does not keep it off `latest`. Link release notes to [known limitations](KNOWN-ISSUES.md) and describe accepted verification gaps.
 5. Confirm registry version, distribution tag, timestamp, and integrity. Tag the qualified source revision and record the verified UTC publication date and package integrity in the GitHub release. Keep the published archive identical to the qualified artifact; the registry metadata and GitHub release record its publication date without requiring a repackaged changelog.

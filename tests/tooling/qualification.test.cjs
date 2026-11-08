@@ -207,8 +207,13 @@ test("failed simulator case details remain available for diagnostic output", asy
 });
 
 test("simulator evidence requires exact passing case identities and consistent totals", async () => {
-	const { checkSimulatorResults, simulatorCases, controlCases } =
-		await import("../../scripts/simulator-results.mjs");
+	const {
+		checkSimulatorResults,
+		simulatorCases,
+		controlCases,
+		simulatorPartitions,
+		simulatorPartitionSelection,
+	} = await import("../../scripts/simulator-results.mjs");
 	const tree = (ids) => ({
 		testNodes: [
 			{
@@ -232,7 +237,14 @@ test("simulator evidence requires exact passing case identities and consistent t
 		failedTests: 0,
 		skippedTests: 0,
 	});
-	for (const required of [simulatorCases, controlCases]) {
+	const selections = simulatorPartitions.flatMap((partition) =>
+		["required", "investigation", "full"].flatMap((suite) =>
+			Object.values(simulatorPartitionSelection(partition, suite)).filter(
+				(ids) => ids.length > 0,
+			),
+		),
+	);
+	for (const required of selections) {
 		checkSimulatorResults(summary(required), tree(required), required);
 		for (const patch of [
 			{ totalTestCount: 0 },
@@ -257,6 +269,20 @@ test("simulator evidence requires exact passing case identities and consistent t
 			assert.throws(() =>
 				checkSimulatorResults(summary(ids), tree(ids), required),
 			);
+		// Passing UI, control or native cases from another suite cannot fill in
+		// or extend this suite's exact evidence, even with consistent totals.
+		for (const extra of [...simulatorCases, ...controlCases].filter(
+			(id) => !required.includes(id),
+		)) {
+			for (const ids of [
+				[...required, extra],
+				[extra, ...required.slice(1)],
+			])
+				assert.throws(
+					() => checkSimulatorResults(summary(ids), tree(ids), required),
+					/Missing or unexpected simulator case/,
+				);
+		}
 		for (const result of ["Failed", "Skipped", "Expected Failure", undefined]) {
 			const data = tree(required);
 			data.testNodes[0].children[0].children[0].result = result;
@@ -332,15 +358,8 @@ test("qualification requires every successful job, complete reports and the same
 		() => aggregateReports(directory, sha, jobs),
 		/Missing ios-simulator check/,
 	);
-	const preparationChecks = simulator.checks.filter(
-		(check) => check.endsWith(":provider-setup") || check.includes(":seed-"),
-	);
-	assert.equal(
-		preparationChecks.length,
-		28,
-		"Each combination requires provider initialization and all six system-created documents",
-	);
-	for (const check of preparationChecks) {
+	assert.equal(simulator.checks.length, 7);
+	for (const check of simulator.checks) {
 		save({
 			...simulator,
 			checks: simulator.checks.filter((value) => value !== check),
@@ -348,6 +367,44 @@ test("qualification requires every successful job, complete reports and the same
 		assert.throws(
 			() => aggregateReports(directory, sha, jobs),
 			/Missing ios-simulator check/,
+		);
+	}
+	const { simulatorSuiteChecks } =
+		await import("../../scripts/qualification.mjs");
+	for (const suite of ["investigation", "full"]) {
+		const checks = simulatorSuiteChecks(suite);
+		// Reject both honest full/manual manifests and reports relabeled as
+		// required while still claiming provider/control check coverage.
+		for (const manifest of [
+			simulatorManifest(suite),
+			simulatorManifest("required"),
+		]) {
+			save({ ...simulator, checks, simulator: manifest });
+			assert.throws(
+				() => aggregateReports(directory, sha, jobs),
+				/manifest|unexpected simulator coverage/,
+			);
+		}
+	}
+	for (const extra of simulatorSuiteChecks("full").filter(
+		(check) => !simulator.checks.includes(check),
+	)) {
+		save({ ...simulator, checks: [...simulator.checks, extra] });
+		assert.throws(
+			() => aggregateReports(directory, sha, jobs),
+			/unexpected simulator coverage/,
+		);
+	}
+	for (const patch of [
+		{ diagnostic: { scope: "all" } },
+		{ diagnostic: false },
+		{ investigation: true },
+		{ investigation: false },
+	]) {
+		save({ ...simulator, ...patch });
+		assert.throws(
+			() => aggregateReports(directory, sha, jobs),
+			/Diagnostic evidence|Investigation evidence/,
 		);
 	}
 	save(simulator);

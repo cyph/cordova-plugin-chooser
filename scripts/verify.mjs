@@ -21,6 +21,7 @@ import {
 	aggregateReports,
 	requiredChecks,
 	simulatorPartitionChecks,
+	simulatorSuiteChecks,
 } from "./qualification.mjs";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
@@ -670,7 +671,9 @@ const expectedChecks =
 			]
 		: partition
 			? simulatorPartitionChecks(partition)
-			: requiredChecks[lane];
+			: lane === "ios-simulator"
+				? simulatorSuiteChecks("full")
+				: requiredChecks[lane];
 function simulator(diagnostic = false) {
 	assert.equal(process.platform, "darwin", "iOS verification requires macOS");
 	run("node", ["--test", "tests/tooling/verification-command.test.cjs"]);

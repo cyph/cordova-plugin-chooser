@@ -1,0 +1,76 @@
+name: iOS simulator diagnostic
+run-name: iOS diagnostic (${{ inputs.profile }}, ${{ inputs.device }}, ${{ inputs.scope }})
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Apple profile and host
+        type: choice
+        options: [baseline, baseline-intel, modern]
+        default: baseline
+      device:
+        description: Simulator device
+        type: choice
+        options: [iphone, ipad]
+        default: iphone
+      scope:
+        description: Cases to investigate
+        type: choice
+        options: [all, dismissal, provider]
+        default: all
+permissions:
+  contents: read
+concurrency:
+  group: ios-diagnostic-${{ github.ref }}-${{ inputs.profile }}-${{ inputs.device }}-${{ inputs.scope }}
+  cancel-in-progress: true
+jobs:
+  diagnostic:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ${{ inputs.profile == 'modern' && 'xcode-27' || inputs.profile == 'baseline-intel' && 'macos-26-intel' || 'macos-26' }}
+    timeout-minutes: 180
+    env:
+      CHAINMAN_MODE: host-nix
+      DIAGNOSTIC_PROFILE: ${{ inputs.profile }}
+      DIAGNOSTIC_DEVICE: ${{ inputs.device }}
+      DIAGNOSTIC_SCOPE: ${{ inputs.scope }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Prepare frozen dependencies
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+      - name: Exercise diagnostic cases
+        run: |
+          case "$DIAGNOSTIC_PROFILE" in
+            baseline|baseline-intel) task=diagnose-ios-simulator ;;
+            modern) task=diagnose-ios-simulator-modern ;;
+            *) exit 2 ;;
+          esac
+          case "$DIAGNOSTIC_DEVICE" in
+            iphone) ;;
+            ipad) task="$task-ipad" ;;
+            *) exit 2 ;;
+          esac
+          set --
+          case "$DIAGNOSTIC_SCOPE" in
+            all) ;;
+            dismissal|provider) set -- "--$DIAGNOSTIC_SCOPE-only" ;;
+            *) exit 2 ;;
+          esac
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run "$task" "$@"
+      - name: Verify tracked files are unchanged
+        if: ${{ always() }}
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Retain diagnostic evidence
+        if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diagnostics-ios-${{ inputs.profile }}-${{ inputs.device }}-${{ inputs.scope }}
+          path: .verification/reports/
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+          if-no-files-found: error

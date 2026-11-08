@@ -1,11 +1,45 @@
 const assert = require("node:assert/strict");
-const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require("node:fs");
+const {
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+	rmSync,
+} = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const test = require("node:test");
 const apple = require("../../chainman/apple.json");
 const { version } = require("../../package.json");
 const sha = "a".repeat(40);
+const nativeCases = [
+	"testAdaptiveDismissalAndStaleCallbacks",
+	"testResetAndDuplicateSelectionCannotSettleANewerRequest",
+	"testMovieWildcardIncludesMP4AndQuickTime",
+	"testSignalCancellationIdentityAndImmediateReopen",
+	"testDirectDataSessionsAreLazyBoundedAndCancelable",
+	"testManagedCopySurvivesResetAndReadsPositionally",
+	"testNativeOptionValidationAndMetadataCountLimit",
+	"testPhotoPickerConfigurationAndCancellation",
+	"testPhotoMetadataDoesNotLoadContentsAndProviderURLIsConsumedInHandler",
+].map((name) => `ChooserPickerTests/${name}()`);
+const documentFormats = ["JSON", "CSV", "PDF", "Image", "MP4", "MOV"];
+const chooserUICases = [
+	...documentFormats.map((format) => `ChooserUITests/test${format}()`),
+	...[
+		"testCancelPromiseReopen",
+		"testCancelScopedReopen",
+		"testSwipePromiseReopen",
+		"testSwipeScopedReopen",
+	].map((name) => `ChooserUITests/${name}()`),
+];
+const controlCases = [
+	...documentFormats.map((format) => `UIKitControlTests/test${format}()`),
+	"UIKitControlTests/testCancel()",
+	"UIKitControlTests/testSwipe()",
+	"UIKitControlTests/testPlainSheetSwipe()",
+	"UIKitControlTests/testSystemDelegateSwipe()",
+];
 const api = Promise.all([
 	import("../../scripts/qualification.mjs"),
 	import("../../scripts/simulator-results.mjs"),
@@ -78,7 +112,7 @@ async function fixture(t) {
 	return { ...qualification, ...simulator, other, parts, jobs, run, report };
 }
 
-test("partitions preserve all original release cases and reject narrowing arguments", async (t) => {
+test("the local full suite preserves all 144 cases and partition arguments cannot narrow it", async (t) => {
 	const f = await fixture(t);
 	assert.equal(f.simulatorPartitions.length, 4);
 	for (const partition of f.simulatorPartitions)
@@ -90,14 +124,16 @@ test("partitions preserve all original release cases and reject narrowing argume
 		[],
 		["cordova-ios7"],
 		["cordova-ios7", "iphone", "--provider-only"],
+		["cordova-ios7", "iphone", "--dismissal-only"],
+		["cordova-ios7", "iphone", "--investigation-only", "--provider-only"],
 		["cordova-ios9", "iphone"],
 		["cordova-ios7", "../ipad"],
 		["cordova-ios7", "iPhone"],
 	])
 		assert.throws(() => f.simulatorPartitionOptions(args));
 	const release = f.simulatorSelection(false);
-	assert.equal(release.control.length, 10);
-	assert.equal(release.chooser.length, 19);
+	assert.deepEqual(release.control, controlCases);
+	assert.deepEqual(release.chooser, [...nativeCases, ...chooserUICases]);
 	assert.equal(
 		(release.control.length + release.chooser.length + 7) *
 			f.simulatorPartitions.length,
@@ -105,10 +141,10 @@ test("partitions preserve all original release cases and reject narrowing argume
 	);
 });
 
-test("required and investigation suites partition exactly seven affected tuples", async (t) => {
+test("explicit manifests split 36 native and 80 UI cases disjointly and exhaustively", async (t) => {
 	const f = await fixture(t);
-	const affected = [];
 	let requiredCount = 0;
+	let investigationCount = 0;
 	let fullCount = 0;
 	for (const partition of f.simulatorPartitions) {
 		const full = f.simulatorPartitionSelection(partition, "full");
@@ -117,6 +153,35 @@ test("required and investigation suites partition exactly seven affected tuples"
 			partition,
 			"investigation",
 		);
+		assert.deepEqual(required, { control: [], chooser: nativeCases });
+		assert.deepEqual(investigation, {
+			control: controlCases,
+			chooser: chooserUICases,
+		});
+		assert.deepEqual(full, {
+			control: controlCases,
+			chooser: [...nativeCases, ...chooserUICases],
+		});
+		for (const [suite, selection] of [
+			["required", required],
+			["investigation", investigation],
+			["full", full],
+		]) {
+			assert.deepEqual(f.simulatorManifest(suite, [partition]), {
+				suite,
+				partitions: [{ ...partition, ...selection }],
+			});
+			for (const ids of Object.values(selection)) {
+				assert.equal(new Set(ids).size, ids.length);
+				if (ids.length)
+					assert.deepEqual(
+						f.simulatorTestArguments(ids, "all"),
+						ids.map(
+							(id) => `-only-testing:${id.split("/")[0]}/${id.slice(0, -2)}`,
+						),
+					);
+			}
+		}
 		for (const group of ["control", "chooser"]) {
 			assert.deepEqual(
 				[...required[group], ...investigation[group]].sort(),
@@ -124,45 +189,26 @@ test("required and investigation suites partition exactly seven affected tuples"
 			);
 			assert(!required[group].some((id) => investigation[group].includes(id)));
 			requiredCount += required[group].length;
+			investigationCount += investigation[group].length;
 			fullCount += full[group].length;
-			affected.push(
-				...investigation[group].map(
-					(id) => `${partition.framework}:${partition.device}:${id}`,
-				),
-			);
 		}
-		const options = f.simulatorPartitionOptions([
-			partition.framework,
-			partition.device,
-			"--investigation-only",
-		]);
-		assert.deepEqual(options, { ...partition, investigation: true });
-		const checks = f.simulatorPartitionChecks(options);
-		assert.equal(
-			checks.includes(`${partition.framework}:${partition.device}`),
-			investigation.chooser.length > 0,
-		);
-		assert.equal(checks.filter((check) => check.includes(":seed-")).length, 6);
-		assert(
-			checks.includes(
-				`${partition.framework}:${partition.device}:provider-setup`,
-			),
+	}
+	assert.equal(requiredCount, 36);
+	assert.equal(investigationCount, 80);
+	assert.equal(fullCount, requiredCount + investigationCount);
+	assert.equal(fullCount + 28, 144);
+	for (const suite of ["required", "investigation", "full"]) {
+		const manifest = f.simulatorManifest(suite);
+		manifest.partitions[0].chooser.pop();
+		manifest.partitions[0].control.push("OtherSuite/test()");
+		assert.deepEqual(
+			f.simulatorManifest(suite).partitions,
+			f.simulatorPartitions.map((partition) => ({
+				...partition,
+				...f.simulatorPartitionSelection(partition, suite),
+			})),
 		);
 	}
-	assert.deepEqual(
-		affected.sort(),
-		[
-			"cordova-ios7:iphone:UIKitControlTests/testCSV()",
-			"cordova-ios7:iphone:UIKitControlTests/testPDF()",
-			"cordova-ios7:ipad:UIKitControlTests/testCSV()",
-			"cordova-ios8:iphone:UIKitControlTests/testCSV()",
-			"cordova-ios8:iphone:UIKitControlTests/testPDF()",
-			"cordova-ios8:ipad:UIKitControlTests/testCSV()",
-			"cordova-ios8:ipad:ChooserUITests/testCSV()",
-		].sort(),
-	);
-	assert.equal(requiredCount + 28, 137);
-	assert.equal(fullCount + 28, 144);
 	assert.throws(() => f.simulatorManifest("required", []), /Empty/);
 	assert.throws(
 		() =>
@@ -172,13 +218,221 @@ test("required and investigation suites partition exactly seven affected tuples"
 			]),
 		/Duplicate/,
 	);
-	assert.throws(
-		() => f.simulatorManifest("other"),
-		/Unexpected simulator suite/,
-	);
+	for (const suite of ["other", "diagnostic"])
+		assert.throws(
+			() => f.simulatorManifest(suite),
+			/Unexpected simulator suite/,
+		);
 	for (const ids of [[], ["Suite/test()", "Suite/test()"]]) {
 		assert.throws(() => f.simulatorTestArguments(ids, "all"));
 		assert.throws(() => f.checkSimulatorResults({}, {}, ids));
+	}
+});
+
+test("checks require provider preparation only for investigation and the local full suite", async (t) => {
+	const f = await fixture(t);
+	const common = ["package", "cordova-ios7:compile", "cordova-ios8:compile"];
+	const fullChecks = new Set();
+	const requiredChecks = [...common];
+	for (const partition of f.simulatorPartitions) {
+		const prefix = `${partition.framework}:${partition.device}`;
+		assert.deepEqual(f.simulatorPartitionChecks(partition), [
+			...common,
+			prefix,
+		]);
+		requiredChecks.push(prefix);
+		const providerChecks = [
+			`${prefix}:provider-setup`,
+			...documentFormats.map(
+				(format) => `${prefix}:seed-${format.toLowerCase()}`,
+			),
+		];
+		const expected = [
+			...common,
+			...providerChecks,
+			`${prefix}:native-control`,
+			prefix,
+		];
+		for (const suite of ["investigation", "full"])
+			assert.deepEqual(f.simulatorPartitionChecks(partition, suite), expected);
+		const options = f.simulatorPartitionOptions([
+			partition.framework,
+			partition.device,
+			"--investigation-only",
+		]);
+		assert.deepEqual(options, { ...partition, investigation: true });
+		assert.deepEqual(f.simulatorPartitionChecks(options), expected);
+		for (const check of f.simulatorPartitionChecks(partition, "full"))
+			fullChecks.add(check);
+		assert.throws(
+			() => f.simulatorPartitionChecks(partition, "other"),
+			/Unexpected simulator suite/,
+		);
+	}
+	assert.deepEqual(f.requiredChecks["ios-simulator"], requiredChecks);
+	assert.deepEqual(f.simulatorSuiteChecks("required"), requiredChecks);
+	assert.deepEqual(f.simulatorSuiteChecks("full"), [...fullChecks]);
+	assert.deepEqual(f.simulatorSuiteChecks("investigation"), [...fullChecks]);
+	assert.equal(fullChecks.size, 39);
+	assert.equal(
+		[...fullChecks].filter(
+			(check) => check.endsWith(":provider-setup") || check.includes(":seed-"),
+		).length,
+		28,
+	);
+	assert.throws(
+		() =>
+			f.simulatorPartitionChecks({
+				framework: "cordova-ios9",
+				device: "iphone",
+			}),
+		/Unexpected simulator partition/,
+	);
+});
+
+test("required partitions reach ChooserNative without provider assets, bootstrap or UI commands", async (t) => {
+	const f = await fixture(t);
+	const { verifyIosSimulator } =
+		await import("../../scripts/ios-simulator.mjs");
+	const root = join(__dirname, "../..");
+	const base = mkdtempSync(join(tmpdir(), "chooser-native-partitions-"));
+	t.after(() => rmSync(base, { recursive: true, force: true }));
+	const platform = Object.getOwnPropertyDescriptor(process, "platform");
+	// Only the orchestration is exercised: every native command below is a stub.
+	Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+	try {
+		for (const [index, partition] of f.simulatorPartitions.entries()) {
+			const output = join(base, `${partition.framework}-${partition.device}`);
+			const reportDirectory = join(output, "reports");
+			mkdirSync(reportDirectory, { recursive: true });
+			const report = { toolchain: {}, checks: [] };
+			const checked = (check) => report.checks.push(check);
+			const commands = [];
+			const bundles = new Map();
+			const runtime = `com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`;
+			const udid = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+			const run = (command, args) => {
+				commands.push({ command, args });
+				if (command === "xcodegen") return "mock xcodegen";
+				if (command === "/usr/bin/xcodebuild") {
+					if (args[0] === "-version")
+						return `Xcode ${apple.xcode}\nBuild version ${apple.build}`;
+					assert.equal(args[args.indexOf("-scheme") + 1], "ChooserNative");
+					if (args[0] === "build-for-testing") return "";
+					assert.equal(args[0], "test-without-building");
+					assert.deepEqual(
+						args.filter((arg) => arg.startsWith("-only-testing:")),
+						nativeCases.map(
+							(id) => `-only-testing:ChooserPickerTests/${id.slice(0, -2)}`,
+						),
+					);
+					const bundle = args[args.indexOf("-resultBundlePath") + 1];
+					mkdirSync(bundle);
+					bundles.set(bundle, {
+						summary: {
+							totalTestCount: 9,
+							passedTests: 9,
+							failedTests: 0,
+							skippedTests: 0,
+						},
+						tests: {
+							testNodes: nativeCases.map((nodeIdentifier) => ({
+								nodeType: "Test Case",
+								nodeIdentifier,
+								result: "Passed",
+							})),
+						},
+					});
+					return "";
+				}
+				assert.equal(command, "/usr/bin/xcrun", "Unexpected native tool");
+				if (args[0] === "--sdk") return apple.iphoneos;
+				if (args[0] === "xcresulttool") {
+					const bundle = bundles.get(args[args.indexOf("--path") + 1]);
+					assert(bundle, "Unexpected result extraction");
+					assert(["summary", "tests"].includes(args[3]));
+					return JSON.stringify(bundle[args[3]]);
+				}
+				assert.equal(args[0], "simctl");
+				if (args[1] === "list" && args[2] === "runtimes")
+					return JSON.stringify({
+						runtimes: [{ identifier: runtime, isAvailable: true }],
+					});
+				if (args[1] === "list" && args[2] === "devicetypes")
+					return JSON.stringify({
+						devicetypes: ["iPhone 17", "iPad (A16)"].map((name) => ({
+							name,
+							identifier: `mock-${name}`,
+						})),
+					});
+				if (args[1] === "create") return udid;
+				assert.equal(args[2], udid);
+				if (args[1] === "get_app_container") {
+					assert.equal(args[3], "com.cyph.chooser.simulator");
+					return join(output, "host-data");
+				}
+				assert(
+					["boot", "bootstatus", "shutdown", "delete"].includes(args[1]),
+					`Unexpected simulator action: ${args.join(" ")}`,
+				);
+				return "";
+			};
+			verifyIosSimulator({
+				root,
+				output,
+				reportDirectory,
+				report,
+				run,
+				pack: () => {
+					checked("package");
+					return root;
+				},
+				app: (name, alias) => {
+					assert.equal(name, "ios");
+					const generated = join(output, "generated", alias);
+					const config = join(
+						generated,
+						"platforms/ios",
+						alias === "cordova-ios7" ? "ChooserFixture" : "App",
+					);
+					mkdirSync(join(generated, "platforms/ios/www"), { recursive: true });
+					mkdirSync(config, { recursive: true });
+					writeFileSync(join(config, "config.xml"), "<widget/>");
+					return generated;
+				},
+				checked,
+				partition,
+			});
+			assert.deepEqual(
+				report.simulator,
+				f.simulatorManifest("required", [partition]),
+			);
+			assert.deepEqual(report.checks, f.simulatorPartitionChecks(partition));
+			assert.equal(report.toolchain.simulators.length, 1);
+			assert.equal(bundles.size, 1);
+			assert.equal(
+				commands.filter(({ args }) => args[0] === "build-for-testing").length,
+				2,
+			);
+			for (const alias of ["cordova-ios7", "cordova-ios8"]) {
+				const spec = JSON.parse(
+					readFileSync(
+						join(output, "simulator-tests", alias, "project.json"),
+						"utf8",
+					),
+				);
+				assert.deepEqual(Object.keys(spec.schemes), ["ChooserNative"]);
+				assert.deepEqual(spec.schemes.ChooserNative.test.targets, [
+					"ChooserPickerTests",
+				]);
+				assert.deepEqual(Object.keys(spec.targets).sort(), [
+					"ChooserHost",
+					"ChooserPickerTests",
+				]);
+			}
+		}
+	} finally {
+		Object.defineProperty(process, "platform", platform);
 	}
 });
 
@@ -192,10 +446,31 @@ test("qualification rejects full, investigation, missing and altered case manife
 			part.investigation = true;
 		},
 		(part) => {
+			part.investigation = false;
+		},
+		(part) => {
+			part.diagnostic = { scope: "all" };
+		},
+		(part) => {
+			part.diagnostic = false;
+		},
+		(part) => {
 			part.simulator = f.simulatorManifest("investigation", [part.partition]);
 		},
 		(part) => {
 			part.simulator = f.simulatorManifest("full", [part.partition]);
+		},
+		(part) => {
+			part.simulator = {
+				...f.simulatorManifest("full", [part.partition]),
+				suite: "required",
+			};
+		},
+		(part) => {
+			part.simulator = {
+				...f.simulatorManifest("investigation", [part.partition]),
+				suite: "required",
+			};
 		},
 		(part) => {
 			part.simulator.partitions[0].chooser.pop();
@@ -217,7 +492,10 @@ test("qualification rejects full, investigation, missing and altered case manife
 	]) {
 		const bad = structuredClone(f.parts);
 		mutate(bad[0]);
-		assert.throws(() => f.run([...f.other, ...bad]), /manifest|Investigation/);
+		assert.throws(
+			() => f.run([...f.other, ...bad]),
+			/manifest|Investigation|Diagnostic/,
+		);
 	}
 	const complete = f.report("ios-simulator", f.requiredChecks["ios-simulator"]);
 	for (const suite of ["full", "investigation"]) {
@@ -264,23 +542,33 @@ test("all four isolated partitions qualify together and cannot qualify alone", a
 	);
 });
 
-test("each partition requires every compile, source-preparation, control and plugin check", async (t) => {
+test("each native partition requires exactly package, both compiles and its native result", async (t) => {
 	const f = await fixture(t);
-	for (const check of f.parts[0].checks) {
-		const bad = structuredClone(f.parts);
-		bad[0].checks = bad[0].checks.filter((value) => value !== check);
-		assert.throws(
-			() => f.run([...f.other, ...bad]),
-			/Incomplete simulator partition/,
-		);
-	}
-	for (const checks of [
-		[...f.parts[0].checks, f.parts[0].checks[0]],
-		[...f.parts[0].checks, "cordova-ios8:ipad"],
-	]) {
-		const bad = structuredClone(f.parts);
-		bad[0].checks = checks;
-		assert.throws(() => f.run([...f.other, ...bad]));
+	for (const [index, part] of f.parts.entries()) {
+		for (const check of part.checks) {
+			const bad = structuredClone(f.parts);
+			bad[index].checks = part.checks.filter((value) => value !== check);
+			assert.throws(
+				() => f.run([...f.other, ...bad]),
+				/Incomplete simulator partition/,
+			);
+		}
+		const extras = f
+			.simulatorPartitionChecks(part.partition, "full")
+			.filter((check) => !part.checks.includes(check));
+		const foreign = f.parts[(index + 1) % f.parts.length].partition;
+		for (const extra of [
+			...extras,
+			part.checks[0],
+			`${foreign.framework}:${foreign.device}`,
+		]) {
+			const bad = structuredClone(f.parts);
+			bad[index].checks.push(extra);
+			assert.throws(
+				() => f.run([...f.other, ...bad]),
+				/Incomplete simulator partition|Duplicate partition checks/,
+			);
+		}
 	}
 });
 

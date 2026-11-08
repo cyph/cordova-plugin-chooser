@@ -33,18 +33,18 @@ export function simulatorPartitionOptions(args) {
 	};
 }
 
-export const simulatorCases = [
-	...[
-		"testAdaptiveDismissalAndStaleCallbacks",
-		"testResetAndDuplicateSelectionCannotSettleANewerRequest",
-		"testMovieWildcardIncludesMP4AndQuickTime",
-		"testSignalCancellationIdentityAndImmediateReopen",
-		"testDirectDataSessionsAreLazyBoundedAndCancelable",
-		"testManagedCopySurvivesResetAndReadsPositionally",
-		"testNativeOptionValidationAndMetadataCountLimit",
-		"testPhotoPickerConfigurationAndCancellation",
-		"testPhotoMetadataDoesNotLoadContentsAndProviderURLIsConsumedInHandler",
-	].map((name) => `ChooserPickerTests/${name}()`),
+const pickerCases = [
+	"testAdaptiveDismissalAndStaleCallbacks",
+	"testResetAndDuplicateSelectionCannotSettleANewerRequest",
+	"testMovieWildcardIncludesMP4AndQuickTime",
+	"testSignalCancellationIdentityAndImmediateReopen",
+	"testDirectDataSessionsAreLazyBoundedAndCancelable",
+	"testManagedCopySurvivesResetAndReadsPositionally",
+	"testNativeOptionValidationAndMetadataCountLimit",
+	"testPhotoPickerConfigurationAndCancellation",
+	"testPhotoMetadataDoesNotLoadContentsAndProviderURLIsConsumedInHandler",
+].map((name) => `ChooserPickerTests/${name}()`);
+const chooserUICases = [
 	...formats.map((name) => `ChooserUITests/test${name}()`),
 	...[
 		"testCancelPromiseReopen",
@@ -53,6 +53,7 @@ export const simulatorCases = [
 		"testSwipeScopedReopen",
 	].map((name) => `ChooserUITests/${name}()`),
 ];
+export const simulatorCases = [...pickerCases, ...chooserUICases];
 export const controlCases = [
 	...formats.map((name) => `UIKitControlTests/test${name}()`),
 	"UIKitControlTests/testCancel()",
@@ -61,27 +62,21 @@ export const controlCases = [
 	"UIKitControlTests/testSystemDelegateSwipe()",
 ];
 
-// These tuples remain executable with their original assertions in the manual
-// investigation workflow and the complete local suite.
+// Required CI exercises native contracts without provider preparation. All UI
+// cases retain their assertions in manual investigation and the local full suite.
 export function simulatorPartitionSelection(partition, suite = "required") {
 	simulatorPartitionOptions([partition.framework, partition.device]);
 	assert(
 		["required", "investigation", "full"].includes(suite),
 		"Unexpected simulator suite",
 	);
-	const affected = new Set([
-		"UIKitControlTests/testCSV()",
-		...(partition.device === "iphone" ? ["UIKitControlTests/testPDF()"] : []),
-		...(partition.framework === "cordova-ios8" && partition.device === "ipad"
-			? ["ChooserUITests/testCSV()"]
-			: []),
-	]);
-	const select = (cases) =>
-		cases.filter(
-			(id) =>
-				suite === "full" || (suite === "investigation") === affected.has(id),
-		);
-	return { control: select(controlCases), chooser: select(simulatorCases) };
+	const selections = {
+		required: { control: [], chooser: pickerCases },
+		investigation: { control: controlCases, chooser: chooserUICases },
+		full: { control: controlCases, chooser: simulatorCases },
+	};
+	const { control, chooser } = selections[suite];
+	return { control: [...control], chooser: [...chooser] };
 }
 
 export function simulatorManifest(suite, partitions = simulatorPartitions) {

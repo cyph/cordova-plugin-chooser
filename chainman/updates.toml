@@ -23,6 +23,7 @@ outputs = [
   ".github/workflows/verify.yml",
   ".github/workflows/ios-provider-investigation.yml",
   ".github/workflows/ios-release-comparison.yml",
+  ".github/workflows/ios-simulator-diagnostic.yml",
   ".github/workflows/dependency-preview.yml",
   "tests/capacitor/locks/app.lockfile",
   "tests/capacitor/locks/runtime.lockfile",

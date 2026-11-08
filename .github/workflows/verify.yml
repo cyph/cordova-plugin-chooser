@@ -1,38 +1,18 @@
 name: Verify
-run-name: ${{ inputs.ios_diagnostic && format('iOS diagnostic ({0}, {1}, {2})', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone', inputs.ios_diagnostic_scope || 'all') || 'Release qualification' }}
+run-name: Release qualification
 on:
   pull_request:
   push:
     branches: [master]
   workflow_dispatch:
-    inputs:
-      ios_diagnostic:
-        description: Run the focused iOS diagnostic instead of release qualification
-        type: boolean
-        default: false
-      ios_diagnostic_profile:
-        description: Apple profile and host for the focused diagnostic
-        type: choice
-        options: [baseline, baseline-intel, modern]
-        default: baseline
-      ios_diagnostic_device:
-        description: Device for the focused diagnostic
-        type: choice
-        options: [iphone, ipad]
-        default: iphone
-      ios_diagnostic_scope:
-        description: Cases to run in the focused diagnostic
-        type: choice
-        options: [all, dismissal, provider]
-        default: all
 permissions:
   contents: read
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}-${{ inputs.ios_diagnostic && format('diagnostic-{0}-{1}-{2}', inputs.ios_diagnostic_profile, inputs.ios_diagnostic_device || 'iphone', inputs.ios_diagnostic_scope || 'all') || false }}
+  group: verify-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   portable:
-    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -65,7 +45,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   android:
-    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -94,7 +74,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   android-failures:
-    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -123,7 +103,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   ios:
-    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ !github.event.repository.private }}
     runs-on: macos-26
     timeout-minutes: 60
     env:
@@ -152,7 +132,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   ios-modern:
-    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ !github.event.repository.private }}
     runs-on: xcode-27
     timeout-minutes: 60
     env:
@@ -181,7 +161,7 @@ jobs:
           overwrite: true
           if-no-files-found: error
   capacitor-android:
-    if: ${{ !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -214,9 +194,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        framework: ${{ fromJSON(inputs.ios_diagnostic && '["cordova-ios7"]' || '["cordova-ios7","cordova-ios8"]') }}
-        device: ${{ fromJSON(inputs.ios_diagnostic && format('["{0}"]', inputs.ios_diagnostic_device || 'iphone') || '["iphone","ipad"]') }}
-    runs-on: ${{ inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'modern' && 'xcode-27' || inputs.ios_diagnostic && inputs.ios_diagnostic_profile == 'baseline-intel' && 'macos-26-intel' || 'macos-26' }}
+        framework: [cordova-ios7, cordova-ios8]
+        device: [iphone, ipad]
+    runs-on: macos-26
     timeout-minutes: 180
     env:
       CHAINMAN_MODE: host-nix
@@ -227,26 +207,11 @@ jobs:
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
       - name: Prepare frozen dependencies
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
-      - name: Exercise iOS simulator
-        run: |
-          set --
-          if [ '${{ inputs.ios_diagnostic }}' = true ]; then
-            if [ '${{ inputs.ios_diagnostic_profile }}' = modern ]; then
-              task=diagnose-ios-simulator-modern
-            else
-              task=diagnose-ios-simulator
-            fi
-            if [ '${{ inputs.ios_diagnostic_device }}' = ipad ]; then
-              task="$task-ipad"
-            fi
-            case '${{ inputs.ios_diagnostic_scope }}' in
-              dismissal|provider) set -- "--${{ inputs.ios_diagnostic_scope }}-only" ;;
-            esac
-          else
-            task=verify-ios-simulator-part
-            set -- '${{ matrix.framework }}' '${{ matrix.device }}'
-          fi
-          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run "$task" "$@"
+      - name: Exercise native iOS contracts
+        run: >-
+          nix --extra-experimental-features 'nix-command flakes' run .#just --
+          chainman run verify-ios-simulator-part
+          '${{ matrix.framework }}' '${{ matrix.device }}'
       - name: Verify tracked files are unchanged
         run: |
           git diff --exit-code
@@ -255,7 +220,7 @@ jobs:
         if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-summary' || format('diagnostics-ios-simulator-{0}-{1}-summary', matrix.framework, matrix.device) }}
+          name: diagnostics-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}-summary
           path: |
             .verification/reports/**/qualification.json
             .verification/reports/**/*-summary.json
@@ -271,7 +236,7 @@ jobs:
         if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ inputs.ios_diagnostic && 'diagnostics-ios-simulator-full' || format('qualification-ios-simulator-{0}-{1}', matrix.framework, matrix.device) }}
+          name: qualification-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
@@ -279,7 +244,7 @@ jobs:
           if-no-files-found: error
 
   qualification:
-    if: ${{ always() && !github.event.repository.private && !inputs.ios_diagnostic }}
+    if: ${{ always() && !github.event.repository.private }}
     needs:
       [
         portable,

@@ -1,5 +1,5 @@
-name: iOS provider investigation
-run-name: iOS provider investigation (seven affected case/partition combinations)
+name: iOS picker investigation
+run-name: iOS picker and provider investigation
 on:
   workflow_dispatch:
 permissions:
@@ -26,7 +26,7 @@ jobs:
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
       - name: Prepare frozen dependencies
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
-      - name: Exercise affected provider cases
+      - name: Exercise picker and provider cases
         run: >-
           nix --extra-experimental-features 'nix-command flakes' run .#just --
           chainman run verify-ios-simulator-part

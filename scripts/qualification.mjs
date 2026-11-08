@@ -5,13 +5,42 @@ import {
 	simulatorDocuments,
 	simulatorPartitions,
 	simulatorPartitionOptions,
-	simulatorPartitionSelection,
 	simulatorManifest,
 } from "./simulator-results.mjs";
 
 const version = JSON.parse(
 	readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version;
+
+export function simulatorSuiteChecks(suite, partitions = simulatorPartitions) {
+	const manifest = simulatorManifest(suite, partitions);
+	return [
+		"package",
+		// The runner compiles both framework fixtures even for one partition.
+		"cordova-ios7:compile",
+		"cordova-ios8:compile",
+		...manifest.partitions.flatMap(
+			({ framework, device, control, chooser }) => {
+				const prefix = `${framework}:${device}`;
+				const usesProvider =
+					control.length > 0 ||
+					chooser.some((id) => id.startsWith("ChooserUITests/"));
+				return [
+					...(usesProvider
+						? [
+								`${prefix}:provider-setup`,
+								...simulatorDocuments.map(
+									({ format }) => `${prefix}:seed-${format.toLowerCase()}`,
+								),
+							]
+						: []),
+					...(control.length ? [`${prefix}:native-control`] : []),
+					...(chooser.length ? [prefix] : []),
+				];
+			},
+		),
+	];
+}
 
 export const requiredChecks = {
 	portable: ["contracts", "types", "tooling", "privacy", "package"],
@@ -34,21 +63,7 @@ export const requiredChecks = {
 	],
 	"android-failures": ["package", "dependency-failures"],
 	"capacitor-android": ["package", "api33-bridge"],
-	"ios-simulator": [
-		"package",
-		"cordova-ios7:compile",
-		"cordova-ios8:compile",
-		...["cordova-ios7", "cordova-ios8"].flatMap((alias) =>
-			["iphone", "ipad"].flatMap((device) => [
-				`${alias}:${device}:provider-setup`,
-				...simulatorDocuments.map(
-					({ format }) => `${alias}:${device}:seed-${format.toLowerCase()}`,
-				),
-				`${alias}:${device}:native-control`,
-				`${alias}:${device}`,
-			]),
-		),
-	],
+	"ios-simulator": simulatorSuiteChecks("required"),
 	ios: [
 		"package",
 		"foundation",
@@ -67,17 +82,7 @@ export function simulatorPartitionChecks(
 	partition,
 	suite = partition.investigation ? "investigation" : "required",
 ) {
-	simulatorPartitionOptions([partition.framework, partition.device]);
-	const prefix = `${partition.framework}:${partition.device}`;
-	const selected = simulatorPartitionSelection(partition, suite);
-	return requiredChecks["ios-simulator"].filter(
-		(check) =>
-			check === "package" ||
-			check.endsWith(":compile") ||
-			(check === prefix && selected.chooser.length > 0) ||
-			(check.startsWith(`${prefix}:`) &&
-				(check !== `${prefix}:native-control` || selected.control.length > 0)),
-	);
+	return simulatorSuiteChecks(suite, [partition]);
 }
 
 function validateSimulatorManifest(report, partitions = simulatorPartitions) {

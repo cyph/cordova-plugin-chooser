@@ -20,7 +20,7 @@ RC2 makes managed files the default, adds photo-library selection, and gives app
 
 - Added image/video library selection through iOS PHPicker and Android Photo Picker with a document fallback. Browser photo selection uses a filtered file input; its UI is chosen by the browser and OS. Photo selection does not require broad library permissions, and metadata inspection does not load a complete representation just to discover its size.
 - Raised the iOS minimum to 15 and added deployment-target validation during Cordova preparation. Retained Cordova Android 14/15 and iOS 7/8 support. TypeScript declarations now require 5.7 or later.
-- Separated seven known iOS provider test/partition failures into a manual investigation workflow while retaining the other simulator coverage in required CI. The [underlying Files issue](docs/KNOWN-ISSUES.md) remains unresolved.
+- Required iOS simulator coverage exercises controlled native picker contracts across both Cordova iOS families and device classes. Real picker and provider UI cases remain in the manual iOS picker investigation workflow; the observed [Files selection issue](docs/KNOWN-ISSUES.md) remains unresolved. See [verification](docs/VERIFICATION.md#simulator-and-framework-integration) for coverage and limits.
 
 ## [2.0.0-rc.1](https://registry.npmjs.org/cordova-plugin-chooser/2.0.0-rc.1) — 2026-11-06
 

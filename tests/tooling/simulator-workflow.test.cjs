@@ -88,18 +88,48 @@ test("main workflow retains PR and manual entry points with only master pushes",
 	assert.match(triggers, /workflow_dispatch:/);
 	assert.match(triggers, /push:\s+branches: \[master\]/);
 	assert.doesNotMatch(triggers, /candidate/);
-	assert.doesNotMatch(workflow, /--investigation-only/);
+	assert.doesNotMatch(
+		workflow,
+		/--investigation-only|ios_diagnostic|diagnose-ios/,
+	);
 	assert.match(workflow, /pattern: qualification-\*/);
 	const simulator = workflow.slice(
 		workflow.indexOf("\n  ios-simulator:"),
 		workflow.indexOf("\n  qualification:"),
 	);
 	assert.doesNotMatch(simulator, /continue-on-error/);
+	assert.match(simulator, /framework: \[cordova-ios7, cordova-ios8\]/);
+	assert.match(simulator, /device: \[iphone, ipad\]/);
+	assert.match(simulator, /chainman run verify-ios-simulator-part/);
 	assert.match(simulator, /\*-not-started\.json/);
 	assert.match(
 		simulator,
 		/always\(\) && hashFiles\('\.verification\/reports\/\*\*'\) != ''/,
 	);
+});
+
+test("focused diagnostics remain manual and separate from qualification", () => {
+	const workflow = readFileSync(
+		join(__dirname, "../../.github/workflows/ios-simulator-diagnostic.yml"),
+		"utf8",
+	);
+	const triggers = workflow.slice(
+		workflow.indexOf("\non:"),
+		workflow.indexOf("\npermissions:"),
+	);
+	assert.match(triggers, /workflow_dispatch:/);
+	assert.doesNotMatch(triggers, /push:|pull_request:|schedule:|workflow_run:/);
+	assert.match(triggers, /options: \[baseline, baseline-intel, modern\]/);
+	assert.match(triggers, /options: \[iphone, ipad\]/);
+	assert.match(triggers, /options: \[all, dismissal, provider\]/);
+	assert.match(workflow, /diagnose-ios-simulator-modern/);
+	assert.match(workflow, /macos-26-intel/);
+	assert.match(workflow, /name: diagnostics-ios-/);
+	assert.doesNotMatch(
+		workflow,
+		/continue-on-error|\|\| true|name: qualification-/,
+	);
+	assert.match(workflow, /if: \$\{\{ always\(\) && hashFiles/);
 });
 
 test("release comparison is manual, bounded and cannot supply qualification artifacts", () => {
