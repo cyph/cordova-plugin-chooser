@@ -1,4 +1,5 @@
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
@@ -14,8 +15,31 @@ val lintTool = configurations.create("chooserLint") {
 val agp = sdkCatalog.findVersion("agp").get().requiredVersion
 check(agp.startsWith("8.")) { "Review lint dependency ownership when upgrading AGP" }
 dependencies.add(lintTool.name, "com.android.tools.lint:lint-gradle:31.${agp.removePrefix("8.")}")
+val verificationClasspaths = listOf("debug", "release").flatMap { variant ->
+    listOf("", "UnitTest").flatMap { test ->
+        listOf("Compile", "Runtime", "AnnotationProcessor").map { scope ->
+            "$variant$test${scope}Classpath"
+        }
+    }
+}
 tasks.register("resolveVerificationDependencies") {
-    doLast { check(lintTool.resolve().isNotEmpty()) }
+    doLast {
+        // AGP creates these configurations after this script is applied. Resolve
+        // them at execution time, without wiring their producer tasks into this task.
+        for (name in verificationClasspaths + lintTool.name) {
+            val configuration = configurations.getByName(name)
+            check(configuration.isCanBeResolved) { "Not a resolvable verification graph: $name" }
+            // Unit-test classpaths include this fixture's generated output. Only
+            // external modules need caching; requesting project output would also
+            // require compilation and Android build tools on dependency-only hosts.
+            val artifacts = configuration.incoming.artifactView {
+                componentFilter { it is ModuleComponentIdentifier }
+            }.files.files
+            check(name.endsWith("AnnotationProcessorClasspath") || artifacts.isNotEmpty()) {
+                "Empty verification graph: $name"
+            }
+        }
+    }
 }
 // Each role needs a different version of the same module. Keep resolution separate.
 val sdkInputs = listOf("api24", "runtime", "api30", "api33", "compile").map { role ->
