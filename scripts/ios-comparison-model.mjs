@@ -71,15 +71,27 @@ export function createComparisonPlan({
 	assert(
 		experiment === undefined ||
 			experiment === "releases" ||
-			experiment === "metadata-mode",
+			experiment === "metadata-mode" ||
+			experiment === "metadata-regression",
 		"Unexpected comparison experiment",
 	);
 	const metadataMode = experiment === "metadata-mode";
+	const metadataRegression = experiment === "metadata-regression";
+	assert(
+		!metadataRegression || device === "ipad",
+		"Unexpected metadata-regression partition",
+	);
+	const focusedMetadata = metadataMode || metadataRegression;
+	const targetFormat =
+		metadataRegression && framework === "cordova-ios7" ? "PDF" : "Image";
 	const documents = comparisonDocuments
-		.filter(({ format }) => !metadataMode || format === "Image")
+		.filter(({ format }) => !focusedMetadata || format === targetFormat)
 		.map((document) => ({ ...document }));
-	const setup = metadataMode
-		? ["UIKitControlTests/testCancel()", "UIKitControlTests/testSeedImage()"]
+	const setup = focusedMetadata
+		? [
+				"UIKitControlTests/testCancel()",
+				`UIKitControlTests/testSeed${targetFormat}()`,
+			]
 		: comparisonSetupCases;
 	const releases = metadataMode
 		? ["uikit", "rc2-open", "rc2-import", "rc2-import", "rc2-open", "uikit"]
@@ -110,19 +122,20 @@ export function createComparisonPlan({
 		framework,
 		device,
 		output,
-		...(metadataMode ? { experiment, documents } : {}),
+		...(focusedMetadata ? { experiment, documents } : {}),
 		budgets: { ...comparisonBudgets },
 		packages,
 		arms: releases.map((release, index) => {
 			const id = `${String(index + 1).padStart(2, "0")}-${release}`;
 			let cases = release === "uikit" ? controlCases : pluginCases;
-			if (metadataMode) {
+			if (focusedMetadata) {
 				cases =
 					release === "uikit"
 						? ["Import", "Open"].map(
-								(mode) => `UIKitControlTests/test${mode}OriginalImage()`,
+								(mode) =>
+									`UIKitControlTests/test${mode}Original${targetFormat}()`,
 							)
-						: ["ChooserUITests/testImage()"];
+						: [`ChooserUITests/test${targetFormat}()`];
 				// Reverse both the package order and the paired UIKit controls.
 				if (index === 5) cases.reverse();
 			}
@@ -174,15 +187,18 @@ export function checkComparisonResults(report, plan) {
 		"passed",
 		"Comparison preparation failed",
 	);
-	if (plan.experiment === "metadata-mode") {
+	if (
+		plan.experiment === "metadata-mode" ||
+		plan.experiment === "metadata-regression"
+	) {
 		const descriptors = report.context?.descriptors ?? {};
 		assert.deepEqual(
 			Object.keys(descriptors).sort(),
 			Object.keys(plan.packages).sort(),
-			"Incorrect metadata-mode descriptors",
+			`Incorrect ${plan.experiment} descriptors`,
 		);
-		// Preparation verifies the archives and exact patch. Bind its complete
-		// descriptors to the planned variant, not just their shared RC2 API.
+		// Preparation verifies the archives and any exact patch. Bind its complete
+		// descriptors to the planned release or variant.
 		for (const [release, expected] of Object.entries(plan.packages))
 			for (const [field, value] of Object.entries(expected))
 				assert.deepEqual(
@@ -209,7 +225,10 @@ export function checkComparisonResults(report, plan) {
 		"Comparison reused a simulator/provider store",
 	);
 	for (const [index, arm] of report.arms.entries()) {
-		if (plan.experiment === "metadata-mode")
+		if (
+			plan.experiment === "metadata-mode" ||
+			plan.experiment === "metadata-regression"
+		)
 			assert.equal(
 				arm.release,
 				plan.arms[index].release,
@@ -251,7 +270,10 @@ export async function runComparisonSchedule({
 		prepare: { status: "not-started" },
 		arms: plan.arms.map((arm) => ({
 			id: arm.id,
-			...(plan.experiment === "metadata-mode" ? { release: arm.release } : {}),
+			...(plan.experiment === "metadata-mode" ||
+			plan.experiment === "metadata-regression"
+				? { release: arm.release }
+				: {}),
 			status: "not-started",
 			setup: arm.setup.map((id) => ({ id, status: "not-started" })),
 			cases: arm.cases.map((id) => ({ id, status: "not-started" })),

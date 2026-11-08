@@ -454,7 +454,10 @@ function executeCase({
 		item.eventsError = comparisonError(error);
 		if (item.status === "passed") item.status = "failed";
 	}
-	if (report.plan.experiment === "metadata-mode") {
+	if (
+		report.plan.experiment === "metadata-mode" ||
+		report.plan.experiment === "metadata-regression"
+	) {
 		try {
 			item.artifacts.provider = join(arm.directory, `${name}-provider.log`);
 			writeFileSync(
@@ -805,7 +808,7 @@ if (
 	try {
 		assert(
 			[4, 5].includes(process.argv.length),
-			"Usage: node scripts/ios-comparison.mjs <cordova-ios7|cordova-ios8> <iphone|ipad> [releases|metadata-mode]",
+			"Usage: node scripts/ios-comparison.mjs <cordova-ios7|cordova-ios8> <iphone|ipad> [releases|metadata-mode|metadata-regression]",
 		);
 		const report = await verifyIosComparison({
 			framework: process.argv[2],

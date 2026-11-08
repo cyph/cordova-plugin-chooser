@@ -83,6 +83,13 @@ The `metadata-mode` experiment runs only Cordova iOS 8 on iPad in the workflow. 
 just chainman run compare-ios-releases cordova-ios8 ipad metadata-mode
 ```
 
+The `metadata-regression` experiment targets only PNG on Cordova iOS 8/iPad and PDF on Cordova iOS 7/iPad. It compares immutable published RC1 with committed RC2 in the existing UIKit, RC1, RC2, RC2, RC1, UIKit order, with a fresh simulator and provider store for each arm. Each setup seeds only its target file; the UIKit controls run import and open in reverse order in the last arm. The same deadlines and strict failure handling apply: retain reports, and treat failed or missing reports as failures. This comparison cannot qualify required CI. Run either partition locally with:
+
+```sh
+just chainman run compare-ios-releases cordova-ios8 ipad metadata-regression
+just chainman run compare-ios-releases cordova-ios7 ipad metadata-regression
+```
+
 ## Android dependency ownership
 
 AAPT2 comes from the pinned Nix Android SDK. Verification supplies its path through `android.aapt2FromMavenOverride` to fixture Gradle commands and disposable Cordova builds. The Gradle distribution is also pinned by Nix.

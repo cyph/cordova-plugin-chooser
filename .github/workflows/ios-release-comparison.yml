@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       experiment:
-        description: Fixed release comparison or metadata picker-mode discriminator
+        description: Fixed release comparison, metadata picker-mode discriminator, or suspected metadata regressions
         type: choice
-        options: [releases, metadata-mode]
+        options: [releases, metadata-mode, metadata-regression]
         default: releases
         required: true
 permissions:
@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.experiment == 'metadata-mode' && '[{"framework":"cordova-ios8","device":"ipad"}]' || '[{"framework":"cordova-ios7","device":"iphone"},{"framework":"cordova-ios7","device":"ipad"},{"framework":"cordova-ios8","device":"iphone"},{"framework":"cordova-ios8","device":"ipad"}]') }}
+        include: ${{ fromJSON(inputs.experiment == 'metadata-regression' && '[{"framework":"cordova-ios8","device":"ipad"},{"framework":"cordova-ios7","device":"ipad"}]' || inputs.experiment == 'metadata-mode' && '[{"framework":"cordova-ios8","device":"ipad"}]' || '[{"framework":"cordova-ios7","device":"iphone"},{"framework":"cordova-ios7","device":"ipad"},{"framework":"cordova-ios8","device":"iphone"},{"framework":"cordova-ios8","device":"ipad"}]') }}
     runs-on: macos-26
     timeout-minutes: 360
     env:

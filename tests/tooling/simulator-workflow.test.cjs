@@ -144,19 +144,26 @@ test("release comparison is manual, bounded and cannot supply qualification arti
 	assert.match(triggers, /workflow_dispatch:/);
 	assert.doesNotMatch(triggers, /push:|pull_request:|schedule:|workflow_run:/);
 	const matrix = workflow.match(
-		/fromJSON\(inputs\.experiment == 'metadata-mode' && '([^']+)' \|\| '([^']+)'\)/,
+		/fromJSON\(inputs\.experiment == 'metadata-regression' && '([^']+)' \|\| inputs\.experiment == 'metadata-mode' && '([^']+)' \|\| '([^']+)'\)/,
 	);
 	assert(matrix, "Expected explicit bounded experiment matrices");
 	assert.deepEqual(JSON.parse(matrix[1]), [
 		{ framework: "cordova-ios8", device: "ipad" },
+		{ framework: "cordova-ios7", device: "ipad" },
+	]);
+	assert.deepEqual(JSON.parse(matrix[2]), [
+		{ framework: "cordova-ios8", device: "ipad" },
 	]);
 	assert.deepEqual(
-		JSON.parse(matrix[2]),
+		JSON.parse(matrix[3]),
 		["cordova-ios7", "cordova-ios8"].flatMap((framework) =>
 			["iphone", "ipad"].map((device) => ({ framework, device })),
 		),
 	);
-	assert.match(triggers, /options: \[releases, metadata-mode\]/);
+	assert.match(
+		triggers,
+		/options: \[releases, metadata-mode, metadata-regression\]/,
+	);
 	assert.match(
 		workflow,
 		/COMPARISON_EXPERIMENT: \$\{\{ inputs.experiment \}\}/,

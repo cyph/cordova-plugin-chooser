@@ -12,6 +12,7 @@ const { join } = require("node:path");
 const test = require("node:test");
 const childProcess = require("node:child_process");
 const { syncBuiltinESMExports } = require("node:module");
+const vm = require("node:vm");
 const { metadata } = require("../../scripts/ios-comparison-adapter.cjs");
 const load = () => import("../../scripts/ios-comparison.mjs");
 const loadModel = () => import("../../scripts/ios-comparison-model.mjs");
@@ -72,6 +73,37 @@ function metadataModeFixture(m) {
 								},
 							}
 						: {}),
+				},
+			]),
+		),
+	};
+	return { plan, context };
+}
+
+function metadataRegressionFixture(m, framework = "cordova-ios8") {
+	const plan = m.createComparisonPlan({
+		framework,
+		device: "ipad",
+		output: `/tmp/comparison-metadata-regression-${framework}`,
+		experiment: "metadata-regression",
+	});
+	const context = {
+		commit: "a".repeat(40),
+		tree: "b".repeat(40),
+		sourceIntegrity: m.comparisonIntegrity(Buffer.from("source archive")),
+		descriptors: Object.fromEntries(
+			Object.entries(plan.packages).map(([release, paths]) => [
+				release,
+				{
+					...paths,
+					...(release === "rc1"
+						? m.rc1
+						: {
+								version: "2.0.0-rc.2",
+								commit: "a".repeat(40),
+								tree: "b".repeat(40),
+								integrity: m.comparisonIntegrity(Buffer.from("current RC2")),
+							}),
 				},
 			]),
 		),
@@ -194,6 +226,47 @@ test("metadata adapter preserves selection and handles only the release-specific
 		),
 		/Invalid metadata/,
 	);
+});
+
+test("focused Image/PDF selections use metadata and require the selected filename", async () => {
+	const html = readFileSync(
+		join(__dirname, "../ios/simulator/index.html"),
+		"utf8",
+	);
+	const script = html.match(/<script>\n([\s\S]*?)<\/script>/)[1];
+	for (const release of ["rc1", "rc2"])
+		for (const [accept, name] of [
+			["image/*", "fixture-image.png"],
+			["application/pdf", "fixture-pdf.pdf"],
+		]) {
+			const outcomes = [],
+				calls = [];
+			const window = {
+				iosComparisonRelease: release,
+				iosComparisonMetadata: metadata,
+				webkit: {
+					messageHandlers: {
+						fixture: { postMessage: (s) => outcomes.push(s) },
+					},
+				},
+			};
+			vm.runInNewContext(script, {
+				window,
+				document: { addEventListener() {} },
+				chooser: {
+					getFileMetadata: async (arg) => {
+						calls.push(JSON.parse(JSON.stringify(arg)));
+						return { name };
+					},
+				},
+			});
+			await window.pick(accept, "", "metadata");
+			assert.deepEqual(outcomes, [`selected:${name}`]);
+			assert.deepEqual(calls, [release === "rc1" ? accept : { accept }]);
+			window.pick(accept, "", "uri");
+			assert.equal(calls.length, 1);
+			assert.equal(outcomes[1], "error:Unexpected comparison operation");
+		}
 });
 
 test("dirty tracked source is rejected before resolving, archiving, packing or downloading", async () => {
@@ -575,6 +648,371 @@ test("release experiment aliases preserve the original serialized plan and runne
 	}
 });
 
+test("metadata-regression permits only iPad PNG on iOS8 and PDF on iOS7 with the fixed release order", async () => {
+	const m = await loadModel();
+	const paths = [];
+	for (const [framework, format, name] of [
+		["cordova-ios8", "Image", "fixture-image.png"],
+		["cordova-ios7", "PDF", "fixture-pdf.pdf"],
+	]) {
+		const { plan } = metadataRegressionFixture(m, framework);
+		const releases = ["uikit", "rc1", "rc2", "rc2", "rc1", "uikit"];
+		assert.equal(plan.experiment, "metadata-regression");
+		assert.deepEqual(plan.documents, [{ format, name }]);
+		assert.deepEqual(plan.budgets, m.comparisonBudgets);
+		assert.deepEqual(
+			plan.packages,
+			m.createComparisonPlan({
+				framework,
+				device: "ipad",
+				output: plan.output,
+			}).packages,
+		);
+		assert.deepEqual(
+			plan.arms.map((a) => a.release),
+			releases,
+		);
+		assert.deepEqual(
+			plan.arms.map((a) => a.id),
+			releases.map((r, i) => `0${i + 1}-${r}`),
+		);
+		for (const descriptor of Object.values(plan.packages))
+			for (const field of ["directory", "generated", "build", "evidence"])
+				paths.push(descriptor[field]);
+		for (const [index, arm] of plan.arms.entries()) {
+			const controls = ["Import", "Open"].map(
+				(mode) => `UIKitControlTests/test${mode}Original${format}()`,
+			);
+			if (index === 5) controls.reverse();
+			assert.equal(arm.ordinal, index + 1);
+			assert.equal(arm.minutes, arm.release === "uikit" ? 45 : 50);
+			assert.deepEqual(arm.setup, [
+				"UIKitControlTests/testCancel()",
+				`UIKitControlTests/testSeed${format}()`,
+			]);
+			assert.deepEqual(
+				arm.cases,
+				arm.release === "uikit" ? controls : [`ChooserUITests/test${format}()`],
+			);
+			paths.push(arm.directory);
+		}
+		plan.documents[0].name = "changed";
+		plan.arms[0].setup.pop();
+		plan.arms[0].cases.reverse();
+		assert.equal(plan.arms[1].setup.length, 2);
+		assert.equal(
+			plan.arms[5].cases[0],
+			`UIKitControlTests/testOpenOriginal${format}()`,
+		);
+		assert.equal(
+			metadataRegressionFixture(m, framework).plan.documents[0].name,
+			name,
+		);
+	}
+	assert.equal(new Set(paths).size, paths.length);
+	for (const [framework, device] of [
+		["cordova-ios7", "iphone"],
+		["cordova-ios8", "iphone"],
+		["cordova-ios9", "ipad"],
+		["cordova-ios8", "other"],
+	])
+		assert.throws(
+			() =>
+				m.createComparisonPlan({
+					framework,
+					device,
+					output: "/tmp/rejected",
+					experiment: "metadata-regression",
+				}),
+			/partition/,
+		);
+});
+
+test("manual workflow selects exact metadata-regression targets and preserves both existing matrices", () => {
+	const workflow = readFileSync(
+		join(__dirname, "../../.github/workflows/ios-release-comparison.yml"),
+		"utf8",
+	);
+	const triggers = workflow.slice(
+		workflow.indexOf("\non:"),
+		workflow.indexOf("\npermissions:"),
+	);
+	assert.match(triggers, /workflow_dispatch:/);
+	assert.doesNotMatch(triggers, /push:|pull_request:|schedule:|workflow_run:/);
+	assert.match(
+		triggers,
+		/options: \[releases, metadata-mode, metadata-regression\]/,
+	);
+	assert.match(triggers, /default: releases/);
+	const expression = workflow.match(/include: \$\{\{ (fromJSON\(.*\)) \}\}/)[1];
+	for (const [experiment, expected] of [
+		[
+			"metadata-regression",
+			[
+				{ framework: "cordova-ios8", device: "ipad" },
+				{ framework: "cordova-ios7", device: "ipad" },
+			],
+		],
+		["metadata-mode", [{ framework: "cordova-ios8", device: "ipad" }]],
+		[
+			"releases",
+			["cordova-ios7", "cordova-ios8"].flatMap((framework) =>
+				["iphone", "ipad"].map((device) => ({ framework, device })),
+			),
+		],
+	])
+		assert.deepEqual(
+			JSON.parse(
+				JSON.stringify(
+					vm.runInNewContext(expression, {
+						inputs: { experiment },
+						fromJSON: JSON.parse,
+					}),
+				),
+			),
+			expected,
+		);
+	assert.match(
+		workflow,
+		/COMPARISON_EXPERIMENT: \$\{\{ inputs.experiment \}\}/,
+	);
+	assert.match(workflow, /"\$COMPARISON_EXPERIMENT"/);
+	assert.match(workflow, /timeout-minutes: 360/);
+	assert.match(workflow, /fail-fast: false/);
+	assert.match(workflow, /cancel-in-progress: false/);
+	assert.doesNotMatch(
+		workflow,
+		/continue-on-error|\|\| true|name: qualification-/,
+	);
+});
+
+test("metadata-regression exact manifests reject substitutions, reused stores and incomplete target observations", async () => {
+	const m = await loadModel();
+	for (const framework of ["cordova-ios8", "cordova-ios7"]) {
+		const { plan, context } = metadataRegressionFixture(m, framework);
+		const report = await m.runComparisonSchedule({
+			plan,
+			prepare: () => context,
+			executeArm: ({ record, arm }) => completed(record, arm.ordinal),
+			collectArm: () => {},
+		});
+		assert.equal(report.status, "passed");
+		assert.deepEqual(report.context, context);
+		m.checkComparisonResults(report, plan);
+		for (const mutate of [
+			(r) => r.arms.pop(),
+			(r) => r.arms.push(r.arms[0]),
+			(r) => r.arms.reverse(),
+			(r) => (r.arms[1].release = "rc2"),
+			(r) => (r.arms[2].udid = r.arms[1].udid),
+			(r) => r.arms[1].cases.pop(),
+			(r) => r.arms[1].cases.push(r.arms[1].cases[0]),
+			(r) => (r.arms[1].cases[0].id = "ChooserUITests/testJSON()"),
+			(r) => r.arms[5].cases.reverse(),
+			(r) => r.arms[0].setup.pop(),
+			(r) => r.arms[0].setup.reverse(),
+			(r) =>
+				r.arms[0].setup.push({
+					id: "UIKitControlTests/testSeedJSON()",
+					status: "passed",
+				}),
+			(r) => (r.arms[2].evidence.status = "failed"),
+			(r) => (r.plan.documents[0].name = "fixture-json.json"),
+			(r) => delete r.context.descriptors.rc1,
+			(r) => (r.context.descriptors.rc1 = r.context.descriptors.rc2),
+			(r) =>
+				(r.context.descriptors.rc1.build = r.context.descriptors.rc2.build),
+		]) {
+			const copy = structuredClone(report);
+			mutate(copy);
+			assert.throws(() => m.checkComparisonResults(copy, plan));
+		}
+	}
+});
+
+test("metadata-regression runner seeds only its target, collects per-case provider logs and verifies source hashes", async (t) => {
+	const m = await load();
+	for (const framework of ["cordova-ios8", "cordova-ios7"])
+		for (const fault of ["none", "seed", "original", "provider-log"])
+			await t.test(`${framework}: ${fault}`, async (t) => {
+				const directory = temporary(t),
+					output = join(directory, "report"),
+					assets = join(directory, "assets");
+				const { plan, context } = metadataRegressionFixture(m, framework);
+				const [{ format, name }] = plan.documents;
+				mkdirSync(assets);
+				writeFileSync(join(assets, name), "original bytes");
+				let ordinal = 0,
+					container,
+					current;
+				const executed = [];
+				const spawn = t.mock.method(
+					childProcess,
+					"spawnSync",
+					(monitor, argv) => {
+						assert.equal(monitor, "python3");
+						const [, , command, ...args] = argv;
+						let stdout = "",
+							status = 0;
+						if (command === "/usr/bin/xcodebuild") {
+							current =
+								args
+									.find((a) => a.startsWith("-only-testing:"))
+									.split("/")
+									.slice(-2)
+									.join("/") + "()";
+							executed.push([ordinal, current]);
+							mkdirSync(args[args.indexOf("-resultBundlePath") + 1]);
+							if (current === `UIKitControlTests/testSeed${format}()`)
+								writeFileSync(
+									join(container, "Documents", name),
+									ordinal === 2 && fault === "seed"
+										? "wrong seed"
+										: "original bytes",
+								);
+							if (
+								current === `ChooserUITests/test${format}()` &&
+								ordinal === 2 &&
+								fault === "original"
+							)
+								writeFileSync(
+									join(container, "Documents", name),
+									"changed original",
+								);
+						} else if (
+							command === "/usr/bin/xcrun" &&
+							args[0] === "xcresulttool"
+						) {
+							stdout = JSON.stringify(
+								args[3] === "summary"
+									? {
+											totalTestCount: 1,
+											passedTests: 1,
+											failedTests: 0,
+											skippedTests: 0,
+										}
+									: {
+											testNodes: [
+												{
+													nodeType: "Test Case",
+													nodeIdentifier: current,
+													result: "Passed",
+												},
+											],
+										},
+							);
+						} else if (command === "/usr/bin/xcrun" && args[0] === "simctl") {
+							if (args[1] === "create") {
+								ordinal++;
+								stdout = `00000000-0000-0000-0000-${String(ordinal).padStart(12, "0")}`;
+								container = join(directory, `sim-${ordinal}`);
+								mkdirSync(join(container, "Documents"), { recursive: true });
+								mkdirSync(join(container, "Library/Caches"), {
+									recursive: true,
+								});
+								writeFileSync(
+									join(container, "Library/Caches/chooser-fixture-events.log"),
+									"callbacks",
+								);
+							}
+							if (args[1] === "get_app_container") stdout = container;
+							if (args[1] === "spawn") {
+								stdout = "narrowed provider diagnostic";
+								if (
+									ordinal === 2 &&
+									current === `ChooserUITests/test${format}()` &&
+									args.includes("4m") &&
+									fault === "provider-log"
+								)
+									status = 124;
+							}
+						} else assert.equal(command, process.execPath);
+						return { status, signal: null, stdout, stderr: "" };
+					},
+				);
+				syncBuiltinESMExports();
+				t.after(() => {
+					spawn.mock.restore();
+					syncBuiltinESMExports();
+				});
+				let report;
+				try {
+					report = await m.verifyIosComparison({
+						root: directory,
+						framework,
+						device: "ipad",
+						experiment: "metadata-regression",
+						output,
+						prepare: ({ report }) => ({
+							...context,
+							env: {},
+							assets,
+							profile: { deviceType: "fake", runtime: "fake" },
+							descriptors: Object.fromEntries(
+								Object.entries(report.plan.packages).map(([release, paths]) => [
+									release,
+									{ ...context.descriptors[release], ...paths },
+								]),
+							),
+						}),
+					});
+				} catch (error) {
+					assert.notEqual(fault, "none", error.message);
+					assert.match(error.message, /iOS comparison failed/);
+					report = error.report;
+				}
+				assert.equal(report.status, fault === "none" ? "passed" : "failed");
+				assert.equal(report.arms[5].status, "passed");
+				assert.equal(new Set(report.arms.map((a) => a.udid)).size, 6);
+				assert.deepEqual(
+					executed,
+					report.plan.arms.flatMap((arm) =>
+						[...arm.setup, ...arm.cases].map((id) => [arm.ordinal, id]),
+					),
+				);
+				for (const arm of report.arms) {
+					assert.deepEqual(
+						arm.sourcesBefore.map((f) => f.name),
+						[name],
+					);
+					for (const item of [...arm.setup, ...arm.cases]) {
+						assert.equal(item.xctestStatus, "passed");
+						if (
+							arm.id !== "02-rc1" ||
+							item.id !== `ChooserUITests/test${format}()` ||
+							fault !== "provider-log"
+						)
+							assert.equal(
+								readFileSync(item.artifacts.provider, "utf8"),
+								"narrowed provider diagnostic",
+							);
+					}
+					const sources = JSON.parse(
+						readFileSync(
+							join(output, "arms", arm.id, `${arm.id}-sources.json`),
+						),
+					);
+					if (arm.id === "02-rc1" && fault === "original") {
+						assert.notDeepEqual(sources.after, sources.before);
+						assert.match(
+							arm.evidence.error.errors[0].message,
+							/Selection changed provider originals/,
+						);
+					} else assert.deepEqual(sources.after, sources.before);
+				}
+				const failedArm = report.arms[1];
+				if (fault === "seed")
+					assert.match(
+						failedArm.setup[1].seedError.message,
+						/System-export seed changed bytes/,
+					);
+				if (fault === "provider-log") {
+					assert.equal(failedArm.cases[0].status, "failed");
+					assert.equal(failedArm.cases[0].providerError.code, "ETIMEDOUT");
+				}
+			});
+});
+
 test("metadata-mode fixes two reversed PNG repetitions with isolated variant descriptors", async () => {
 	const m = await loadModel();
 	const paths = [];
@@ -652,52 +1090,57 @@ test("metadata-mode fixes two reversed PNG repetitions with isolated variant des
 	assert.equal(new Set(paths).size, paths.length);
 });
 
-test("metadata-mode retains provenance, deadlines and failed PNG outcomes without retries", async () => {
+test("focused metadata experiments retain provenance, deadlines and failed target outcomes without retries", async () => {
 	const m = await loadModel();
-	for (const status of ["passed", "failed", "timed-out", "not-started"]) {
-		const { plan, context } = metadataModeFixture(m);
-		let time = 0;
-		const attempted = [],
-			collected = [];
-		const report = await m.runComparisonSchedule({
-			plan,
-			now: () => time,
-			prepare: ({ deadline }) => {
-				assert.equal(deadline, 35 * 60000);
-				time = deadline - 1;
-				return context;
-			},
-			executeArm: ({ arm, record, deadline }) => {
-				assert.equal(deadline - time, arm.minutes * 60000);
-				attempted.push(arm.id);
-				completed(record, arm.ordinal);
-				if (arm.ordinal === 2) record.cases[0].status = status;
-				time = deadline - 1;
-			},
-			collectArm: ({ arm, deadline }) => {
-				assert.equal(deadline - time, 150000);
-				collected.push(arm.id);
-				time = deadline - 1;
-			},
-		});
-		assert.equal(report.status, status === "passed" ? "passed" : "failed");
-		assert.equal(report.arms[1].cases[0].status, status);
-		assert.equal(report.arms[5].status, "passed");
-		assert.deepEqual(
-			attempted,
-			plan.arms.map((arm) => arm.id),
-		);
-		assert.deepEqual(collected, attempted);
-		assert(time <= 340 * 60000);
-		assert.equal(report.plan.budgets.caseSeconds, 180);
-		const serialized = JSON.parse(JSON.stringify(report));
-		assert.deepEqual(serialized.plan, plan);
-		assert.deepEqual(serialized.context, context);
-		assert.deepEqual(
-			serialized.arms.map((arm) => arm.release),
-			plan.arms.map((arm) => arm.release),
-		);
-	}
+	for (const fixture of [
+		metadataModeFixture,
+		(m) => metadataRegressionFixture(m, "cordova-ios8"),
+		(m) => metadataRegressionFixture(m, "cordova-ios7"),
+	])
+		for (const status of ["passed", "failed", "timed-out", "not-started"]) {
+			const { plan, context } = fixture(m);
+			let time = 0;
+			const attempted = [],
+				collected = [];
+			const report = await m.runComparisonSchedule({
+				plan,
+				now: () => time,
+				prepare: ({ deadline }) => {
+					assert.equal(deadline, 35 * 60000);
+					time = deadline - 1;
+					return context;
+				},
+				executeArm: ({ arm, record, deadline }) => {
+					assert.equal(deadline - time, arm.minutes * 60000);
+					attempted.push(arm.id);
+					completed(record, arm.ordinal);
+					if (arm.ordinal === 2) record.cases[0].status = status;
+					time = deadline - 1;
+				},
+				collectArm: ({ arm, deadline }) => {
+					assert.equal(deadline - time, 150000);
+					collected.push(arm.id);
+					time = deadline - 1;
+				},
+			});
+			assert.equal(report.status, status === "passed" ? "passed" : "failed");
+			assert.equal(report.arms[1].cases[0].status, status);
+			assert.equal(report.arms[5].status, "passed");
+			assert.deepEqual(
+				attempted,
+				plan.arms.map((arm) => arm.id),
+			);
+			assert.deepEqual(collected, attempted);
+			assert(time <= 340 * 60000);
+			assert.equal(report.plan.budgets.caseSeconds, 180);
+			const serialized = JSON.parse(JSON.stringify(report));
+			assert.deepEqual(serialized.plan, plan);
+			assert.deepEqual(serialized.context, context);
+			assert.deepEqual(
+				serialized.arms.map((arm) => arm.release),
+				plan.arms.map((arm) => arm.release),
+			);
+		}
 });
 
 test("metadata-mode exact results reject variant substitution, reused stores and incomplete observations", async () => {
