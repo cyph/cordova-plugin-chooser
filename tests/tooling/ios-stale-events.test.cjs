@@ -405,6 +405,24 @@ test("mutants reject survival, missing results, duplicate or unexpected cases an
 		}
 });
 
+test("mutants reject prerequisite failures before stale-event injection", async () => {
+	const { checkStaleEventResults } = await api;
+	for (const { id } of expected) {
+		const prerequisite = `XCTAssertNotNil failed - ${marker(id)}-prerequisite: Expected an active request`;
+		for (const source of ["tree", "summary", "both"]) {
+			const value = fixture(id);
+			if (source !== "summary") failures(value)[0].name = prerequisite;
+			if (source !== "tree")
+				value.summary.testFailures[0].failureText = prerequisite;
+			assert.throws(
+				() => checkStaleEventResults(value),
+				/Unrelated failure or wrong stale-event marker/,
+				`${id}: prerequisite failure in ${source}`,
+			);
+		}
+	}
+});
+
 test("summary failures cannot conceal unrelated cases, global errors or contradictory raw identities", async () => {
 	const { checkStaleEventResults } = await api;
 	for (const { id } of expected) {

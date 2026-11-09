@@ -233,7 +233,7 @@ private final class PickerHarness {
                                 perform: @MainActor () -> Void) {
         let expectedRequest = plugin.active
         let callbackCount = messages(callback).count
-        assertSelectingRequest(expectedRequest, callback: callback, marker: marker, file: file, line: line)
+        assertSelectingRequest(expectedRequest, callback: callback, marker: "\(marker)-prerequisite", file: file, line: line)
         perform()
         // UIKit may still block result delivery after a stale event has already
         // mutated the request. Inspect it now, without yielding to queued work.
