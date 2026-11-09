@@ -9,7 +9,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appleEnvironment } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
@@ -145,7 +145,15 @@ export function verifyStaleEvents({
 			`--output=${snapshot}`,
 			report.commit,
 		]);
-		execute("python3", [
+		// Resolve Chainman's Python before Xcode's tools take precedence in PATH.
+		const python = execute(
+			"python3",
+			["-c", "import sys; print(sys.executable)"],
+			root,
+			true,
+		);
+		assert(isAbsolute(python), "Python must resolve to an absolute executable");
+		execute(python, [
 			"-m",
 			"tarfile",
 			"--extract",
@@ -219,7 +227,7 @@ export function verifyStaleEvents({
 		};
 		const unpacked = join(output, "canonical");
 		mkdirSync(unpacked);
-		execute("python3", [
+		execute(python, [
 			"-m",
 			"tarfile",
 			"--extract",

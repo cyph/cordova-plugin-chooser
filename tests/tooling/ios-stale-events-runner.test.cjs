@@ -132,6 +132,8 @@ async function fixture(t, faults = {}) {
 	const { staleEventMutations: mutations } = await loadModel();
 	const temporary = mkdtempSync(join(tmpdir(), "chooser-stale-runner-"));
 	t.after(() => rmSync(temporary, { recursive: true, force: true }));
+	const python = join(temporary, "chainman-python/bin/python3");
+	const inheritedPath = process.env.PATH;
 	const root = join(temporary, "repo");
 	mkdirSync(root);
 	for (const name of [
@@ -186,6 +188,17 @@ async function fixture(t, faults = {}) {
 		stderr,
 	});
 	function dispatch(command, args, options) {
+		const xcodePython = join(
+			options.env.DEVELOPER_DIR ?? apple.developerDirectory,
+			"usr/bin/python3",
+		);
+		const pythonOnPath =
+			options.env.PATH === inheritedPath ? python : xcodePython;
+		if (command === "python3" && args[0] === "-c") {
+			assert.deepEqual(args, ["-c", "import sys; print(sys.executable)"]);
+			assert.equal(options.cwd, root);
+			return response(`${pythonOnPath}\n`);
+		}
 		if (command === "git") {
 			if (args[0] === "status") return response();
 			if (args[0] === "rev-parse") return response(commit);
@@ -198,9 +211,16 @@ async function fixture(t, faults = {}) {
 			write(join(output, "source.tar"), sourceBytes);
 			return response();
 		}
-		if (command === "python3") {
+		if (["python3", python, xcodePython].includes(command)) {
 			assert.deepEqual(args.slice(0, 3), ["-m", "tarfile", "--extract"]);
 			assert.deepEqual(args.slice(5), ["--filter", "data"]);
+			// Xcode's older Python cannot extract with the required data filter.
+			if ((command === "python3" ? pythonOnPath : command) !== python)
+				return response(
+					"",
+					2,
+					"tarfile.py: error: unrecognized arguments: --filter data\n",
+				);
 			const destination =
 				args[3] === archive ? join(args[4], "package") : args[4];
 			for (const [name, encoded] of Object.entries(json(args[3])))
@@ -362,6 +382,8 @@ async function fixture(t, faults = {}) {
 	return {
 		root,
 		output,
+		archive,
+		python,
 		commands,
 		created,
 		mutations,
@@ -563,6 +585,42 @@ test("stale-event runner executes baseline then three isolated mutants with exac
 			.map(({ args }) => args[0]),
 		["status", "rev-parse", "archive", "rev-parse", "status"],
 	);
+});
+
+test("tar extractions keep the resolved Python when Apple tools prepend Xcode to PATH", async (t) => {
+	const f = await fixture(t),
+		{ report, error } = f.run();
+	assert.equal(error, undefined);
+	assert.equal(report.status, "passed");
+	const probes = f.commands.filter(({ command }) => command === "python3");
+	assert.equal(
+		probes.length,
+		1,
+		"Resolve Python only before applying Apple PATH",
+	);
+	const [probe] = probes;
+	assert.deepEqual(probe.args, ["-c", "import sys; print(sys.executable)"]);
+	assert.equal(probe.options.cwd, f.root);
+	assert.equal(probe.options.env.PATH, process.env.PATH);
+	const extractions = f.commands.filter(
+		({ args }) => args[0] === "-m" && args[1] === "tarfile",
+	);
+	assert.deepEqual(
+		extractions.map(({ command, args }) => [command, args]),
+		[
+			[join(f.output, "source.tar"), join(f.output, "source")],
+			[f.archive, join(f.output, "canonical")],
+		].map(([archive, destination]) => [
+			f.python,
+			["-m", "tarfile", "--extract", archive, destination, "--filter", "data"],
+		]),
+	);
+	assert(f.commands.indexOf(probe) < f.commands.indexOf(extractions[0]));
+	assert.equal(extractions[0].options.env.PATH, probe.options.env.PATH);
+	const appleBin = join(extractions[1].options.env.DEVELOPER_DIR, "usr/bin");
+	assert(extractions[1].options.env.PATH.startsWith(`${appleBin}:`));
+	assert.notEqual(extractions[1].options.env.PATH, probe.options.env.PATH);
+	assert.notEqual(f.python, join(appleBin, "python3"));
 });
 
 test("only classified mutant assertion failures are accepted, even when stdout has the expected marker", async (t) => {
