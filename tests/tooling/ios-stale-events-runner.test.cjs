@@ -315,7 +315,10 @@ async function fixture(t, faults = {}) {
 				`XCTest ${mutations.find((m) => m.id === id)?.marker ?? "baseline"}\n`,
 				evidence.status,
 			);
-			if (faults[id] === "timeout")
+			// Passing cases still need Xcode to finish writing the result bundle.
+			const finalization = faults[id] === "slow-finalization" ? 6 * 60_000 : 0;
+			clock += Math.min(finalization, options.timeout);
+			if (faults[id] === "timeout" || finalization > options.timeout)
 				return {
 					...result,
 					status: null,
@@ -524,7 +527,9 @@ test("stale-event runner executes baseline then three isolated mutants with exac
 			["-resultBundlePath", join(f.output, id, "tests.xcresult")],
 		])
 			assert.equal(command.args[command.args.indexOf(flag) + 1], value);
-		assert(command.options.timeout <= 5 * 60_000);
+		assert(
+			command.options.timeout > 0 && command.options.timeout <= 15 * 60_000,
+		);
 		const expected = { ...f.packageFiles };
 		if (index) {
 			const mutation = f.mutations[index - 1],
@@ -585,6 +590,46 @@ test("stale-event runner executes baseline then three isolated mutants with exac
 			.map(({ args }) => args[0]),
 		["status", "rev-parse", "archive", "rev-parse", "status"],
 	);
+});
+
+test("baseline result finalization can take six minutes without a retry or weakening result checks", async (t) => {
+	const f = await fixture(t, { baseline: "slow-finalization" }),
+		{ report, error } = f.run();
+	assert.equal(error, undefined);
+	assert.equal(report.status, "passed");
+	const baseline = report.arms[0],
+		bundle = join(f.output, "baseline/tests.xcresult");
+	assert.equal(baseline.outcome, "passed");
+	const commands = f.commands.filter(
+		({ args }) =>
+			(["test-without-building", "xcresulttool"].includes(args[0]) &&
+				args.includes(bundle)) ||
+			(args[0] === "simctl" &&
+				args[2] === baseline.udid &&
+				["shutdown", "delete"].includes(args[1])),
+	);
+	assert.deepEqual(
+		commands.map(({ args }) =>
+			args[0] === "xcresulttool"
+				? args[3]
+				: args[0] === "simctl"
+					? args[1]
+					: args[0],
+		),
+		["test-without-building", "summary", "tests", "shutdown", "delete"],
+	);
+	assert.equal(commands[0].options.timeout, 15 * 60_000);
+	// The six-minute command leaves the exports bounded by the same arm deadline.
+	assert.deepEqual(
+		commands.slice(1, 3).map(({ options }) => options.timeout),
+		[14 * 60_000 - 20_000, 14 * 60_000 - 20_000],
+	);
+	const expected = results(f.mutations, "baseline");
+	assert.deepEqual(
+		json(join(f.output, "baseline/summary.json")),
+		expected.summary,
+	);
+	assert.deepEqual(json(join(f.output, "baseline/tests.json")), expected.tests);
 });
 
 test("tar extractions keep the resolved Python when Apple tools prepend Xcode to PATH", async (t) => {

@@ -389,7 +389,9 @@ export function verifyStaleEvents({
 							fixture,
 							false,
 							{},
-							{ test: true, timeout: 5 * 60_000 },
+							// Cold simulator launch and result finalization share the
+							// command budget; individual XCTest waits remain bounded.
+							{ test: true },
 						);
 					}, [
 						() => {
