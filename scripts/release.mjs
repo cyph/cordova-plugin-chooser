@@ -34,6 +34,20 @@ function execute(command, args, cwd) {
 	return result.stdout.trim();
 }
 
+function executeInteractive(command, args, cwd) {
+	const result = spawnSync(command, args, {
+		cwd,
+		env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+		stdio: "inherit",
+	});
+	if (result.error) throw result.error;
+	assert.equal(
+		result.status,
+		0,
+		`${command} failed (${result.signal ?? `exit ${result.status}`})`,
+	);
+}
+
 // Read identity without extracting archive paths into the checkout or staging tree.
 const archiveIdentity = `import json,pathlib,sys,tarfile
 with tarfile.open(sys.argv[1]) as t:
@@ -109,6 +123,7 @@ export function publishRelease({
 	root,
 	runId,
 	run = execute,
+	runInteractive = executeInteractive,
 	npm = () => pinnedNpm(root),
 }) {
 	assert.match(runId ?? "", /^[1-9]\d*$/, "Pass one GitHub Actions run ID");
@@ -175,12 +190,11 @@ export function publishRelease({
 	);
 	// The helper independently checks the successful run, exact attempt, qualified
 	// HEAD, PURL, digest, signer and retained bundle before publishing these bytes.
-	const result = run(
+	runInteractive(
 		"just",
 		["chainman", "npm-publish", relative(root, manifest), "--run", runId],
 		root,
 	);
-	if (result) console.log(result);
 	return manifest;
 }
 

@@ -258,6 +258,7 @@ paths = [
   "tests/browser/*.cjs",
   "tests/browser/www/*.js",
   "tests/tooling/*.cjs",
+  "tests/tooling/fixtures/*.cjs",
 ]
 profile = "toolchain"
 write = ["prettier", "--write", "--"]

@@ -4,6 +4,7 @@ const { spawnSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const {
 	appendFileSync,
+	chmodSync,
 	cpSync,
 	mkdirSync,
 	mkdtempSync,
@@ -125,7 +126,7 @@ function publicationFixture(t, fault) {
 	const f = fixture(t);
 	const calls = [];
 	const run = (command, args, cwd) => {
-		calls.push({ command, args, cwd });
+		calls.push({ command, args, cwd, interactive: false });
 		if (command === "git") {
 			if (args[0] === "status") return fault === "dirty" ? " M plugin.xml" : "";
 			if (args[0] === "rev-parse") return commit;
@@ -155,32 +156,35 @@ function publicationFixture(t, fault) {
 			if (fault === "tamper") appendFileSync(archive, "tampered");
 			return JSON.stringify({ [pkg.name]: info });
 		}
-		if (command === "just") {
-			assert.deepEqual(
-				[args[0], args[1], ...args.slice(3)],
-				["chainman", "npm-publish", "--run", "123"],
-			);
-			assert(!args[2].startsWith("/"));
-			const manifest = JSON.parse(readFileSync(join(f.root, args[2]), "utf8"));
-			assert.equal(manifest.sourceCommit, commit);
-			const archive = join(
-				dirname(join(f.root, args[2])),
-				manifest.artifacts[0].path,
-			);
-			assert.equal(
-				createHash("sha512").update(readFileSync(archive)).digest("hex"),
-				manifest.artifacts[0].digest.sha512,
-			);
-			if (fault === "CI-mismatch")
-				throw new Error("Qualified CI subject/digest mismatch");
-			return "verified frozen archive";
-		}
 		return execute(command, args, cwd);
+	};
+	const runInteractive = (command, args, cwd) => {
+		calls.push({ command, args, cwd, interactive: true });
+		assert.equal(command, "just");
+		assert.deepEqual(
+			[args[0], args[1], ...args.slice(3)],
+			["chainman", "npm-publish", "--run", "123"],
+		);
+		assert(!args[2].startsWith("/"));
+		const manifest = JSON.parse(readFileSync(join(f.root, args[2]), "utf8"));
+		assert.equal(manifest.sourceCommit, commit);
+		const archive = join(
+			dirname(join(f.root, args[2])),
+			manifest.artifacts[0].path,
+		);
+		assert.equal(
+			createHash("sha512").update(readFileSync(archive)).digest("hex"),
+			manifest.artifacts[0].digest.sha512,
+		);
+		if (fault === "CI-mismatch")
+			throw new Error("Qualified CI subject/digest mismatch");
+		return;
 	};
 	return {
 		...f,
 		calls,
 		run,
+		runInteractive,
 		npm: () => ({ command: "pinned-node", args: ["pinned-npm-cli.js"] }),
 	};
 }
@@ -194,6 +198,8 @@ test("manual publication snapshots committed source and passes only its frozen a
 		1,
 	);
 	assert.equal(f.calls.filter(({ command }) => command === "just").length, 1);
+	assert.equal(f.calls.at(-1).interactive, true);
+	assert(f.calls.slice(0, -1).every(({ interactive }) => !interactive));
 	assert.equal(JSON.parse(readFileSync(manifest, "utf8")).sourceCommit, commit);
 });
 
@@ -211,6 +217,94 @@ for (const [fault, expected] of [
 			f.calls.filter(({ command }) => command === "just").length,
 			fault === "CI-mismatch" ? 1 : 0,
 		);
+	});
+}
+
+// A real PTY catches regressions that mocks of spawn options cannot: the final
+// publisher must see terminal descriptors and exchange input/output immediately.
+const terminalDriver = `import errno,json,os,select,subprocess,sys,time
+master,slave=os.openpty()
+child=subprocess.Popen(sys.argv[1:], stdin=slave, stdout=slave, stderr=slave)
+os.close(slave)
+transcript=bytearray()
+sent=False
+deadline=time.monotonic()+10
+try:
+ while True:
+  assert time.monotonic()<deadline, 'Timed out waiting for terminal publication'
+  readable,_,_=select.select([master], [], [], 0.1)
+  if not readable:
+   if child.poll() is not None: break
+   continue
+  try: chunk=os.read(master, 65536)
+  except OSError as error:
+   if error.errno==errno.EIO: break
+   raise
+  if not chunk: break
+  transcript.extend(chunk)
+  if not sent and b'offline publication prompt: ' in transcript:
+   os.write(master, b'offline-test-code\\n')
+   sent=True
+ status=child.wait(timeout=2)
+ print(json.dumps({'status':status, 'sent':sent, 'transcript':transcript.decode()}))
+finally:
+ os.close(master)
+ if child.poll() is None:
+  child.kill()
+  child.wait()
+`;
+
+for (const exitCode of [0, 17]) {
+	test(`publication inherits terminal input/output and propagates exit ${exitCode}`, (t) => {
+		const f = fixture(t);
+		const { archive, info } = f.pack(f.source, f.root);
+		const config = join(f.root, "terminal.json");
+		writeFileSync(
+			config,
+			JSON.stringify({
+				root: f.root,
+				source: f.source,
+				archive,
+				info,
+				commit,
+				exitCode,
+			}),
+		);
+		const terminalFixture = join(__dirname, "fixtures/release-terminal.cjs");
+		const bin = join(f.root, "bin");
+		mkdirSync(bin);
+		const publisher = join(bin, "just");
+		writeFileSync(
+			publisher,
+			`#!${process.execPath}\nprocess.argv.splice(2, 0, "publisher");\nrequire(${JSON.stringify(terminalFixture)});\n`,
+		);
+		chmodSync(publisher, 0o755);
+		const result = spawnSync(
+			"python3",
+			["-c", terminalDriver, process.execPath, terminalFixture],
+			{
+				encoding: "utf8",
+				timeout: 15000,
+				env: {
+					...process.env,
+					CHOOSER_RELEASE_FIXTURE: config,
+					PATH: `${bin}:${process.env.PATH}`,
+				},
+			},
+		);
+		assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+		const { status, sent, transcript } = JSON.parse(result.stdout);
+		assert(sent, transcript);
+		assert.match(transcript, /terminal stderr connected/);
+		assert.match(transcript, /terminal input received/);
+		if (exitCode === 0) {
+			assert.equal(status, 0, transcript);
+			assert.match(transcript, /publication completed/);
+		} else {
+			assert.notEqual(status, 0, transcript);
+			assert.match(transcript, /just failed \(exit 17\)/);
+			assert.doesNotMatch(transcript, /publication completed/);
+		}
 	});
 }
 
