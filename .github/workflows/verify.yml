@@ -38,11 +38,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-portable
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-portable
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
   android:
     if: ${{ !github.event.repository.private }}
@@ -67,11 +66,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-android
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-android
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
   android-failures:
     if: ${{ !github.event.repository.private }}
@@ -96,11 +94,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-android-failures
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-android-failures
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
   ios:
     if: ${{ !github.event.repository.private }}
@@ -125,11 +122,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-ios
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-ios
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
   ios-modern:
     if: ${{ !github.event.repository.private }}
@@ -154,11 +150,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-ios-modern
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-ios-modern
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
   capacitor-android:
     if: ${{ !github.event.repository.private }}
@@ -183,11 +178,10 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-capacitor-android
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-capacitor-android
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
   ios-simulator:
     if: ${{ !github.event.repository.private }}
@@ -220,7 +214,7 @@ jobs:
         if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: diagnostics-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}-summary
+          name: diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}-summary
           path: |
             .verification/reports/**/qualification.json
             .verification/reports/**/*-summary.json
@@ -230,17 +224,15 @@ jobs:
             .verification/reports/**/*-not-started.json
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
       - name: Retain simulator bundles
         if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qualification-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}
           path: .verification/reports/
           include-hidden-files: true
           retention-days: 14
-          overwrite: true
           if-no-files-found: error
 
   qualification:
@@ -269,7 +261,7 @@ jobs:
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
         with:
-          pattern: qualification-*
+          pattern: qualification-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: .verification/downloaded
           merge-multiple: true
       - name: Require every lane and matching package integrity
@@ -296,7 +288,7 @@ jobs:
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
         with:
-          name: qualification-portable
+          name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-portable
           path: .verification/release-input
       - name: Check and attest the original qualified archive
         env:

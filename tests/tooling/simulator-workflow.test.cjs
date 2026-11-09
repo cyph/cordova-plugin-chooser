@@ -92,7 +92,10 @@ test("main workflow retains PR and manual entry points with only master pushes",
 		workflow,
 		/--investigation-only|ios_diagnostic|diagnose-ios/,
 	);
-	assert.match(workflow, /pattern: qualification-\*/);
+	assert.match(
+		workflow,
+		/pattern: qualification-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}-\*/,
+	);
 	const simulator = workflow.slice(
 		workflow.indexOf("\n  ios-simulator:"),
 		workflow.indexOf("\n  qualification:"),
@@ -106,6 +109,92 @@ test("main workflow retains PR and manual entry points with only master pushes",
 		simulator,
 		/always\(\) && hashFiles\('\.verification\/reports\/\*\*'\) != ''/,
 	);
+});
+
+test("qualification artifacts and signer input are isolated to the exact run attempt", () => {
+	const workflow = readFileSync(
+		join(__dirname, "../../.github/workflows/verify.yml"),
+		"utf8",
+	);
+	const transfers = [
+		...workflow.matchAll(
+			/uses: actions\/(upload|download)-artifact@[^\n]+\n([\s\S]*?)(?=\n      - |\n  [a-z][\w-]*:|$)/g,
+		),
+	].map(([, direction, body]) => ({
+		direction,
+		name: body.match(/^          name: (.+)$/m)?.[1],
+		pattern: body.match(/^          pattern: (.+)$/m)?.[1],
+	}));
+	const uploads = transfers.filter(({ direction }) => direction === "upload");
+	assert.equal(uploads.length, 9);
+	assert.doesNotMatch(workflow, /overwrite:/);
+	for (const { name } of uploads) {
+		assert(
+			name.includes("${{ github.run_id }}"),
+			"Every artifact identifies its run",
+		);
+		assert(
+			name.includes("${{ github.run_attempt }}"),
+			"Every artifact identifies its attempt",
+		);
+	}
+	const render = (
+		template,
+		run = "123",
+		attempt = "2",
+		framework = "cordova-ios7",
+		device = "iphone",
+	) =>
+		template.replace(
+			/\$\{\{ ([\w.]+) \}\}/g,
+			(_, key) =>
+				({
+					"github.run_id": run,
+					"github.run_attempt": attempt,
+					"matrix.framework": framework,
+					"matrix.device": device,
+				})[key],
+		);
+	const names = (run, attempt) =>
+		uploads.flatMap(({ name }) =>
+			name.includes("matrix.framework")
+				? ["cordova-ios7", "cordova-ios8"].flatMap((framework) =>
+						["iphone", "ipad"].map((device) =>
+							render(name, run, attempt, framework, device),
+						),
+					)
+				: [render(name, run, attempt)],
+		);
+	const downloads = transfers.filter(
+		({ direction }) => direction === "download",
+	);
+	assert.equal(downloads.length, 2);
+	const aggregate = downloads.find(({ pattern }) => pattern);
+	assert(aggregate, "Qualification must select the current attempt's reports");
+	const matches = (name) =>
+		name.startsWith(render(aggregate.pattern).slice(0, -1));
+	assert(aggregate.pattern.endsWith("-*"));
+	const current = names("123", "2");
+	assert.equal(
+		new Set(current).size,
+		current.length,
+		"Every lane and partition keeps distinct evidence",
+	);
+	assert.equal(
+		current.filter(matches).length,
+		10,
+		"Six lanes and four simulator partitions qualify together",
+	);
+	for (const other of [...names("123", "1"), ...names("124", "2")])
+		assert(
+			!matches(other),
+			`Qualification must reject other run/attempt artifact ${other}`,
+		);
+	const signer = downloads.find(({ name }) => name);
+	assert(signer, "Signer must download one exact portable artifact");
+	assert.equal(render(signer.name), "qualification-123-2-portable");
+	assert(current.includes(render(signer.name)));
+	assert(!names("123", "1").includes(render(signer.name)));
 });
 
 test("focused diagnostics remain manual and separate from qualification", () => {
