@@ -59,6 +59,7 @@
 		"cordova-browser": "^7.0.0",
 		"cordova-ios7": "npm:cordova-ios@>=7.0.0 <8",
 		"cordova-ios8": "npm:cordova-ios@>=8.0.0 <9",
+		"npm": "12.2.0",
 		"typescript": "7.0.2",
 		"typescript-minimum": "npm:typescript@>=5.7.0 <5.8"
 	},

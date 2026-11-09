@@ -93,6 +93,12 @@ verify-capacitor-android *args:
     #!/bin/sh
     exec {{quote(just_executable())}} chainman run verify-capacitor-android "$@"
 
+# Publish the local source archive after verifying the qualified CI attestation.
+[positional-arguments]
+release-publish run:
+    #!/bin/sh
+    exec {{quote(just_executable())}} chainman run release-publish "$1"
+
 [positional-arguments]
 verify-android-failures *args:
     #!/bin/sh

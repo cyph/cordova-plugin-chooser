@@ -257,6 +257,8 @@ jobs:
       ]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      integrity: ${{ steps.qualify.outputs.integrity }}
     env:
       CHAINMAN_MODE: host-nix
       CHOOSER_JOB_RESULTS: ${{ toJSON(needs) }}
@@ -271,4 +273,42 @@ jobs:
           path: .verification/downloaded
           merge-multiple: true
       - name: Require every lane and matching package integrity
+        id: qualify
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run qualify
+
+  attest:
+    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/master' }}
+    needs: qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      CHAINMAN_MODE: host-nix
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        with:
+          name: qualification-portable
+          path: .verification/release-input
+      - name: Check and attest the original qualified archive
+        env:
+          QUALIFIED_INTEGRITY: ${{ needs.qualification.outputs.integrity }}
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' develop .#default --command node scripts/release.mjs ci "$QUALIFIED_INTEGRITY"
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman attest create .verification/release/manifest.json
+      - name: Retain attestation bundles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualified-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .verification/release/*.sigstore.json
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error

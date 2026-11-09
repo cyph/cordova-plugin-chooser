@@ -3,6 +3,7 @@ import { retryDependencyPreparation } from "./dependency-retry.mjs";
 import { spawnSync } from "node:child_process";
 import {
 	accessSync,
+	appendFileSync,
 	constants,
 	cpSync,
 	existsSync,
@@ -25,7 +26,8 @@ import {
 } from "./qualification.mjs";
 import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
-import { checkPackedFiles } from "./package.mjs";
+import { checkPackedFiles, packedPackage } from "./package.mjs";
+import { pinnedNpm } from "./npm.mjs";
 import { verifyIosSimulator } from "./ios-simulator.mjs";
 import {
 	simulatorOptions,
@@ -175,19 +177,30 @@ function pack() {
 	const directory = join(output, "package");
 	rmSync(directory, { recursive: true, force: true });
 	mkdirSync(directory, { recursive: true });
-	const [info] = JSON.parse(
+	const npm = pinnedNpm(root);
+	const info = packedPackage(
 		run(
-			"npm",
-			["pack", "--json", "--ignore-scripts", "--pack-destination", directory],
+			npm.command,
+			[
+				...npm.args,
+				"pack",
+				"--json",
+				"--ignore-scripts",
+				"--pack-destination",
+				directory,
+			],
 			root,
 			true,
 		),
+		pkg.name,
 	);
 	report.package = { version: pkg.version, integrity: info.integrity };
 	checked("package");
 	const files = new Set(info.files.map((file) => file.path));
 	checkPackedFiles(root, pkg, files);
 	const archive = join(directory, info.filename);
+	// The signer consumes these original bytes, never a later repack.
+	if (lane === "portable") retain(archive, info.filename);
 	console.log(
 		`Package: ${info.filename}, ${files.size} files, integrity ${info.integrity}`,
 	);
@@ -723,17 +736,17 @@ const lanes = {
 		checked("dependency-failures");
 	},
 	qualification() {
-		console.log(
-			JSON.stringify(
-				aggregateReports(
-					process.env.CHOOSER_REPORTS_ROOT || join(output, "downloaded"),
-					process.env.GITHUB_SHA || report.commit,
-					JSON.parse(process.env.CHOOSER_JOB_RESULTS || "{}"),
-				),
-				null,
-				2,
-			),
+		const qualification = aggregateReports(
+			process.env.CHOOSER_REPORTS_ROOT || join(output, "downloaded"),
+			process.env.GITHUB_SHA || report.commit,
+			JSON.parse(process.env.CHOOSER_JOB_RESULTS || "{}"),
 		);
+		console.log(JSON.stringify(qualification, null, 2));
+		if (process.env.GITHUB_OUTPUT)
+			appendFileSync(
+				process.env.GITHUB_OUTPUT,
+				`integrity=${qualification.integrity}\n`,
+			);
 	},
 	doctor() {
 		staticChecks();

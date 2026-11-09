@@ -203,6 +203,20 @@ shutdown_seconds = 10
 profile = "default"
 commands = [["node", "scripts/verify.mjs", "qualification"]]
 
+[tasks.release-publish]
+profile = "default"
+setup = ["javascript"]
+commands = [["node", "scripts/release.mjs", "publish"]]
+
+[attest]
+provider = "github-actions"
+repository = "cyph/cordova-plugin-chooser"
+workflow = ".github/workflows/verify.yml"
+ref = "refs/heads/master"
+required_jobs = ["qualification", "attest"]
+artifact_name = "qualified-release-{runId}-{runAttempt}"
+tag = "next"
+
 [tasks.verify-native]
 depends_on = ["verify-android", "verify-ios"]
 

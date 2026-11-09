@@ -2,6 +2,23 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
+export function packedPackage(output, name) {
+	// npm 12 emits an object keyed by package name, including for one archive.
+	const packages = JSON.parse(output);
+	assert.deepEqual(
+		Object.keys(packages),
+		[name],
+		"Expected one named npm archive",
+	);
+	const info = packages[name];
+	assert.equal(info.name, name, "Unexpected npm package name");
+	assert(
+		typeof info.filename === "string" && !/[\\/]/.test(info.filename),
+		"Invalid npm archive filename",
+	);
+	return info;
+}
+
 export function checkPackedFiles(root, pkg, entries) {
 	const files = new Set(entries);
 	for (const name of [

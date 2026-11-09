@@ -10,6 +10,8 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import { rc1, comparisonIntegrity } from "./ios-comparison-model.mjs";
+import { pinnedNpm } from "./npm.mjs";
+import { packedPackage } from "./package.mjs";
 
 export function comparisonFiles(directory) {
 	const files = [];
@@ -115,7 +117,12 @@ export function applyMetadataImportExperiment(directory) {
 	return applyMetadataModeExperiment(directory, true);
 }
 
-export function prepareComparisonDescriptors({ root, plan, run }) {
+export function prepareComparisonDescriptors({
+	root,
+	plan,
+	run,
+	npm = () => pinnedNpm(root),
+}) {
 	// Ignore untracked evidence, but never describe tracked local edits as a
 	// committed RC2 candidate. Archive the resolved object, never the worktree.
 	assert.equal(
@@ -202,10 +209,12 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 					metadataAsCopy,
 				);
 			}
-			[pack] = JSON.parse(
+			const packer = npm();
+			pack = packedPackage(
 				run(
-					"npm",
+					packer.command,
 					[
+						...packer.args,
 						"pack",
 						"--json",
 						"--ignore-scripts",
@@ -215,6 +224,7 @@ export function prepareComparisonDescriptors({ root, plan, run }) {
 					packSource,
 					true,
 				),
+				rc1.name,
 			);
 			assert(
 				pack &&

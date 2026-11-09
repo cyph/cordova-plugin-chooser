@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const {
 	mkdtempSync,
 	mkdirSync,
@@ -350,7 +351,32 @@ test("qualification requires every successful job, complete reports and the same
 		/Unknown qualification lane/,
 	);
 	reports.forEach(save);
-	assert.equal(aggregateReports(directory, sha, jobs).lanes.length, 8);
+	const qualified = aggregateReports(directory, sha, jobs);
+	assert.equal(qualified.lanes.length, 8);
+	assert.equal(qualified.integrity, reports[0].package.integrity);
+	assert.equal(qualified.commit, sha);
+	const output = join(directory, "github-output");
+	const qualify = () =>
+		spawnSync(
+			process.execPath,
+			[join(__dirname, "../../scripts/verify.mjs"), "qualification"],
+			{
+				encoding: "utf8",
+				env: {
+					...process.env,
+					CHOOSER_REPORTS_ROOT: directory,
+					GITHUB_SHA: sha,
+					CHOOSER_JOB_RESULTS: JSON.stringify(jobs),
+					GITHUB_OUTPUT: output,
+				},
+			},
+		);
+	const successful = qualify();
+	assert.equal(successful.status, 0, successful.stdout + successful.stderr);
+	assert.equal(
+		readFileSync(output, "utf8"),
+		`integrity=${qualified.integrity}\n`,
+	);
 	const simulator = reports.find((report) => report.lane === "ios-simulator");
 	save({
 		...simulator,
@@ -435,6 +461,13 @@ test("qualification requires every successful job, complete reports and the same
 		save({ ...original, ...patch });
 		assert.throws(() => aggregateReports(directory, sha, jobs));
 	}
+	writeFileSync(output, "");
+	assert.notEqual(qualify().status, 0);
+	assert.equal(
+		readFileSync(output, "utf8"),
+		"",
+		"A mismatched package cannot expose signing integrity",
+	);
 	save(original);
 	rmSync(join(directory, "ios"), { recursive: true });
 	assert.throws(

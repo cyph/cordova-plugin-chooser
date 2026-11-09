@@ -5,6 +5,22 @@ const { resolve } = require("node:path");
 const pkg = require("../../package.json");
 const root = resolve(__dirname, "../..");
 
+test("npm 12 pack output identifies exactly one named archive", async () => {
+	const { packedPackage } = await import("../../scripts/package.mjs");
+	const info = { name: pkg.name, filename: `${pkg.name}-${pkg.version}.tgz` };
+	assert.deepEqual(
+		packedPackage(JSON.stringify({ [pkg.name]: info }), pkg.name),
+		info,
+	);
+	for (const output of [
+		[info],
+		{ other: info },
+		{ [pkg.name]: info, other: info },
+		{ [pkg.name]: { ...info, filename: "../package.tgz" } },
+	])
+		assert.throws(() => packedPackage(JSON.stringify(output), pkg.name));
+});
+
 function packageFiles() {
 	const sources = readdirSync(resolve(root, "src"), {
 		recursive: true,

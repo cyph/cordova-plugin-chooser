@@ -204,9 +204,13 @@ function descriptorFixture(
 					? Buffer.concat([bytes, Buffer.from("tampered")])
 					: bytes,
 			);
-			return JSON.stringify([
-				{ filename, integrity: m.comparisonIntegrity(bytes) },
-			]);
+			return JSON.stringify({
+				"cordova-plugin-chooser": {
+					name: "cordova-plugin-chooser",
+					filename,
+					integrity: m.comparisonIntegrity(bytes),
+				},
+			});
 		} else if (command === "python3") {
 			unpack(readFileSync(args[2], "utf8"), join(args[3], "package"));
 		} else assert.fail(`Unexpected fixture command ${command}`);
@@ -218,7 +222,13 @@ function descriptorFixture(
 		plan,
 		calls,
 		files,
-		prepare: () => m.prepareComparisonDescriptors({ root, plan, run }),
+		prepare: () =>
+			m.prepareComparisonDescriptors({
+				root,
+				plan,
+				run,
+				npm: () => ({ command: "npm", args: [] }),
+			}),
 	};
 }
 
