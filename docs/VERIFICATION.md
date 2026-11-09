@@ -73,6 +73,12 @@ Simulator investigations have also encountered plain UIKit app startup, launch, 
 
 Focused diagnostic, investigation, and release comparison reports cannot substitute for required qualification. The aggregator checks exact case manifests, source revision, package identity, and all required partitions; mixed, missing, or diagnostic coverage is rejected. Return UI cases to required CI only with evidence explaining the failure and demonstrating a fix, bounded validation on fresh simulators across affected partitions, and review of the exact required manifest. Do not rerun until green; retain failures and update [known issues](KNOWN-ISSUES.md) to reflect the evidence.
 
+### Stale-event guard checks
+
+Run `just chainman run verify-ios-stale-events` locally or manually dispatch the [iOS stale-event workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-stale-events.yml) on public `master`. Using the pinned baseline Apple toolchain and Cordova iOS 8 on iPhone, the three baseline tests must pass. Three disposable packages each disable one identity guard: Photos, adaptive presentation, or `cancelPick` IDs. Each corresponding XCTest must fail at its named stale-event assertion; the workflow passes only when all three regressions are detected. Compile errors, timeouts, missing or skipped tests, and unrelated failures are failures.
+
+Each arm uses a fresh simulator and leaves the canonical archive unchanged. Reports under `.verification/stale-event-mutations/` and diagnostic artifacts do not count as release qualification or attestation.
+
 ### Manual iOS release comparison
 
 Run the partition command above locally or dispatch the manual-only [iOS release comparison workflow](https://github.com/cyph/cordova-plugin-chooser/blob/master/.github/workflows/ios-release-comparison.yml). The default `releases` experiment runs all four framework/device partitions. It compares the checksum-pinned published RC1 with the committed RC2 archive using the same pinned baseline Apple toolchain, simulator runtime, SDK, framework, and harness. Each partition follows the fixed sequence UIKit, RC1, RC2, RC2, RC1, UIKit, with a fresh simulator and provider store for every entry.

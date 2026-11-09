@@ -35,7 +35,7 @@ class Chooser: CDVPlugin {
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private var active: ChooserRequest?
+	private(set) var active: ChooserRequest?
 	#if compiler(>=5.9)
 	@MainActor
 	#endif

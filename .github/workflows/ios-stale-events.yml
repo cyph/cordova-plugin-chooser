@@ -1,0 +1,45 @@
+name: iOS stale-event regression checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-stale-events-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  stale-events:
+    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/master' }}
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      CHAINMAN_MODE: host-nix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - name: Prepare frozen dependencies
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
+      - name: Verify baseline and detect three disabled identity guards
+        run: nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run verify-ios-stale-events
+      - name: Verify tracked files are unchanged
+        if: ${{ always() }}
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Retain isolated mutation evidence
+        if: ${{ always() && hashFiles('.verification/stale-event-mutations/**') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diagnostics-stale-events-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .verification/stale-event-mutations/*.json
+            .verification/stale-event-mutations/*.log
+            .verification/stale-event-mutations/*.tgz
+            .verification/stale-event-mutations/*/files.json
+            .verification/stale-event-mutations/*/summary.json
+            .verification/stale-event-mutations/*/tests.json
+            .verification/stale-event-mutations/*/tests.xcresult
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error

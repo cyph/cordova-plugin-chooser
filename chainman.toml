@@ -120,6 +120,13 @@ commands = [["node", "scripts/verify.mjs", "ios-simulator-part"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.verify-ios-stale-events]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/ios-stale-events.mjs"]]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.compare-ios-releases]
 profile = "ios"
 setup = ["javascript"]

@@ -218,6 +218,28 @@ private final class PickerHarness {
         XCTAssertNil(presenter.presentedViewController, "Reopen without an existing modal", file: file, line: line)
         XCTAssertNil(presenter.transitionCoordinator, "Reopen without an existing transition", file: file, line: line)
     }
+    func assertSelectingRequest(_ expectedRequest: ChooserRequest?, callback: String, marker: String,
+                                file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertNotNil(expectedRequest, "\(marker): Expected an active request", file: file, line: line)
+        XCTAssertTrue(plugin.active === expectedRequest, "\(marker): Active request identity changed", file: file, line: line)
+        XCTAssertEqual(expectedRequest?.callback, callback, "\(marker): Incorrect callback", file: file, line: line)
+        XCTAssertEqual(expectedRequest?.id, callback, "\(marker): Incorrect request id", file: file, line: line)
+        XCTAssertEqual(expectedRequest?.state, .selecting, "\(marker): Request is no longer selecting", file: file, line: line)
+        XCTAssertEqual(expectedRequest?.canceled, false, "\(marker): Request was canceled", file: file, line: line)
+        XCTAssertNil(expectedRequest?.cancellationReason, "\(marker): Request has a cancellation reason", file: file, line: line)
+    }
+    func assertStaleEventIgnored(_ callback: String, marker: String,
+                                file: StaticString = #filePath, line: UInt = #line,
+                                perform: @MainActor () -> Void) {
+        let expectedRequest = plugin.active
+        let callbackCount = messages(callback).count
+        assertSelectingRequest(expectedRequest, callback: callback, marker: marker, file: file, line: line)
+        perform()
+        // UIKit may still block result delivery after a stale event has already
+        // mutated the request. Inspect it now, without yielding to queued work.
+        assertSelectingRequest(expectedRequest, callback: callback, marker: marker, file: file, line: line)
+        XCTAssertEqual(messages(callback).count, callbackCount, "\(marker): Callback count changed", file: file, line: line)
+    }
     func waitForDismissalAsync(_ presentation: PickerPresentation) async throws {
         try await waitUntilAsync {
             presentation.completed && presentation.controller.presentingViewController == nil &&
@@ -258,8 +280,12 @@ final class ChooserPickerTests: XCTestCase {
                 XCTAssertTrue(h.isObservingResult, "Start the next presentation inside cancellation result delivery")
                 XCTAssertTrue(presentation.started)
                 reopened = presentation
-                plugin.presentationControllerDidDismiss(adaptive)
-                plugin.documentPickerWasCancelled(first)
+                h.assertStaleEventIgnored("second", marker: "CHOOSER_STALE_EVENT:adaptive") {
+                    plugin.presentationControllerDidDismiss(adaptive)
+                }
+                h.assertStaleEventIgnored("second", marker: "CHOOSER_STALE_EVENT:adaptive") {
+                    plugin.documentPickerWasCancelled(first)
+                }
                 XCTAssertTrue(h.messages("second").isEmpty)
                 guard let second = presentation.controller as? UIDocumentPickerViewController else {
                     XCTFail("Expected document picker"); return
@@ -347,7 +373,9 @@ final class ChooserPickerTests: XCTestCase {
             XCTAssertFalse(presentation.started)
             XCTAssertFalse(presentation.controller.isBeingPresented)
             XCTAssertNil(presentation.controller.presentingViewController)
-            h.invoke("cancelPick", ["stale-identity"], "stale-cancel")
+            h.assertStaleEventIgnored("signal-first", marker: "CHOOSER_STALE_EVENT:request-id") {
+                h.invoke("cancelPick", ["stale-identity"], "stale-cancel")
+            }
             XCTAssertTrue(h.messages("signal-first").isEmpty)
             h.invoke("cancelPick", ["signal-first"], "cancel-ack")
             h.invoke("cancelPick", ["signal-first"], "duplicate-cancel-ack")
@@ -368,8 +396,12 @@ final class ChooserPickerTests: XCTestCase {
                 XCTAssertTrue(h.isObservingResult, "Start the next presentation inside cancellation result delivery")
                 XCTAssertTrue(presentation.started, "Exercise cancellation immediately after real present returns")
                 reopened = presentation
-                h.plugin.documentPickerWasCancelled(first)
-                h.invoke("cancelPick", ["signal-first"], "late-cancel")
+                h.assertStaleEventIgnored("signal-second", marker: "CHOOSER_STALE_EVENT:adaptive") {
+                    h.plugin.documentPickerWasCancelled(first)
+                }
+                h.assertStaleEventIgnored("signal-second", marker: "CHOOSER_STALE_EVENT:request-id") {
+                    h.invoke("cancelPick", ["signal-first"], "late-cancel")
+                }
                 XCTAssertTrue(h.messages("signal-second").isEmpty)
                 h.invoke("cancelPick", ["signal-second"], "reopened-cancel")
             }
@@ -521,7 +553,9 @@ final class ChooserPickerTests: XCTestCase {
                 XCTAssertTrue(presentation.started, "Reopen through an ordinary UIKit presentation")
                 reopenedPresentation = presentation
                 guard let reopened = presentation.controller as? PHPickerViewController else { XCTFail("Expected photo picker"); return }
-                h.plugin.picker(picker, didFinishPicking: [])
+                h.assertStaleEventIgnored("photos-reopened", marker: "CHOOSER_STALE_EVENT:photos") {
+                    h.plugin.picker(picker, didFinishPicking: [])
+                }
                 XCTAssertTrue(h.messages("photos-reopened").isEmpty)
                 h.plugin.picker(reopened, didFinishPicking: [])
                 h.plugin.picker(reopened, didFinishPicking: [])
