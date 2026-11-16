@@ -26,6 +26,7 @@ outputs = [
   ".github/workflows/ios-simulator-diagnostic.yml",
   ".github/workflows/ios-stale-events.yml",
   ".github/workflows/dependency-preview.yml",
+  "tests/capacitor/settings.gradle",
   "tests/capacitor/locks/app.lockfile",
   "tests/capacitor/locks/runtime.lockfile",
   "tests/capacitor/buildscript-gradle.lockfile",
@@ -214,7 +215,18 @@ manifests = [
 ]
 mode = "compatible"
 explicit_only = true
-pins = []
+# The fixture uses Gradle 8; update its AGP tooling independently of the frozen
+# Capacitor framework dependencies, keeping application/library plugins together.
+pins = [
+  { provider = "maven", name = "com.android.application:com.android.application.gradle.plugin", file = "tests/capacitor/settings.gradle", format = "regex", pattern = '''^[ \t]*id[ \t]+['"]com\.android\.application['"][ \t]+version[ \t]+['"](?P<value>\d+\.\d+\.\d+)['"][ \t]*$''', bound = ">=8.13.0,<9", coordinated = [
+    "com.android.application:com.android.application.gradle.plugin",
+    "com.android.library:com.android.library.gradle.plugin",
+  ] },
+  { provider = "maven", name = "com.android.library:com.android.library.gradle.plugin", file = "tests/capacitor/settings.gradle", format = "regex", pattern = '''^[ \t]*id[ \t]+['"]com\.android\.library['"][ \t]+version[ \t]+['"](?P<value>\d+\.\d+\.\d+)['"][ \t]*$''', bound = ">=8.13.0,<9", coordinated = [
+    "com.android.application:com.android.application.gradle.plugin",
+    "com.android.library:com.android.library.gradle.plugin",
+  ] },
+]
 catalogs = []
 maven_repositories = ["central", "google", "plugins"]
 resolve = [
