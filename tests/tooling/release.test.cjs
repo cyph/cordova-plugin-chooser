@@ -10,6 +10,8 @@ const {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
+	symlinkSync,
 	writeFileSync,
 } = require("node:fs");
 const { tmpdir } = require("node:os");
@@ -24,8 +26,8 @@ const pkg = {
 	devDependencies: { npm: "12.2.0" },
 };
 
-function execute(command, args, cwd) {
-	const result = spawnSync(command, args, { cwd, encoding: "utf8" });
+function execute(command, args, cwd, env = process.env) {
+	const result = spawnSync(command, args, { cwd, env, encoding: "utf8" });
 	assert.equal(result.status, 0, result.stdout + result.stderr);
 	return result.stdout.trim();
 }
@@ -125,12 +127,30 @@ test("CI release preparation consumes the retained portable archive without repa
 function publicationFixture(t, fault) {
 	const f = fixture(t);
 	const calls = [];
+	let statusReads = 0;
+	let headReads = 0;
 	const run = (command, args, cwd) => {
 		calls.push({ command, args, cwd, interactive: false });
 		if (command === "git") {
-			if (args[0] === "status") return fault === "dirty" ? " M plugin.xml" : "";
-			if (args[0] === "rev-parse") return commit;
-			assert.equal(args[0], "archive");
+			if (args[0] === "status") {
+				statusReads++;
+				if (fault === "dirty") return " M plugin.xml";
+				return fault === "late-dirty" && statusReads === 2
+					? " M plugin.xml"
+					: "";
+			}
+			if (args[0] === "rev-parse") {
+				headReads++;
+				return fault === "HEAD-changed" && headReads === 2
+					? "b".repeat(40)
+					: commit;
+			}
+			assert.deepEqual(args.slice(0, 4), [
+				"-c",
+				"tar.umask=0022",
+				"archive",
+				"--format=tar",
+			]);
 			assert.equal(args.at(-1), commit);
 			return "";
 		}
@@ -203,8 +223,129 @@ test("manual publication snapshots committed source and passes only its frozen a
 	assert.equal(JSON.parse(readFileSync(manifest, "utf8")).sourceCommit, commit);
 });
 
+test("real publication snapshot matches checkout npm bytes despite restrictive Git tar.umask", async (t) => {
+	const { publishRelease } = await import("../../scripts/release.mjs");
+	const { pinnedNpm } = await import("../../scripts/npm.mjs");
+	const { packedPackage } = await import("../../scripts/package.mjs");
+	const project = join(__dirname, "../..");
+	const installed = pinnedNpm(project);
+	const projectPackage = JSON.parse(
+		readFileSync(join(project, "package.json"), "utf8"),
+	);
+	const f = fixture(t);
+	const root = f.source;
+	writeFileSync(
+		join(root, "package.json"),
+		JSON.stringify({
+			...pkg,
+			devDependencies: { npm: projectPackage.devDependencies.npm },
+		}),
+	);
+	writeFileSync(join(root, ".gitignore"), "node_modules/\n.verification/\n");
+	const tracked = [...Object.keys(f.files), ".gitignore"];
+	for (const name of tracked) chmodSync(join(root, name), 0o644);
+	chmodSync(join(root, "www/chooser.js"), 0o755);
+	mkdirSync(join(root, "node_modules"));
+	symlinkSync(
+		dirname(dirname(installed.args[0])),
+		join(root, "node_modules/npm"),
+		"dir",
+	);
+	// Keep fixture Git writes independent of caller Git state, hooks, and identity.
+	const gitEnv = Object.fromEntries(
+		Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
+	);
+	Object.assign(gitEnv, {
+		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_CONFIG_GLOBAL: "/dev/null",
+		GIT_TERMINAL_PROMPT: "0",
+		GIT_AUTHOR_NAME: "Release fixture",
+		GIT_AUTHOR_EMAIL: "release-fixture@example.invalid",
+		GIT_COMMITTER_NAME: "Release fixture",
+		GIT_COMMITTER_EMAIL: "release-fixture@example.invalid",
+	});
+	const git = (...args) =>
+		execute("git", ["-c", "core.hooksPath=/dev/null", ...args], root, gitEnv);
+	git("init", "--template=", "--initial-branch=release-fixture");
+	git("add", "--", ...tracked);
+	git("-c", "commit.gpgSign=false", "commit", "-m", "Release fixture");
+	git("config", "--local", "tar.umask", "0077");
+	const sourceCommit = git("rev-parse", "HEAD");
+	const index = git("ls-files", "--stage");
+	const original = tracked.map((name) => ({
+		name,
+		bytes: readFileSync(join(root, name)),
+		mode: statSync(join(root, name)).mode & 0o777,
+	}));
+	const baseline = join(f.root, "checkout-pack");
+	mkdirSync(baseline);
+	const npm = pinnedNpm(root);
+	const info = packedPackage(
+		execute(
+			npm.command,
+			[
+				...npm.args,
+				"pack",
+				"--json",
+				"--ignore-scripts",
+				"--pack-destination",
+				baseline,
+			],
+			root,
+		),
+		pkg.name,
+	);
+	const expected = readFileSync(join(baseline, info.filename));
+	let publicationCalls = 0;
+	let selectedManifest;
+	const path = publishRelease({
+		root,
+		runId: "123",
+		runInteractive(command, args, cwd) {
+			publicationCalls++;
+			assert.equal(command, "just");
+			assert.equal(cwd, root);
+			assert.deepEqual(
+				[args[0], args[1], ...args.slice(3)],
+				["chainman", "npm-publish", "--run", "123"],
+			);
+			assert(!args[2].startsWith("/"));
+			selectedManifest = join(cwd, args[2]);
+		},
+	});
+	assert.equal(publicationCalls, 1);
+	assert.equal(path, selectedManifest);
+	const manifest = JSON.parse(readFileSync(path, "utf8"));
+	const archive = join(dirname(path), manifest.artifacts[0].path);
+	assert.equal(manifest.sourceCommit, sourceCommit);
+	assert.deepEqual(readFileSync(archive), expected);
+	assert.equal(integrity(archive), info.integrity);
+	assert.equal(
+		manifest.artifacts[0].digest.sha512,
+		createHash("sha512").update(expected).digest("hex"),
+	);
+	for (const { name, bytes, mode } of original) {
+		assert.deepEqual(
+			readFileSync(join(root, name)),
+			bytes,
+			`${name} contents changed`,
+		);
+		assert.equal(
+			statSync(join(root, name)).mode & 0o777,
+			mode,
+			`${name} mode changed`,
+		);
+	}
+	assert.equal(git("status", "--porcelain", "--untracked-files=normal"), "");
+	assert.equal(git("rev-parse", "HEAD"), sourceCommit);
+	assert.equal(git("ls-files", "--stage"), index);
+	assert.equal(git("config", "--local", "--get", "tar.umask"), "0077");
+});
+
 for (const [fault, expected] of [
 	["dirty", /clean checkout/],
+	["late-dirty", /clean checkout/],
+	["HEAD-changed", /HEAD changed while preparing the release/],
 	["tamper", /integrity mismatch/],
 	["identity", /name\/version mismatch/],
 	["CI-mismatch", /Qualified CI subject\/digest mismatch/],
@@ -213,6 +354,11 @@ for (const [fault, expected] of [
 		const { publishRelease } = await import("../../scripts/release.mjs");
 		const f = publicationFixture(t, fault);
 		assert.throws(() => publishRelease({ ...f, runId: "123" }), expected);
+		if (fault === "late-dirty" || fault === "HEAD-changed")
+			assert.equal(
+				f.calls.filter(({ command }) => command === "pinned-node").length,
+				1,
+			);
 		assert.equal(
 			f.calls.filter(({ command }) => command === "just").length,
 			fault === "CI-mismatch" ? 1 : 0,

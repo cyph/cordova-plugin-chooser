@@ -142,7 +142,19 @@ export function publishRelease({
 	const source = join(directory, "source");
 	mkdirSync(source);
 	const snapshot = join(directory, "source.tar");
-	run("git", ["archive", "--format=tar", `--output=${snapshot}`, commit], root);
+	// Keep snapshot permissions independent of caller Git configuration.
+	run(
+		"git",
+		[
+			"-c",
+			"tar.umask=0022",
+			"archive",
+			"--format=tar",
+			`--output=${snapshot}`,
+			commit,
+		],
+		root,
+	);
 	run(
 		"python3",
 		["-m", "tarfile", "--extract", snapshot, source, "--filter", "data"],

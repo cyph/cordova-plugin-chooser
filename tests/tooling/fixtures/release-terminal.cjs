@@ -26,7 +26,7 @@ if (process.argv[2] === "publisher") {
 			if (command === "git") {
 				if (args[0] === "status") return "";
 				if (args[0] === "rev-parse") return config.commit;
-				assert.equal(args[0], "archive");
+				assert.deepEqual(args.slice(0, 3), ["-c", "tar.umask=0022", "archive"]);
 				return "";
 			}
 			if (command === "python3" && args[0] === "-m") {
