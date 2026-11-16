@@ -4,6 +4,34 @@ const { join } = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
+test("Actions updates own every tracked workflow selected by their adapter", () => {
+	const result = spawnSync(
+		"python3",
+		[
+			"-c",
+			`import fnmatch,json,pathlib,subprocess,tomllib
+updates=tomllib.loads(pathlib.Path('chainman/updates.toml').read_text())['updates']
+adapter=updates['adapters']['github']
+tracked=subprocess.check_output(['git','ls-files','-z','.github/workflows']).decode().split('\\0')
+selected=[p for p in tracked if p and any(fnmatch.fnmatchcase(p, pattern) for pattern in adapter['files'])]
+missing=[p for p in selected if not any(fnmatch.fnmatchcase(p, pattern) for pattern in updates['outputs'])]
+print(json.dumps({'selected':selected,'missing':missing}))`,
+		],
+		{ cwd: join(__dirname, "../.."), encoding: "utf8" },
+	);
+	assert.equal(result.status, 0, result.stderr);
+	const { selected, missing } = JSON.parse(result.stdout);
+	assert(
+		selected.length > 0,
+		"Expected tracked workflows selected for updates",
+	);
+	assert.deepEqual(
+		missing,
+		[],
+		"Selected workflows need authorized update outputs",
+	);
+});
+
 test("stale-event mutations are a manual Chainman task isolated from release evidence", () => {
 	const root = join(__dirname, "../..");
 	const parsed = spawnSync(
