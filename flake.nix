@@ -16,16 +16,38 @@
                 android_sdk.accept_license = true;
               };
             };
-            nodejs = pkgs.nodejs_24;
+            nodejs = pkgs.nodejs_latest;
             pnpmSource = (builtins.fromJSON (builtins.readFile ./chainman/tools.json)).pnpm;
-            pnpm =
-              (pkgs.pnpm_11.override {
-                inherit (pnpmSource) version hash;
-                nodejs-slim = nodejs;
-              }).overrideAttrs
-                (_: {
-                  src = pkgs.fetchurl { inherit (pnpmSource) url hash; };
-                });
+            pnpmPlatform = pnpmSource.platforms.${system};
+            pnpm = pkgs.stdenvNoCC.mkDerivation {
+              pname = "pnpm";
+              inherit (pnpmSource) version;
+              src = pkgs.fetchurl { inherit (pnpmPlatform) url hash; };
+              nativeBuildInputs = [
+                pkgs.makeWrapper
+              ]
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
+              buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.stdenv.cc.cc.lib ];
+              dontConfigure = true;
+              dontBuild = true;
+              installPhase = ''
+                runHook preInstall
+                install -Dm755 pnpm "$out/libexec/pnpm"
+                makeWrapper "$out/libexec/pnpm" "$out/bin/pnpm" \
+                  --prefix PATH : ${pkgs.lib.makeBinPath [ nodejs ]}
+                makeWrapper "$out/bin/pnpm" "$out/bin/pnpx" --add-flags dlx
+                ln -s pnpm "$out/bin/pn"
+                ln -s pnpx "$out/bin/pnx"
+                install -Dm644 LICENSE "$out/share/licenses/pnpm/LICENSE"
+                install -Dm644 THIRD-PARTY-NOTICES.md "$out/share/licenses/pnpm/THIRD-PARTY-NOTICES.md"
+                runHook postInstall
+              '';
+              meta = {
+                license = pkgs.lib.licenses.mit;
+                mainProgram = "pnpm";
+                platforms = builtins.attrNames pnpmSource.platforms;
+              };
+            };
             prettier = pkgs.prettier.override { inherit nodejs; };
             base = [
               nodejs

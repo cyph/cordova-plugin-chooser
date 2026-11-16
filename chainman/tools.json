@@ -1,7 +1,33 @@
 {
 	"pnpm": {
-		"version": "11.25.0",
-		"url": "https://registry.npmjs.org/pnpm/-/pnpm-11.25.0.tgz",
-		"hash": "sha512-XN6SW08HX3Jetx+64YpC/+eEUkeJ8ZthxzHLhyHsKKruFg4BqNWvT+2ypCzb8wDv4j2zVrDUoXtNY+EfirfJVg=="
+		"version": "12.14.0",
+		"url": "https://registry.npmjs.org/pnpm/-/pnpm-12.14.0.tgz",
+		"hash": "sha512-wYum2HmT09Fky16JSPMrLAbuhUSH4GzY2GeBNC+z5btGNDZwNHEehoArqpw3vqkGzhkprQjXCITJfYAd8TOJpg==",
+		"platforms": {
+			"aarch64-linux": {
+				"package": "@pnpm/exe.linux-arm64",
+				"version": "12.14.0",
+				"url": "https://registry.npmjs.org/@pnpm/exe.linux-arm64/-/exe.linux-arm64-12.14.0.tgz",
+				"hash": "sha512-7joGShZ44Nk3WpNU+60JoOPjCXlgxhJAq11S2UiVtwCUDgTer1yTPPfxGW8pxaD6046actYLIYDbZNlubHWs0A=="
+			},
+			"x86_64-linux": {
+				"package": "@pnpm/exe.linux-x64",
+				"version": "12.14.0",
+				"url": "https://registry.npmjs.org/@pnpm/exe.linux-x64/-/exe.linux-x64-12.14.0.tgz",
+				"hash": "sha512-F6K8e/jWxiuEYJaQtRRUG9ynBSTEHa+t7Lf86MKuOO5UA7WVVMbi+oB8nY6iKW++ncWS2yG6T9faXZGxqNsfoQ=="
+			},
+			"aarch64-darwin": {
+				"package": "@pnpm/exe.darwin-arm64",
+				"version": "12.14.0",
+				"url": "https://registry.npmjs.org/@pnpm/exe.darwin-arm64/-/exe.darwin-arm64-12.14.0.tgz",
+				"hash": "sha512-tnrdUB8ecJoehuKKqi1YHCBVl61xtJ9XVGcx5EviC6fWO4DeGI8GtXrjvJxDBM3nuVjJeWistgsUp/N142x4sw=="
+			},
+			"x86_64-darwin": {
+				"package": "@pnpm/exe.darwin-x64",
+				"version": "12.14.0",
+				"url": "https://registry.npmjs.org/@pnpm/exe.darwin-x64/-/exe.darwin-x64-12.14.0.tgz",
+				"hash": "sha512-vlBfGkruqQRsEHTW43cPwpYd7QlbIJ//cvpAdb3bVXkI8SgTPoXhCnc05m+ZNiPrrEkBsX/t7KHw9aXpkzPm3Q=="
+			}
+		}
 	}
 }

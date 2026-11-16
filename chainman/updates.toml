@@ -49,7 +49,7 @@ profile = "toolchain"
 tools = [
   { provider = "npm", name = "pnpm", source_pin = { file = "chainman/tools.json", pointer = [
     "pnpm",
-  ] }, command = [
+  ], platform_packages = { aarch64-linux = "@pnpm/exe.linux-arm64", x86_64-linux = "@pnpm/exe.linux-x64", aarch64-darwin = "@pnpm/exe.darwin-arm64", x86_64-darwin = "@pnpm/exe.darwin-x64" } }, command = [
     "pnpm",
     "--version",
   ], version_pattern = '^(?P<version>\d+\.\d+\.\d+)$', pins = [
