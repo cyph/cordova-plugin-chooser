@@ -267,6 +267,12 @@ jobs:
       - name: Require every lane and matching package integrity
         id: qualify
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run qualify
+      - name: Explain release rerun requirements
+        if: ${{ failure() && github.run_attempt > 1 }}
+        run: >-
+          echo "::notice::Release evidence must come from one workflow attempt.
+          If you reran selected jobs, use Re-run all jobs to regenerate every
+          required report and the portable archive in the same attempt."
 
   attest:
     if: ${{ !github.event.repository.private && github.ref == 'refs/heads/master' }}
@@ -296,6 +302,12 @@ jobs:
         run: |
           nix --extra-experimental-features 'nix-command flakes' develop .#default --command node scripts/release.mjs ci "$QUALIFIED_INTEGRITY"
           nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman attest create .verification/release/manifest.json
+      - name: Explain release rerun requirements
+        if: ${{ failure() && github.run_attempt > 1 }}
+        run: >-
+          echo "::notice::Release evidence must come from one workflow attempt.
+          If you reran selected jobs, use Re-run all jobs to regenerate every
+          required report and the portable archive in the same attempt."
       - name: Retain attestation bundles
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
