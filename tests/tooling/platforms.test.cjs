@@ -125,6 +125,55 @@ test("frozen platform aliases retain each compatibility generation", () => {
 	}
 });
 
+test("platform and minimum compiler aliases preserve their compatibility windows", () => {
+	const { devDependencies } = require("../../package.json");
+	const { satisfies } = createRequire(require.resolve("npm/package.json"))(
+		"semver",
+	);
+	for (const [alias, name, window, versions] of [
+		[
+			"cordova-android14",
+			"cordova-android",
+			">=14.0.0 <15",
+			["13.9.9", "14.0.0-beta.1", "14.0.0", "14.99.0", "15.0.0"],
+		],
+		[
+			"cordova-android15",
+			"cordova-android",
+			">=15.0.0 <16",
+			["14.9.9", "15.0.0-beta.1", "15.0.0", "15.99.0", "16.0.0"],
+		],
+		[
+			"cordova-ios7",
+			"cordova-ios",
+			">=7.0.0 <8",
+			["6.9.9", "7.0.0-beta.1", "7.0.0", "7.99.0", "8.0.0"],
+		],
+		[
+			"cordova-ios8",
+			"cordova-ios",
+			">=8.0.0 <9",
+			["7.9.9", "8.0.0-beta.1", "8.0.0", "8.99.0", "9.0.0"],
+		],
+		[
+			"typescript-minimum",
+			"typescript",
+			">=5.7.0 <5.8",
+			["5.6.3", "5.7.0-beta.1", "5.7.0", "5.7.99", "5.8.0"],
+		],
+	]) {
+		const prefix = `npm:${name}@`;
+		assert(devDependencies[alias].startsWith(prefix));
+		const range = devDependencies[alias].slice(prefix.length);
+		for (const version of versions)
+			assert.equal(
+				satisfies(version, range),
+				satisfies(version, window),
+				`${alias} must retain ${window} for ${version}`,
+			);
+	}
+});
+
 test("legacy Cordova header warnings stay scoped to the umbrella import", async (t) => {
 	const { prepareBridgingHeader } = await import("../../scripts/apple.mjs");
 	const directory = mkdtempSync(join(tmpdir(), "chooser-bridging-header-"));

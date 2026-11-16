@@ -54,14 +54,14 @@
 		"@capacitor/cli": "8.5.2",
 		"@capacitor/core": "8.5.2",
 		"cordova": "^13.0.0",
-		"cordova-android14": "npm:cordova-android@>=14.0.0 <15",
-		"cordova-android15": "npm:cordova-android@>=15.0.0 <16",
+		"cordova-android14": "npm:cordova-android@14.x",
+		"cordova-android15": "npm:cordova-android@15.x",
 		"cordova-browser": "^7.0.0",
-		"cordova-ios7": "npm:cordova-ios@>=7.0.0 <8",
-		"cordova-ios8": "npm:cordova-ios@>=8.0.0 <9",
+		"cordova-ios7": "npm:cordova-ios@7.x",
+		"cordova-ios8": "npm:cordova-ios@8.x",
 		"npm": "12.2.0",
 		"typescript": "7.0.2",
-		"typescript-minimum": "npm:typescript@>=5.7.0 <5.8"
+		"typescript-minimum": "npm:typescript@5.7.x"
 	},
 	"packageManager": "pnpm@12.14.0"
 }
