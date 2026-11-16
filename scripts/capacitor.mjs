@@ -40,19 +40,32 @@ export function prepareCapacitor({ root, output, run, pack }) {
 	rmSync(directory, { recursive: true, force: true });
 	mkdirSync(directory, { recursive: true });
 	const dependencies = { "cordova-plugin-chooser": "file:" + packed };
-	for (const name of [
-		"@capacitor/core",
-		"@capacitor/android",
-		"@capacitor/cli",
-	]) {
-		const { version } = stageFrozenPackage(
+	const names = ["@capacitor/core", "@capacitor/android", "@capacitor/cli"];
+	const pins = JSON.parse(
+		readFileSync(join(root, "package.json"), "utf8"),
+	).devDependencies;
+	const version = pins?.["@capacitor/core"];
+	assert.match(
+		version ?? "",
+		/^\d+\.\d+\.\d+$/,
+		"Capacitor requires exact project pins",
+	);
+	for (const name of names)
+		assert.equal(
+			pins[name],
+			version,
+			`${name} must match the @capacitor/core project pin`,
+		);
+	for (const name of names) {
+		const installed = stageFrozenPackage(
 			directory,
 			join(root, "node_modules", name),
 		);
+		assert.equal(installed.name, name, `Unexpected frozen package for ${name}`);
 		assert.equal(
+			installed.version,
 			version,
-			"8.5.2",
-			"Update the coordinated Capacitor fixture pin",
+			`Installed ${name} differs from the project pin; run just setup`,
 		);
 		dependencies[name] = version;
 	}
@@ -127,6 +140,7 @@ export function prepareCapacitor({ root, output, run, pack }) {
 	);
 	return {
 		directory,
+		version,
 		env: {
 			CHOOSER_NODE_MODULES: join(root, "node_modules"),
 			CHOOSER_PLUGIN: packed,
@@ -147,8 +161,8 @@ export async function verifyCapacitorAndroid(context) {
 	report.toolchain.gradle = run("gradle", ["--version"], root, true);
 	assert.match(report.toolchain.gradle, /Gradle 8\./);
 	assert.match(report.toolchain.gradle, /(?:JVM|Java).*21[. ]/);
-	report.toolchain.capacitor = "8.5.2";
-	const { directory, env } = prepareCapacitor(context);
+	const { directory, env, version } = prepareCapacitor(context);
+	report.toolchain.capacitor = version;
 	const sdk = process.env.CHOOSER_EMULATOR_SDK;
 	assert(sdk, "Missing Nix-owned emulator SDK");
 	const avdHome = join(output, "capacitor-avd");
