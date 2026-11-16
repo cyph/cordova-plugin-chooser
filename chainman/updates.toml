@@ -127,7 +127,7 @@ pins = [
   { provider = "maven", name = "org.robolectric:robolectric", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
     "robolectric",
-  ], bound = ">=4.17" },
+  ], bound = ">=4.16.1" },
   { provider = "maven", name = "org.mockito:mockito-core", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
     "mockito",
