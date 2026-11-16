@@ -49,7 +49,18 @@
                 cp -R runtime/dist "$out/libexec/pnpm/dist"
                 install -m755 pnpm "$out/libexec/pnpm/pnpm"
                 makeWrapper "$out/libexec/pnpm/pnpm" "$out/bin/pnpm" \
-                  --prefix PATH : ${pkgs.lib.makeBinPath [ nodejs ]}
+                  --prefix PATH : ${pkgs.lib.makeBinPath [ nodejs ]} \
+                  --run ${pkgs.lib.escapeShellArg ''
+                    # pnpm silently ignores unusable cafile contents; fail closed
+                    # without changing its project or user authentication sources.
+                    if [[ ''${SSL_CERT_FILE+x} ]]; then
+                      if [[ ! -f "$SSL_CERT_FILE" || ! -r "$SSL_CERT_FILE" || ! -s "$SSL_CERT_FILE" ]] ||
+                        ! OPENSSL_CONF=/dev/null ${pkgs.lib.getExe pkgs.openssl} x509 -in "$SSL_CERT_FILE" -noout 2>/dev/null; then
+                        echo 'pnpm: SSL_CERT_FILE must name a readable PEM certificate file' >&2
+                        exit 1
+                      fi
+                    fi
+                  ''}
                 makeWrapper "$out/bin/pnpm" "$out/bin/pnpx" --add-flags dlx
                 ln -s pnpm "$out/bin/pn"
                 ln -s pnpx "$out/bin/pnx"

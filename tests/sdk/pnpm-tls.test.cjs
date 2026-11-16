@@ -98,7 +98,12 @@ test(
 			"Use the profile's curated CA bundle",
 		);
 		assert.match(readFileSync(curated, "utf8"), /-----BEGIN CERTIFICATE-----/);
-		const directory = mkdtempSync(join(tmpdir(), "chooser-pnpm-tls-"));
+		const projectPolicy = readFileSync(join(root, ".npmrc"));
+		assert.match(
+			projectPolicy.toString("utf8"),
+			/^cafile=\$\{SSL_CERT_FILE\}$/m,
+		);
+		const directory = mkdtempSync(join(tmpdir(), "chooser pnpm tls-"));
 		t.after(() => rmSync(directory, { recursive: true, force: true }));
 		assert(
 			!realpathSync(directory).startsWith(`${realpathSync(root)}/`),
@@ -124,6 +129,9 @@ test(
 				join(cwd, "pnpm-workspace.yaml"),
 				"packages: []\nfetchRetries: 0\nfetchTimeout: 5000\nstrictSsl: true\n",
 			);
+			// Exercise the managed project's actual policy without inheriting any
+			// user authentication files. OpenSSL keeps its separate empty config.
+			writeFileSync(join(cwd, ".npmrc"), projectPolicy);
 			// An allowlist drops credentials, proxies, npm/pnpm config, Node options,
 			// extra roots and TLS bypasses. Every request gets a fresh HOME and cache.
 			return {
@@ -149,6 +157,23 @@ test(
 		const identity = await command(pnpm, ["--version"], isolated("identity"));
 		assert.equal(identity.code, 0, identity.stdout + identity.stderr);
 		assert.equal(identity.stdout.trim(), pin.version);
+		for (const [name, contents] of [
+			["empty-ca", ""],
+			[
+				"malformed-ca",
+				"-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----\n",
+			],
+		]) {
+			const ca = join(directory, `${name}.crt`);
+			writeFileSync(ca, contents);
+			const result = await command(pnpm, ["--version"], isolated(name, ca));
+			assert.equal(result.code, 1, result.stdout + result.stderr);
+			assert.equal(result.stdout, "");
+			assert.match(
+				result.stderr,
+				/SSL_CERT_FILE must name a readable PEM certificate file/,
+			);
+		}
 		const crypto = isolated("certificates");
 		const cryptoVersion = await command(openssl, ["version"], crypto);
 		assert.equal(cryptoVersion.code, 0, cryptoVersion.stderr);
@@ -197,6 +222,7 @@ test(
 			assert.equal(generated.code, 0, generated.stderr);
 		}
 
+		const fixtureToken = "fixture-token";
 		const requests = [];
 		const server = createServer(
 			{
@@ -205,9 +231,17 @@ test(
 				handshakeTimeout: 5_000,
 			},
 			(request, response) => {
-				requests.push({ method: request.method, path: request.url });
+				requests.push({
+					method: request.method,
+					path: request.url,
+					authorization: request.headers.authorization,
+				});
 				if (request.method !== "GET" || request.url !== "/chooser-tls-probe") {
 					response.writeHead(404).end();
+					return;
+				}
+				if (request.headers.authorization !== `Bearer ${fixtureToken}`) {
+					response.writeHead(401).end();
 					return;
 				}
 				// Only metadata is served: no tarball or installation can satisfy this.
@@ -244,8 +278,25 @@ test(
 		await once(server, "listening");
 		const loopback = `https://127.0.0.1:${server.address().port}/`;
 
-		async function view(name, ca, registry, packageName) {
+		async function view(name, ca, registry, packageName, projectCA) {
 			const options = isolated(name, ca);
+			if (projectCA) {
+				writeFileSync(
+					join(options.cwd, ".npmrc"),
+					projectPolicy
+						.toString("utf8")
+						.replace(/^cafile=.*$/m, () => `cafile=${projectCA}`),
+				);
+			}
+			if (registry === loopback) {
+				// Project TLS policy must merge with the default user auth source.
+				// This token exists only in the disposable HOME and is host-scoped.
+				writeFileSync(
+					join(options.env.HOME, ".npmrc"),
+					`//${new URL(loopback).host}/:_authToken=${fixtureToken}\n`,
+					{ mode: 0o600 },
+				);
+			}
 			return command(
 				pnpm,
 				[
@@ -254,7 +305,6 @@ test(
 					"version",
 					`--registry=${registry}`,
 					"--pm-on-fail=ignore",
-					`--npmrc-auth-file=${emptyConfig}`,
 					`--store-dir=${join(options.cwd, "store")}`,
 					`--state-dir=${join(options.cwd, "state")}`,
 				],
@@ -269,7 +319,7 @@ test(
 			// A DNS, connectivity, timeout or configuration failure cannot pass.
 			assert.match(
 				result.stderr,
-				/invalid peer certificate:[\s\S]*UnknownIssuer/,
+				/invalid peer certificate:[\s\S]*(?:UnknownIssuer|certificate is not trusted:\s*-67843\b)/,
 			);
 		}
 
@@ -280,19 +330,34 @@ test(
 			assert.deepEqual(requests, []);
 		});
 		await t.test(
-			"SSL_CERT_FILE=A permits a real loopback metadata GET",
+			"project CA A overrides curated env trust and merges default HOME auth",
 			async () => {
-				const result = await view(
-					"loopback-a",
-					join(directory, "a.crt"),
-					loopback,
-					"chooser-tls-probe",
-				);
-				assert.equal(result.code, 0, result.stdout + result.stderr);
-				assert.equal(result.stdout.trim(), "1.0.0");
-				assert.deepEqual(requests, [
-					{ method: "GET", path: "/chooser-tls-probe" },
-				]);
+				const a = join(directory, "a.crt");
+				for (const [name, envCA, projectCA] of [
+					// Curated env trust alone rejected this server above. Only the
+					// literal project cafile can admit A in this request.
+					["loopback-project-a", curated, a],
+					// Also retain the actual project's ${SSL_CERT_FILE} expansion.
+					["loopback-a", a, undefined],
+				]) {
+					const before = requests.length;
+					const result = await view(
+						name,
+						envCA,
+						loopback,
+						"chooser-tls-probe",
+						projectCA,
+					);
+					assert.equal(result.code, 0, result.stdout + result.stderr);
+					assert.equal(result.stdout.trim(), "1.0.0");
+					assert.deepEqual(requests.slice(before), [
+						{
+							method: "GET",
+							path: "/chooser-tls-probe",
+							authorization: `Bearer ${fixtureToken}`,
+						},
+					]);
+				}
 			},
 		);
 		await t.test("unrelated B rejects loopback A", async () => {
