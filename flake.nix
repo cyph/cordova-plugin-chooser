@@ -23,7 +23,10 @@
               pname = "pnpm";
               inherit (pnpmSource) version;
               src = pkgs.fetchurl { inherit (pnpmPlatform) url hash; };
+              runtimeSource = pkgs.fetchurl { inherit (pnpmSource) url hash; };
               nativeBuildInputs = [
+                nodejs
+                pkgs.jq
                 pkgs.makeWrapper
               ]
               ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
@@ -32,8 +35,20 @@
               dontBuild = true;
               installPhase = ''
                 runHook preInstall
-                install -Dm755 pnpm "$out/libexec/pnpm"
-                makeWrapper "$out/libexec/pnpm" "$out/bin/pnpm" \
+                test "$(jq -r .name package.json)" = "${pnpmPlatform.package}"
+                test "$(jq -r .version package.json)" = "$version"
+                mkdir runtime
+                tar -xzf "$runtimeSource" -C runtime --strip-components=1
+                test "$(jq -r .name runtime/package.json)" = pnpm
+                test "$(jq -r .version runtime/package.json)" = "$version"
+                test "$(jq -r '.optionalDependencies["${pnpmPlatform.package}"]' runtime/package.json)" = "$version"
+                test -x runtime/dist/node-gyp-bin/node-gyp
+                test -x runtime/dist/node_modules/node-gyp/bin/node-gyp.js
+                # Native pnpm discovers the frozen node-gyp payload beside itself.
+                mkdir -p "$out/libexec/pnpm"
+                cp -R runtime/dist "$out/libexec/pnpm/dist"
+                install -m755 pnpm "$out/libexec/pnpm/pnpm"
+                makeWrapper "$out/libexec/pnpm/pnpm" "$out/bin/pnpm" \
                   --prefix PATH : ${pkgs.lib.makeBinPath [ nodejs ]}
                 makeWrapper "$out/bin/pnpm" "$out/bin/pnpx" --add-flags dlx
                 ln -s pnpm "$out/bin/pn"
