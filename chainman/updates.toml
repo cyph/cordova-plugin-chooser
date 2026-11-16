@@ -113,7 +113,7 @@ pins = [
     "versions",
     "cordova14",
   ], bound = ">=14.0.0,<15.0.0" },
-  # AGP 8 supports the selected Gradle 8 / JDK 17 toolchain.
+  # Cordova Android 14/15 use the AGP 8 / Gradle 8 / JDK 17 toolchain.
   { provider = "maven", name = "com.android.library:com.android.library.gradle.plugin", file = "tests/android/gradle/libs.versions.toml", pointer = [
     "versions",
     "agp",
