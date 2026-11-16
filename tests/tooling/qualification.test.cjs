@@ -317,6 +317,7 @@ test("qualification requires every successful job, complete reports and the same
 	const sha = "a".repeat(40);
 	const jobs = Object.fromEntries(
 		[
+			"sdk",
 			"portable",
 			"android",
 			"android-failures",
@@ -356,7 +357,7 @@ test("qualification requires every successful job, complete reports and the same
 	assert.equal(qualified.integrity, reports[0].package.integrity);
 	assert.equal(qualified.commit, sha);
 	const output = join(directory, "github-output");
-	const qualify = () =>
+	const qualify = (results = jobs) =>
 		spawnSync(
 			process.execPath,
 			[join(__dirname, "../../scripts/verify.mjs"), "qualification"],
@@ -366,7 +367,7 @@ test("qualification requires every successful job, complete reports and the same
 					...process.env,
 					CHOOSER_REPORTS_ROOT: directory,
 					GITHUB_SHA: sha,
-					CHOOSER_JOB_RESULTS: JSON.stringify(jobs),
+					CHOOSER_JOB_RESULTS: JSON.stringify(results),
 					GITHUB_OUTPUT: output,
 				},
 			},
@@ -377,6 +378,25 @@ test("qualification requires every successful job, complete reports and the same
 		readFileSync(output, "utf8"),
 		`integrity=${qualified.integrity}\n`,
 	);
+	// Complete product reports cannot compensate for an absent or unsuccessful
+	// SDK matrix, and its failure must never expose integrity for signing.
+	for (const result of [undefined, "failure", "skipped", "cancelled"]) {
+		const results = { ...jobs };
+		if (result === undefined) delete results.sdk;
+		else results.sdk = { result };
+		assert.throws(
+			() => aggregateReports(directory, sha, results),
+			/Required job did not succeed: sdk/,
+		);
+		writeFileSync(output, "");
+		const rejected = qualify(results);
+		assert.notEqual(rejected.status, 0, `SDK result: ${result ?? "missing"}`);
+		assert.match(
+			rejected.stdout + rejected.stderr,
+			/Required job did not succeed: sdk/,
+		);
+		assert.equal(readFileSync(output, "utf8"), "");
+	}
 	const simulator = reports.find((report) => report.lane === "ios-simulator");
 	save({
 		...simulator,

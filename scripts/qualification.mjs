@@ -235,6 +235,7 @@ function validateSimulatorPartitions(parts, sha) {
 export function aggregateReports(directory, sha, results) {
 	assert.match(sha, /^[a-f0-9]{40}$/);
 	const jobs = [
+		"sdk",
 		"portable",
 		"android",
 		"android-failures",

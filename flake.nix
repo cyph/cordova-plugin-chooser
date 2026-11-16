@@ -67,6 +67,7 @@
             base = [
               nodejs
               pnpm
+              pkgs.openssl
               pkgs.python3
               pkgs.git
               pkgs.just

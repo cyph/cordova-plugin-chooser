@@ -55,6 +55,7 @@ async function fixture(t) {
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
 	const jobs = Object.fromEntries(
 		[
+			"sdk",
 			"portable",
 			"android",
 			"android-failures",

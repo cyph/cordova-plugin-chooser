@@ -68,6 +68,19 @@ commands = [["node", "scripts/verify.mjs", "portable"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.verify-sdk]
+profile = "toolchain"
+commands = [
+  [
+    "node",
+    "--test",
+    "tests/sdk/pnpm-tls.test.cjs",
+    "tests/tooling/pnpm-runtime.test.cjs",
+  ],
+]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.verify-browser]
 profile = "browser"
 setup = ["javascript"]
@@ -264,6 +277,7 @@ paths = [
   "scripts/*.cjs",
   "tests/browser/*.cjs",
   "tests/browser/www/*.js",
+  "tests/sdk/*.cjs",
   "tests/tooling/*.cjs",
   "tests/tooling/fixtures/*.cjs",
 ]
