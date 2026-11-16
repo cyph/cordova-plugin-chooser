@@ -39,8 +39,8 @@ outputs = [
 adapter = "nix"
 profile = "toolchain"
 inputs = [
-  { directory = ".", input = "nixpkgs", repository = "NixOS/nixpkgs", branch = "nixos-unstable" },
-  { directory = ".", input = "nixpkgs-darwin", repository = "NixOS/nixpkgs", branch = "nixpkgs-26.05-darwin" },
+  { directory = ".", input = "nixpkgs", repository = "NixOS/nixpkgs", branch = "nixos-unstable", selection = "published-channel" },
+  { directory = ".", input = "nixpkgs-darwin", repository = "NixOS/nixpkgs", branch = "nixpkgs-26.05-darwin", selection = "published-channel" },
 ]
 
 [updates.adapters.toolchain]
