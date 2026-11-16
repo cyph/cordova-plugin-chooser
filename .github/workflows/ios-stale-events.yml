@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Prepare frozen dependencies
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
       - name: Verify baseline and detect three disabled identity guards
@@ -29,7 +29,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain isolated mutation evidence
         if: ${{ always() && hashFiles('.verification/stale-event-mutations/**') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: diagnostics-stale-events-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

@@ -77,33 +77,12 @@ range = "^5.33.16"
 reason = "Select patched Cordova environment checks within the existing major API."
 
 [[exceptions]]
-package = "npm:qs"
-version = "6.16.1"
-minimum_safe = "6.16.1"
-reason = "Permit the exact serializer fix before its maturity window completes."
-advisory = "https://github.com/advisories/GHSA-6pq8-jhm2-2vcw"
-expires = "2026-11-13T22:06:17.002Z"
-[[exceptions]]
-package = "npm:ip-address"
-version = "10.7.4"
-minimum_safe = "10.7.4"
-reason = "Permit the exact patched parser before its maturity window completes."
-advisory = "https://github.com/advisories/GHSA-rxp7-6hxx-x8q5"
-expires = "2026-11-10T19:35:00Z"
-[[exceptions]]
 package = "npm:body-parser"
 version = "1.20.9"
 minimum_safe = "1.20.9"
 reason = "Permit the patched Express 4 parser before maturity without changing its major API."
 advisory = "https://github.com/advisories/GHSA-27r3-jxmh-p828"
 expires = "2026-11-21T11:39:00Z"
-[[exceptions]]
-package = "npm:undici"
-version = "6.29.1"
-minimum_safe = "6.29.1"
-reason = "Permit the exact client fixes before maturity while retaining node-gyp's Undici 6 API."
-advisory = "https://github.com/advisories/GHSA-xjj6-f33q-929c"
-expires = "2026-11-14T14:20:00Z"
 [[exceptions]]
 package = "npm:systeminformation"
 version = "5.33.16"

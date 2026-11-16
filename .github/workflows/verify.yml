@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Qualify portable
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman config validate
@@ -36,7 +36,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain qualification reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-portable
           path: .verification/reports/
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Qualify android
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
@@ -64,7 +64,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain qualification reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-android
           path: .verification/reports/
@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Qualify android-failures
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
@@ -92,7 +92,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain qualification reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-android-failures
           path: .verification/reports/
@@ -109,7 +109,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Qualify ios
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
@@ -120,7 +120,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain qualification reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-ios
           path: .verification/reports/
@@ -137,7 +137,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Qualify ios-modern
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
@@ -148,7 +148,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain qualification reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-ios-modern
           path: .verification/reports/
@@ -165,7 +165,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Qualify capacitor-android
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
@@ -176,7 +176,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain qualification reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-capacitor-android
           path: .verification/reports/
@@ -198,7 +198,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       - name: Prepare frozen dependencies
         run: nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
       - name: Exercise native iOS contracts
@@ -212,7 +212,7 @@ jobs:
           git diff --cached --exit-code
       - name: Retain compact simulator diagnostics
         if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}-summary
           path: |
@@ -227,7 +227,7 @@ jobs:
           if-no-files-found: error
       - name: Retain simulator bundles
         if: ${{ always() && hashFiles('.verification/reports/**') != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-ios-simulator-${{ matrix.framework }}-${{ matrix.device }}
           path: .verification/reports/
@@ -258,8 +258,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: qualification-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: .verification/downloaded
@@ -291,8 +291,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31.11.0
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: qualification-${{ github.run_id }}-${{ github.run_attempt }}-portable
           path: .verification/release-input
@@ -309,7 +309,7 @@ jobs:
           If you reran selected jobs, use Re-run all jobs to regenerate every
           required report and the portable archive in the same attempt."
       - name: Retain attestation bundles
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qualified-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: .verification/release/*.sigstore.json

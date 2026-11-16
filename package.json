@@ -50,16 +50,16 @@
 		"test:types": "node scripts/check-types.mjs"
 	},
 	"devDependencies": {
-		"@capacitor/android": "8.5.2",
-		"@capacitor/cli": "8.5.2",
-		"@capacitor/core": "8.5.2",
+		"@capacitor/android": "8.5.3",
+		"@capacitor/cli": "8.5.3",
+		"@capacitor/core": "8.5.3",
 		"cordova": "^13.0.0",
 		"cordova-android14": "npm:cordova-android@14.x",
 		"cordova-android15": "npm:cordova-android@15.x",
 		"cordova-browser": "^7.0.0",
 		"cordova-ios7": "npm:cordova-ios@7.x",
 		"cordova-ios8": "npm:cordova-ios@8.x",
-		"npm": "12.2.0",
+		"npm": "12.2.1",
 		"typescript": "7.0.2",
 		"typescript-minimum": "npm:typescript@5.7.x"
 	},

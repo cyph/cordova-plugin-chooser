@@ -1,10 +1,10 @@
 [versions]
 activity = "1.7.0"
-agp = "8.10.1"
-cordova14 = "14.0.0"
-cordova15 = "15.0.0"
+agp = "8.13.2"
+cordova14 = "14.0.1"
+cordova15 = "15.1.0"
 junit = "4.13.2"
-robolectric = "4.16.1"
+robolectric = "4.17"
 # DefaultSdkProvider: API 28 runtime, API 35 maximum compile SDK under JDK 17.
 # Keep the exact SDK artifacts coordinated with Robolectric and JDK updates.
 robolectric-runtime-sdk = "9-robolectric-4913185-2-i7"
@@ -12,7 +12,7 @@ robolectric-compile-sdk = "15-robolectric-13954326-i7"
 robolectric-api24-sdk = "7.0.0_r1-robolectric-r1-i7"
 robolectric-api30-sdk = "11-robolectric-6757853-i7"
 robolectric-api33-sdk = "13-robolectric-9030017-i7"
-mockito = "5.18.0"
+mockito = "5.24.0"
 
 [libraries]
 activity = { module = "androidx.activity:activity", version.ref = "activity" }
