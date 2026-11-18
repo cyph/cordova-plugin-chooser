@@ -37,6 +37,7 @@ final class ChooserFixtureController: CAPBridgeViewController {
             chooser.getFileData({accept:'text/plain', maxFileSize:1024, format:'text'}).then(
                 file => window.chooserResult = file.text,
                 error => window.chooserResult = error.code + ':' + error.reason);
+            true;
             """
         webView?.evaluateJavaScript(script) { _, error in
             if let error = error { self.finish("Could not start picker: \(error)") }
