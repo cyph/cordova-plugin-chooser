@@ -150,8 +150,8 @@ private final class PickerHarness {
         default: XCTFail("Unknown fixture action")
         }
     }
-    func objectAsync(_ callback: String) async throws -> [String: Any] {
-        try await waitUntilAsync { !self.messages(callback).isEmpty }
+    func objectAsync(_ callback: String, file: StaticString = #filePath, line: UInt = #line) async throws -> [String: Any] {
+        try await waitUntilAsync({ !self.messages(callback).isEmpty }, file: file, line: line)
         let message = try XCTUnwrap(messages(callback).first?.message)
         if let object = message as? [String: Any] { return object }
         let text = try XCTUnwrap(message as? String)
@@ -163,7 +163,7 @@ private final class PickerHarness {
         try await waitUntilAsync { presentation.completed }
         let picker = try XCTUnwrap(presentation.controller as? UIDocumentPickerViewController)
         XCTAssertTrue(presenter.presentedViewController === picker)
-        XCTAssertTrue(picker.presentationController?.delegate === plugin)
+        XCTAssertTrue(picker.presentationController?.delegate === plugin.engine)
         return picker
     }
     func duringPresentation(_ callback: String, source: String = "documents", mode: String = "metadata",
@@ -285,7 +285,7 @@ final class ChooserPickerTests: XCTestCase {
         FixturePresentation().presented(first)
         XCTAssertEqual(first.view.subviews.map { ObjectIdentifier($0) }, views,
                        "Presentation diagnostics must preserve the system picker's view hierarchy")
-        XCTAssertTrue(first.presentationController?.delegate === plugin)
+        XCTAssertTrue(first.presentationController?.delegate === plugin.engine)
         let adaptive = try XCTUnwrap(first.presentationController)
         var reopened: PickerPresentation?
         h.observeResult("first") {
