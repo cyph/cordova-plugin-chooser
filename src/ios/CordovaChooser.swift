@@ -15,7 +15,7 @@ class Chooser: CDVPlugin {
 			if let message = value as? String {
 				result = CDVPluginResult(status: .ok, messageAs: message)
 			} else {
-				result = CDVPluginResult(status: failed ? .error : .ok, messageAs: value as? [String: Any])
+				result = CDVPluginResult(status: failed ? .error : .ok, messageAs: value as? [String: Any] ?? [:])
 			}
 			delegate.send(result, callbackId: callbackId)
 			return true
