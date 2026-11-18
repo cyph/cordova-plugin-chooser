@@ -4,13 +4,17 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / ".verification/reports/android-failures"
 LOCKS = ["gradle.lockfile", "buildscript-gradle.lockfile", "settings-gradle.lockfile", "gradle/verification-metadata.xml"]
+TRANSIENT_DOWNLOAD = re.compile(r"Received status code (?:429|502|503|504)\b", re.IGNORECASE)
+DEPENDENCY_INTEGRITY_FAILURE = re.compile(r"checksum|verification failed|verification metadata|dependency lock", re.IGNORECASE)
 
 # Independent of the preparation task: discover the ordinary AGP graphs only
 # after project evaluation, and request their external artifacts in offline mode.
@@ -76,6 +80,19 @@ def verify_failure(result, patterns, causes=()):
     assert not causes or any(cause.lower() in result.stdout.lower() for cause in causes), result.stdout[-5000:]
 
 
+def prepare_cold_dependencies(gradle, fixture):
+    deadline = time.monotonic() + 1200
+    for attempt, delay in enumerate((15, 45, 0), start=1):
+        label = "resolve" if attempt == 1 else f"resolve-retry-{attempt - 1}"
+        result = gradle(fixture, label, "prepareRobolectricSdks", "resolveVerificationDependencies",
+                        timeout=max(1, deadline - time.monotonic()))
+        if (result.returncode == 0 or not delay or not TRANSIENT_DOWNLOAD.search(result.stdout)
+                or DEPENDENCY_INTEGRITY_FAILURE.search(result.stdout) or time.monotonic() + delay >= deadline):
+            return result
+        print(f"{fixture}: dependency server unavailable, retrying preparation in {delay}s", flush=True)
+        time.sleep(delay)
+
+
 def main(preparation_only=False):
     REPORTS.mkdir(parents=True, exist_ok=True)
     primary = fingerprint(ROOT)
@@ -91,14 +108,14 @@ def main(preparation_only=False):
         probe.write_text(OFFLINE_PROBE)
         sequence = 0
 
-        def gradle(fixture, label, *arguments):
+        def gradle(fixture, label, *arguments, timeout=1200):
             nonlocal sequence
             sequence += 1
             aapt2 = Path(os.environ["ANDROID_HOME"]) / "build-tools" / ("35.0.0" if fixture == "android" else "36.0.0") / "aapt2"
             assert aapt2.is_file() and os.access(aapt2, os.X_OK), "Missing Nix-owned AAPT2"
             command = ["gradle", "--gradle-user-home", str(home), f"-Pandroid.aapt2FromMavenOverride={aapt2}", "--no-daemon", "--dependency-verification", "strict", "-p", str(checkout / "tests" / fixture), *arguments]
             result = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, timeout=1200, check=False)
+                                    text=True, timeout=timeout, check=False)
             (REPORTS / f"dependency-{sequence:02d}-{fixture}-{label}.log").write_text(result.stdout)
             assert fingerprint(checkout) == frozen, "Verification rewrote fixture locks/checksums"
             return result
@@ -110,7 +127,7 @@ def main(preparation_only=False):
             offline_report = REPORTS / f"{fixture}-offline-classpaths.json"
             offline_report.unlink(missing_ok=True)
             env["CHOOSER_OFFLINE_DEPENDENCIES_REPORT"] = str(offline_report)
-            cold = gradle(fixture, "resolve", "prepareRobolectricSdks", "resolveVerificationDependencies")
+            cold = prepare_cold_dependencies(gradle, fixture)
             assert cold.returncode == 0, cold.stdout[-5000:]
             warm = gradle(fixture, "offline-classpaths", "--offline", "-I", str(probe), "prepareRobolectricSdks", "verifyOfflineDependencies")
             assert warm.returncode == 0, warm.stdout[-5000:]

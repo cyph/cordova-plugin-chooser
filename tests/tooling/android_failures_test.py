@@ -2,14 +2,36 @@
 import importlib.util
 import os
 from pathlib import Path
+from subprocess import CompletedProcess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SOURCE = Path(__file__).resolve().parents[2] / "scripts/android-failures.py"
 SPEC = importlib.util.spec_from_file_location("android_failures", SOURCE)
 failures = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(failures)
+
+
+class ColdDependencyPreparationTests(unittest.TestCase):
+    def test_transient_repository_failure_retries_only_preparation(self):
+        unavailable = CompletedProcess([], 1, "Received status code 429 from server")
+        passed = CompletedProcess([], 0, "BUILD SUCCESSFUL")
+        gradle = Mock(side_effect=[unavailable, passed])
+        with patch.object(failures.time, "sleep") as sleep:
+            self.assertIs(failures.prepare_cold_dependencies(gradle, "android"), passed)
+        sleep.assert_called_once_with(15)
+        self.assertEqual([call.args[1] for call in gradle.call_args_list], ["resolve", "resolve-retry-1"])
+        for call in gradle.call_args_list:
+            self.assertEqual(call.args[2:], ("prepareRobolectricSdks", "resolveVerificationDependencies"))
+
+    def test_dependency_verification_failure_is_preserved(self):
+        rejected = CompletedProcess([], 1, "Dependency verification failed. Received status code 429 from server")
+        gradle = Mock(return_value=rejected)
+        with patch.object(failures.time, "sleep") as sleep:
+            self.assertIs(failures.prepare_cold_dependencies(gradle, "android"), rejected)
+        sleep.assert_not_called()
+        self.assertEqual(gradle.call_count, 1)
 
 
 class OfflineDependencyEvidenceTests(unittest.TestCase):
