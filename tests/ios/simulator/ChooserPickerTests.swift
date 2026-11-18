@@ -118,10 +118,13 @@ private final class PickerHarness {
         window.isHidden = true
     }
     func waitUntilAsync(_ predicate: @MainActor () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
-        let deadline = Date().addingTimeInterval(10)
-        while !predicate() && Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        // Hosted simulators can take several seconds to start the system picker
+        // or complete UIKit's transition under load.
+        let timeoutSeconds = 30
+        let deadline = DispatchTime.now() + .seconds(timeoutSeconds)
+        while !predicate() && DispatchTime.now() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
         let satisfied = predicate()
-        XCTAssertTrue(satisfied, "Native picker fixture predicate timed out after 10 seconds", file: file, line: line)
+        XCTAssertTrue(satisfied, "Native picker fixture predicate timed out after \(timeoutSeconds) seconds", file: file, line: line)
         guard satisfied else { throw PickerWaitError.timedOut }
     }
     func waitForSemaphore(_ semaphore: DispatchSemaphore) async -> DispatchTimeoutResult {
