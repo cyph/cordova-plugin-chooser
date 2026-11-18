@@ -258,6 +258,7 @@ function app(platform, alias, archive, env = {}, beforePlugin = () => {}) {
 
 function portable() {
 	staticChecks();
+	run("node", ["scripts/build-runtime.mts", "--check"]);
 	run("pnpm", ["test"]);
 	checked("contracts");
 	run("pnpm", ["test:types"]);

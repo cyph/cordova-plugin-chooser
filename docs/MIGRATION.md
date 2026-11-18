@@ -99,7 +99,7 @@ Use `source: 'photos'` and optionally `mediaTypes: ['image']` or `['video']` for
 Capacitor registers RC2 as a native plugin. Replace references to `window.chooser` with this import and register your UI handlers when the UI mounts. Remove any Chooser startup dependency on Cordova's `deviceready`.
 
 ```ts
-import { Chooser as chooser } from 'cordova-plugin-chooser/capacitor';
+import { Chooser } from 'cordova-plugin-chooser/capacitor';
 ```
 
 In Cordova, continue to use the injected global after `deviceready`. See [TypeScript setup](API.md#typescript).

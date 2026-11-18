@@ -6,9 +6,14 @@ import WebKit
 public final class CapacitorChooser: CAPPlugin, CAPBridgedPlugin {
 	public let identifier = "CapacitorChooser"
 	public let jsName = "Chooser"
-	public let pluginMethods = ["pick", "cancelPick", "readFile", "cancelRead", "statFile", "releaseFile"].map {
-		CAPPluginMethod(name: $0, returnType: CAPPluginReturnPromise)
-	}
+	public let pluginMethods: [CAPPluginMethod] = [
+		CAPPluginMethod(name: "pick", returnType: CAPPluginReturnPromise),
+		CAPPluginMethod(name: "cancelPick", returnType: CAPPluginReturnPromise),
+		CAPPluginMethod(name: "readFile", returnType: CAPPluginReturnPromise),
+		CAPPluginMethod(name: "cancelRead", returnType: CAPPluginReturnPromise),
+		CAPPluginMethod(name: "statFile", returnType: CAPPluginReturnPromise),
+		CAPPluginMethod(name: "releaseFile", returnType: CAPPluginReturnPromise)
+	]
 
 	private lazy var engine = ChooserEngine { [weak self] in self?.bridge?.viewController }
 	private var navigation: NSKeyValueObservation?

@@ -11,7 +11,7 @@ class Chooser: CDVPlugin {
 		let callbackId = command.callbackId ?? ""
 		return ChooserCommand(arguments: command.arguments ?? [], callbackId: callbackId) { [weak self] value, failed in
 			guard let delegate = self?.commandDelegate else { return false }
-			let result: CDVPluginResult?
+			let result: CDVPluginResult
 			if let message = value as? String {
 				result = CDVPluginResult(status: .ok, messageAs: message)
 			} else {

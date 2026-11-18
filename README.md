@@ -1,6 +1,6 @@
 # Cordova Plugin Chooser
 
-Pick documents, photos, and videos in Capacitor 8 or Cordova. This package registers a native Capacitor plugin on Android and iOS and uses a browser picker on the web. Chooser can return metadata, read a small file into JavaScript, or provide a managed file for streaming and native consumers.
+Pick documents, photos, and videos in Capacitor or Cordova. This package registers a native Capacitor plugin on Android and iOS and uses a browser picker on the web. Chooser can return metadata, read a small file into JavaScript, or provide a managed file for streaming and native consumers.
 
 For new projects, install `cordova-plugin-chooser@next`. This guide uses the 2.0.0-rc.2 API. Stable 2.0.0 is expected very soon, pending further testing and validation. If you are upgrading an existing app, read the [migration guide](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/MIGRATION.md).
 
@@ -39,9 +39,9 @@ Add a button and a place to display the result.
 Load this TypeScript module after those elements exist. The click opens the document picker and shows the filename and decoded text. Adjust the 1 MiB limit for the input your app expects.
 
 ```ts
-import { Chooser as chooser } from 'cordova-plugin-chooser/capacitor';
+import { Chooser } from 'cordova-plugin-chooser/capacitor';
 
-function start() {
+function start(chooser: typeof import('cordova-plugin-chooser')) {
   const button = document.querySelector<HTMLButtonElement>('#choose-file')!;
   const output = document.querySelector<HTMLElement>('#file-result')!;
 
@@ -68,7 +68,7 @@ function start() {
   });
 }
 
-start();
+start(Chooser);
 ```
 
 For Capacitor Android or iOS, build your app's web assets, then sync and run the native app. For a Capacitor web app, use your usual development server or web build.
@@ -79,7 +79,7 @@ npx cap sync
 npx cap run android
 ```
 
-Use `npx cap run ios` for iOS. In Cordova, load the generated `cordova.js`, replace the import with `declare const chooser: typeof import('cordova-plugin-chooser');`, and replace the final `start()` with `document.addEventListener('deviceready', start)`. Use TypeScript 5.7 or newer with either framework.
+Use `npx cap run ios` for iOS. In Cordova, load the generated `cordova.js`, replace the import with `declare const chooser: typeof import('cordova-plugin-chooser');`, and replace the final call with `document.addEventListener('deviceready', () => start(chooser))`. Use TypeScript 5.7 or newer with either framework.
 
 The direct-data method cleans up its temporary resources and keeps the complete decoded text in memory. For large files or a URI, see [file handling](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/FILE-HANDLING.md).
 

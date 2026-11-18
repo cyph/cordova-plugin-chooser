@@ -19,6 +19,8 @@ nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
 
 Setup installs the project's pinned dependencies and Git hooks. Run it again after changing toolchain or dependency configuration. The [verification guide](docs/VERIFICATION.md) maps changes to checks and lists host requirements. Use the pinned environment rather than substituting unpinned tools.
 
+The shipped JavaScript is compiled from strict TypeScript. Edit its source in `typescript/` and run `npm run build` to regenerate the files loaded by Cordova and Capacitor. Include the generated files in the same commit. The portable checks verify that the compiler produces identical files.
+
 ## Changes and review
 
 Keep the JavaScript bridge, [declarations](index.d.ts), native implementations, and user documentation consistent. Add regression coverage at the boundary affected by a behavior change. Test type changes with both the minimum TypeScript version and the pinned current compiler. Check both Capacitor and Cordova when changing installation, bridge behavior, or shared APIs. Test the typed Capacitor import and the Cordova global from the packed archive.

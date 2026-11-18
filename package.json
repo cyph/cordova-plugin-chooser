@@ -49,6 +49,8 @@
 		]
 	},
 	"scripts": {
+		"build": "node scripts/build-runtime.mts",
+		"check:runtime": "node scripts/build-runtime.mts --check",
 		"test": "node --test tests/js/*.test.js",
 		"test:types": "node scripts/check-types.mjs"
 	},
@@ -56,6 +58,7 @@
 		"@capacitor/android": "8.5.3",
 		"@capacitor/cli": "8.5.3",
 		"@capacitor/core": "8.5.3",
+		"@types/node": "26.6.5",
 		"cordova": "^13.0.0",
 		"cordova-android14": "npm:cordova-android@14.x",
 		"cordova-android15": "npm:cordova-android@15.x",

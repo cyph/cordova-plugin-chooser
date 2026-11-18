@@ -29,6 +29,9 @@ importers:
       '@capacitor/core':
         specifier: 8.5.3
         version: 8.5.3
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
       cordova:
         specifier: ^13.0.0
         version: 13.0.0(supports-color@7.2.0)
