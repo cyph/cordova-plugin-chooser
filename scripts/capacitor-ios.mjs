@@ -94,6 +94,23 @@ export function verifyCapacitorIos({ root, output, run, pack, checked }) {
 						'customClass="ChooserFixtureController" customModule="App" customModuleProvider="target"',
 					),
 				);
+				const sceneDelegate = join(project, "App/SceneDelegate.swift");
+				if (existsSync(sceneDelegate)) {
+					const scene = readFileSync(sceneDelegate, "utf8");
+					const rootController =
+						"rootViewController = CAPBridgeViewController()";
+					assert(
+						scene.includes(rootController),
+						"Could not install the Capacitor scene fixture controller",
+					);
+					writeFileSync(
+						sceneDelegate,
+						scene.replace(
+							rootController,
+							"rootViewController = ChooserFixtureController()",
+						),
+					);
+				}
 				appendFileSync(
 					join(project, "App/AppDelegate.swift"),
 					readFileSync(
