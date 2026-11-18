@@ -158,8 +158,16 @@ export function prepareCapacitor({
 }
 
 export async function verifyCapacitorAndroid(context) {
-	const { root, output, reportDirectory, report, run, checked, aapt2Path } =
-		context;
+	const {
+		root,
+		output,
+		reportDirectory,
+		report,
+		run,
+		pack,
+		checked,
+		aapt2Path,
+	} = context;
 	assert.equal(process.platform, "linux");
 	assert.equal(
 		process.arch,

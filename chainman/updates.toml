@@ -208,6 +208,7 @@ adapter = "gradle"
 profile = "capacitor"
 directory = "tests/capacitor"
 manifests = [
+  "capacitor/android/build.gradle",
   "tests/capacitor/build.gradle",
   "tests/capacitor/app/build.gradle",
   "tests/capacitor/runtime/build.gradle",

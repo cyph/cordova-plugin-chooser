@@ -234,7 +234,7 @@ jobs:
       - name: Qualify capacitor-ios
         run: |
           nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
-          nix --extra-experimental-features 'nix-command flakes' run .#just -- verify-capacitor-ios
+          nix --extra-experimental-features 'nix-command flakes' run .#just -- chainman run verify-capacitor-ios
       - name: Verify tracked files are unchanged
         run: |
           git diff --exit-code

@@ -264,6 +264,10 @@ doctor = ["doctor-project"]
 enabled = true
 
 [[dependencies.exclusions]]
+pattern = "Package.swift"
+reason = "Library manifest declares the Capacitor 8 compatibility range. The generated Capacitor app resolves the exact Swift package version, and the Capacitor iOS lane builds both ends of the tested range."
+
+[[dependencies.exclusions]]
 pattern = "tests/ios/privacy-plugin/package.json"
 reason = "Dependency-free, private fixture installed from this checkout. Portable tests prohibit dependencies and install scripts; adding either requires dependency ownership."
 
