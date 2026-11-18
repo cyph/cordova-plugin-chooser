@@ -1,7 +1,7 @@
 {
 	"name": "cordova-plugin-chooser",
 	"version": "2.0.0-rc.2",
-	"description": "Cordova file chooser plugin",
+	"description": "File chooser for Cordova and Capacitor",
 	"homepage": "https://github.com/cyph/cordova-plugin-chooser#readme",
 	"main": "www/chooser.js",
 	"types": "index.d.ts",
@@ -15,7 +15,10 @@
 		"CONTRIBUTING.md",
 		"docs/",
 		"LICENSE",
-		"NOTICE"
+		"NOTICE",
+		"capacitor/",
+		"Package.swift",
+		"CordovaPluginChooser.podspec"
 	],
 	"repository": {
 		"type": "git",
@@ -63,5 +66,32 @@
 		"typescript": "7.0.2",
 		"typescript-minimum": "npm:typescript@5.7.x"
 	},
-	"packageManager": "pnpm@12.14.0"
+	"packageManager": "pnpm@12.14.0",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./www/chooser.js"
+		},
+		"./capacitor": {
+			"types": "./capacitor/index.d.ts",
+			"default": "./capacitor/index.js"
+		},
+		"./*": "./*"
+	},
+	"capacitor": {
+		"android": {
+			"src": "capacitor/android"
+		},
+		"ios": {
+			"src": "capacitor/ios"
+		}
+	},
+	"peerDependencies": {
+		"@capacitor/core": "^8.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@capacitor/core": {
+			"optional": true
+		}
+	}
 }

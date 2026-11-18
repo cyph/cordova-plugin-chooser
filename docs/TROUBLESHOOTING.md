@@ -20,9 +20,9 @@ The remedies below use the RC2 API. Consult [migration](MIGRATION.md) for earlie
 
 ## Chooser or a method is undefined
 
-In Capacitor, confirm the package is installed, run sync, and rebuild the native app. In Cordova, install the plugin into the app and load the generated `cordova.js`. Both need `deviceready` before calls to the injected `chooser`. Installing an npm dependency alone does not create native integration or a standalone web picker.
+In Capacitor, import `Chooser` from `cordova-plugin-chooser/capacitor`. For native targets, build your web code, sync the project, and rebuild the app. In Cordova, install the plugin into the app, load the generated `cordova.js`, and wait for `deviceready` to use the global.
 
-Check the installed version and call the global directly when investigating a wrapper. RC2 uses `getFile` for a managed handle and `getFileData` for complete contents. RC1's `getFileUri` and callback overloads are absent in RC2.
+Check the installed version and call the plugin directly through the entry point for your framework when investigating a wrapper. RC2 uses `getFile` for a managed handle and `getFileData` for complete contents. RC1's `getFileUri` and callback overloads are absent in RC2.
 
 <a id="a-wrapper-reports-missing-data-or-the-call-rejects-before-selection"></a>
 
@@ -38,7 +38,7 @@ RC2 represents dismissal as `CancellationError` with code `CANCELLED`. Catch it 
 
 ## The browser picker does not open or cancellation hangs
 
-Start the picker directly in a click or other user gesture after `deviceready`. Awaiting a timer or network call before opening it can lose the gesture. Check the [browser requirements](PLATFORMS.md#browser). Some browsers do not emit the file-input cancellation event, leaving dismissal pending. A supplied `AbortSignal` lets the application request cancellation.
+Start the picker directly in a click or other user gesture. In Cordova Browser, wait for `deviceready` before enabling the button. Awaiting a timer or network call before opening it can lose the gesture. Check the [browser requirements](PLATFORMS.md#browser). Some browsers do not emit the file-input cancellation event, leaving dismissal pending. A supplied `AbortSignal` lets the application request cancellation.
 
 ## A second request rejects with BUSY
 
@@ -54,7 +54,7 @@ Try `accept: '*/*'` to test whether a MIME filter is responsible. A provider mig
 
 ## iOS preparation fails or the picker cannot appear
 
-Cordova requires an explicit iOS deployment target of at least 15 in `config.xml`. The project is tested in Swift 5 language mode, which the host may already select. The Cordova hook validates the deployment target, not the Swift setting. Capacitor does not run that hook. Configure the native target yourself and keep any higher host requirement. See [build configuration](PLATFORMS.md#build-configuration).
+Cordova requires an explicit iOS deployment target of at least 15 in `config.xml`. The project is tested in Swift 5 language mode, which the host may already select. The Cordova hook validates the deployment target, not the Swift setting. See [build configuration](PLATFORMS.md#build-configuration).
 
 Present the picker from a visible view after other modal transitions. Check orientation support and whether a previous request is still active. If Files stays open after selecting or dismissing, consult the [known issue](KNOWN-ISSUES.md).
 

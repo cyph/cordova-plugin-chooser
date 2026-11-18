@@ -1,6 +1,6 @@
 # File handling
 
-This guide follows an RC2 selection from choosing a read strategy through cleanup. Start the picker after `deviceready` and invoke it directly from the user's click. The [API reference](API.md) lists every option and result.
+This guide follows an RC2 selection from choosing a read strategy through cleanup. Call the picker directly from the user's click. The examples use `chooser`. Import `Chooser as chooser` from `cordova-plugin-chooser/capacitor` in Capacitor, or wait for `deviceready` to use the Cordova global. The [API reference](API.md) lists every option and result.
 
 ## Choose an ownership model
 
@@ -12,7 +12,7 @@ A native managed file is a snapshot in private cache. A browser handle retains a
 
 ## Read a small file
 
-The example below reads up to 1 MiB of text and puts it on the page. Provide an element with `id="file-result"` and call the function from a button after `deviceready`.
+The example below reads up to 1 MiB of text and puts it on the page. Provide an element with `id="file-result"` and call the function from a button.
 
 ```ts
 export {};

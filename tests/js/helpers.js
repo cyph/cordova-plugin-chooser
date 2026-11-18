@@ -13,8 +13,8 @@ function loadChooser(exec, timers = []) {
 		},
 		setTimeout: callback => timers.push(callback)
 	};
-	vm.runInNewContext(fs.readFileSync(path.join(root, 'www/chooser.js'), 'utf8'), context);
-	return context.module.exports;
+	vm.runInNewContext(fs.readFileSync(path.join(root, 'www/chooser-core.js'), 'utf8'), context);
+	return context.module.exports(exec);
 }
 
 function browserFixture() {
@@ -70,7 +70,8 @@ function browserFixture() {
 			return {add(service, value) { if (service !== 'Chooser') throw new Error('Wrong service'); proxy = value; }};
 		}
 	};
-	vm.runInNewContext(fs.readFileSync(path.join(root, 'src/browser/ChooserProxy.js'), 'utf8'), context);
+	vm.runInNewContext(fs.readFileSync(path.join(root, 'src/browser/chooser-web.js'), 'utf8'), context);
+	proxy = context.module.exports();
 	const chooser = loadChooser((ok, fail, service, action, args) => proxy[action](ok, fail, args));
 	return {chooser, proxy, elements, readers, blobs, revoked, pagehide: () => windowListeners.get('pagehide')()};
 }

@@ -205,6 +205,13 @@ commands = [["node", "scripts/verify.mjs", "capacitor-android"]]
 cleanup_children = true
 shutdown_seconds = 10
 
+[tasks.verify-capacitor-ios]
+profile = "ios"
+setup = ["javascript"]
+commands = [["node", "scripts/verify.mjs", "capacitor-ios"]]
+cleanup_children = true
+shutdown_seconds = 10
+
 [tasks.prepare-capacitor]
 profile = "capacitor"
 setup = ["javascript"]

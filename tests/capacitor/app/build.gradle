@@ -14,7 +14,12 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
-    sourceSets.main.java.srcDir new File(System.getenv('CHOOSER_PLUGIN') ?: rootProject.file('../..').path, 'src/android')
+    sourceSets.main.java {
+        def chooser = System.getenv('CHOOSER_PLUGIN') ?: rootProject.file('../..').path
+        srcDir new File(chooser, 'src/android')
+        srcDir new File(chooser, 'capacitor/android/src/main/java')
+        exclude 'Chooser.java'
+    }
 }
 dependencies {
     implementation project(':runtime')

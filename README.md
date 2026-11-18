@@ -1,6 +1,6 @@
 # Cordova Plugin Chooser
 
-Let a user pick a document, photo, or video from a Capacitor or Cordova app. Chooser can return metadata, read a small file into JavaScript, or provide a managed file for streaming and native consumers.
+Pick documents, photos, and videos in Capacitor 8 or Cordova. This package registers a native Capacitor plugin on Android and iOS and uses a browser picker on the web. Chooser can return metadata, read a small file into JavaScript, or provide a managed file for streaming and native consumers.
 
 For new projects, install `cordova-plugin-chooser@next`. This guide uses the 2.0.0-rc.2 API. Stable 2.0.0 is expected very soon, pending further testing and validation. If you are upgrading an existing app, read the [migration guide](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/MIGRATION.md).
 
@@ -8,34 +8,43 @@ For new projects, install `cordova-plugin-chooser@next`. This guide uses the 2.0
 
 <a id="quick-start"></a>
 
-### Pick a text file in Capacitor
+<a id="pick-a-text-file-in-capacitor"></a>
 
-Start in an existing Capacitor app with a native platform added. Install the plugin in the app directory.
+### Install in Capacitor
+
+In an existing Capacitor 8 app, install the package and import its Capacitor entry point.
 
 ```sh
 npm install cordova-plugin-chooser@next
-npm ls cordova-plugin-chooser
 ```
 
-For iOS, set the native project's deployment target to at least iOS 15 and retain any higher target required by the host or other dependencies. Capacitor does not execute Cordova hooks. The project tests Capacitor Android with controlled emulator responses. Capacitor iOS and Web do not have equivalent coverage, so test your own platforms and providers. See [platform requirements](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/PLATFORMS.md#requirements-and-coverage).
+### Install in Cordova
 
-Add elements for the action and result.
+Set the explicit [deployment target](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/PLATFORMS.md#build-configuration) before installing in a Cordova iOS app. From the app directory, run the following commands for the platforms you use.
+
+```sh
+cordova plugin add cordova-plugin-chooser@next
+cordova prepare
+```
+
+### Pick a text file
+
+Add a button and a place to display the result.
 
 ```html
 <button id="choose-file" type="button" disabled>Choose a text file</button>
 <pre id="file-result" role="status"></pre>
 ```
 
-Load this TypeScript module once the elements exist. The `deviceready` listener enables the button when the bridge is ready, and a click opens the document picker. On success, the page displays the name and decoded text. The 1 MiB input limit is an example. Choose a budget suitable for your app.
+Load this TypeScript module after those elements exist. The click opens the document picker and shows the filename and decoded text. Adjust the 1 MiB limit for the input your app expects.
 
 ```ts
-export {}; // Treat this file as a module.
-declare const chooser: typeof import('cordova-plugin-chooser');
+import { Chooser as chooser } from 'cordova-plugin-chooser/capacitor';
 
-const button = document.querySelector<HTMLButtonElement>('#choose-file')!;
-const output = document.querySelector<HTMLElement>('#file-result')!;
+function start() {
+  const button = document.querySelector<HTMLButtonElement>('#choose-file')!;
+  const output = document.querySelector<HTMLElement>('#file-result')!;
 
-document.addEventListener('deviceready', () => {
   button.disabled = false;
   button.addEventListener('click', async () => {
     button.disabled = true;
@@ -57,33 +66,22 @@ document.addEventListener('deviceready', () => {
       button.disabled = false;
     }
   });
-});
+}
+
+start();
 ```
 
-Import or otherwise load the module in your app, then build the web assets before synchronizing them into the native project. Use your app's build command if it differs from this example.
+For Capacitor Android or iOS, build your app's web assets, then sync and run the native app. For a Capacitor web app, use your usual development server or web build.
 
 ```sh
 npm run build
 npx cap sync
-npx cap ls
 npx cap run android
 ```
 
-Use `npx cap run ios` for an iOS project, or run the synchronized project from its native IDE. Capacitor's [Cordova plugin guide](https://capacitorjs.com/docs/plugins/cordova) explains synchronization.
+Use `npx cap run ios` for iOS. In Cordova, load the generated `cordova.js`, replace the import with `declare const chooser: typeof import('cordova-plugin-chooser');`, and replace the final `start()` with `document.addEventListener('deviceready', start)`. Use TypeScript 5.7 or newer with either framework.
 
-`declare` describes the injected `chooser` global without importing a runtime module. The bundled types require TypeScript 5.7 or newer. Call the picker directly from a user gesture, especially on browser platforms. The complete text occupies memory and the direct-data method cleans up its temporary resources. For large files or a URI, use the [managed-file guide](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/FILE-HANDLING.md).
-
-### Install in Cordova
-
-Before installing the plugin, Cordova iOS projects must set an explicit deployment target of at least iOS 15. The project is tested in Swift 5 language mode. Follow [iOS configuration](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/PLATFORMS.md#build-configuration). Then install the plugin and prepare the platforms from the Cordova app directory.
-
-```sh
-cordova plugin add cordova-plugin-chooser@next
-cordova prepare
-cordova plugin ls
-```
-
-Load the generated `cordova.js`, wait for `deviceready`, and use the same API.
+The direct-data method cleans up its temporary resources and keeps the complete decoded text in memory. For large files or a URI, see [file handling](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/FILE-HANDLING.md).
 
 ## Choose a method
 

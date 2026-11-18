@@ -21,7 +21,7 @@ Setup installs the project's pinned dependencies and Git hooks. Run it again aft
 
 ## Changes and review
 
-Keep the JavaScript bridge, [declarations](index.d.ts), native implementations, and user documentation consistent. Add regression coverage at the boundary affected by a behavior change. Test type changes with both the minimum TypeScript version and the pinned current compiler. Check both Capacitor and Cordova instructions when a release changes installation or the injected interface.
+Keep the JavaScript bridge, [declarations](index.d.ts), native implementations, and user documentation consistent. Add regression coverage at the boundary affected by a behavior change. Test type changes with both the minimum TypeScript version and the pinned current compiler. Check both Capacitor and Cordova when changing installation, bridge behavior, or shared APIs. Test the typed Capacitor import and the Cordova global from the packed archive.
 
 The public RC2 contract is Promise-based and uses options objects. Picker cancellation rejects, while successful plural selection is nonempty. Metadata, complete data, and managed handles have different resource and memory costs. Use [API reference](docs/API.md) and [platform guide](docs/PLATFORMS.md) as the shared contract when reviewing changes.
 

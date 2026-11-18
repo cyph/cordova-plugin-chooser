@@ -1,3 +1,8 @@
+import { Chooser } from 'cordova-plugin-chooser/capacitor';
+
+const capacitorChooser: typeof import('../..') = Chooser;
+void capacitorChooser;
+
 import chooser = require('../..');
 
 async function contracts(format: chooser.DataFormat, unknownReference: unknown, flag: boolean) {

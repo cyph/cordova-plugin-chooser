@@ -15,6 +15,7 @@ Install Git, Nix with flakes, and `just`, then run `just setup` and `just doctor
 | iOS archives | macOS, host Nix, and the selected Xcode installation |
 | iOS simulator | macOS, host Nix, baseline Xcode, and the iOS 26.5 simulator runtime |
 | Capacitor Android emulator | Linux x86_64, host Nix, and readable/writable `/dev/kvm` |
+| Capacitor iOS | macOS, host Nix, baseline Xcode, the matching iOS simulator runtime, and CocoaPods |
 
 Xcode is installed separately. The repository's [baseline](https://github.com/cyph/cordova-plugin-chooser/blob/master/chainman/apple.json) and [modern](https://github.com/cyph/cordova-plugin-chooser/blob/master/chainman/apple-modern.json) Apple profiles specify the Xcode build and SDK. An explicit `DEVELOPER_DIR` must match the chosen profile. Modern simulator diagnostics also need its corresponding runtime.
 
@@ -26,7 +27,7 @@ Start with the rows that cover the boundary changed. A test lane's configured co
 | --- | --- | --- |
 | Shared JavaScript, declarations, registration, package, or privacy files | `just chainman run verify-portable` | Promise contract, budgets, decoding, ownership, types, tooling, registration, and package contents |
 | General portable and browser changes on Linux | `just verify` | Portable checks and browser integration |
-| Browser behavior and Blob URLs | `just verify-browser` | Packed plugin in Cordova Browser through Chromium, Firefox, and WebKit |
+| Browser behavior and Blob URLs | `just verify-browser` | Packed plugin in Cordova Browser and Capacitor Web through Chromium, Firefox, and WebKit |
 | pnpm SDK, node-gyp, or TLS setup | `just chainman run verify-sdk` | SDK identity, bundled node-gyp, and TLS trust with temporary certificates. This contacts npm |
 | Android dependencies | `just verify-android-dependencies` | Resolves and stages frozen Robolectric SDKs |
 | Android implementation or Cordova integration | `just verify-android` | Cordova Android 14/15 fixtures, Robolectric, lint, APK builds, and reinstallation |
@@ -36,7 +37,8 @@ Start with the rows that cover the boundary changed. A test lane's configured co
 | iOS native and real picker investigation | `just verify-ios-simulator` | Complete local iPhone/iPad and Cordova iOS 7/8 matrix |
 | One required iOS partition | `just chainman run verify-ios-simulator-part cordova-ios7 iphone` | Controlled native cases and bridge smoke test for that partition |
 | One iOS provider investigation | `just chainman run verify-ios-simulator-part cordova-ios7 iphone --investigation-only` | Real picker and provider UI cases for that partition |
-| Capacitor Android integration | `just verify-capacitor-android` | Packed plugin through the Capacitor Android bridge on an emulator |
+| Capacitor Android integration | `just verify-capacitor-android` | Native bridge on an API 33 emulator |
+| Capacitor iOS integration | `just chainman run verify-capacitor-ios` | Swift Package Manager and CocoaPods simulator builds, native registration, picker results, and the privacy manifest |
 | Baseline Android and iOS together | `just verify-native` | Android and baseline iOS tasks on a host meeting both requirements |
 
 For iOS partitions, choose `cordova-ios7` or `cordova-ios8` and `iphone` or `ipad`. `verify-native` excludes modern iOS, simulator, Capacitor emulator, and Android dependency-failure tasks. Simulator and emulator commands create virtual devices. `just clean` removes generated verification apps, reports, and Android fixture output.
@@ -45,7 +47,7 @@ For iOS partitions, choose `cordova-ios7` or `cordova-ios8` and `iphone` or `ipa
 
 The type lane uses TypeScript 5.7 and the pinned current compiler, including DOM compatibility for returned byte arrays. Browser tests exercise an installed plugin, managed URLs, failures, navigation, and CSP. Synthetic empty selections do not prove that a real OS dialog cancels correctly. Playwright WebKit is not a complete Safari or OS compatibility claim.
 
-Android fixtures exercise production code through Cordova. Robolectric covers API 24, 28, 30, 33, and 35. The Capacitor 8.5.3 emulator lane uses a real bridge and provider reads at API 33 with controlled intent responses. It does not exercise a real system picker or cloud provider. There is no equivalent Capacitor iOS or Web lane.
+Android fixtures exercise production code through Cordova. Robolectric covers API 24, 28, 30, 33, and 35. The Capacitor lanes use 8.0.0 and the pinned 8.x version. Android uses provider reads and controlled intent responses. iOS presents UIKit and supplies controlled document selection and dismissal callbacks. Capacitor Web runs the packed browser implementation alongside Cordova Browser tests.
 
 The iOS Foundation fixtures cover I/O, limits, transaction recovery, and worker ownership. Archive builds cover both maintained Cordova iOS families and privacy-resource coexistence at the plugin's iOS 15 minimum. A successful build does not prove picker behavior on every supported OS or provider. The [known issue](KNOWN-ISSUES.md) describes observed Files stalls.
 

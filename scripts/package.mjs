@@ -43,6 +43,15 @@ export function checkPackedFiles(root, pkg, entries) {
 		}
 	}
 	checkDirectory("src");
+	if (pkg.capacitor) {
+		checkDirectory("capacitor");
+		for (const name of [
+			"Package.swift",
+			"CordovaPluginChooser.podspec",
+			"www/chooser-core.js",
+		])
+			assert(files.has(name), `Missing packed ${name}`);
+	}
 	for (const name of files)
 		assert(
 			!/^(tests|scripts|node_modules|\.verification|\.chainman|\.github)\//.test(

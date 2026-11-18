@@ -126,7 +126,7 @@ test("qualification artifacts and signer input are isolated to the exact run att
 		pattern: body.match(/^          pattern: (.+)$/m)?.[1],
 	}));
 	const uploads = transfers.filter(({ direction }) => direction === "upload");
-	assert.equal(uploads.length, 9);
+	assert.equal(uploads.length, 10);
 	assert.doesNotMatch(workflow, /overwrite:/);
 	for (const { name } of uploads) {
 		assert(
@@ -182,8 +182,8 @@ test("qualification artifacts and signer input are isolated to the exact run att
 	);
 	assert.equal(
 		current.filter(matches).length,
-		10,
-		"Six lanes and four simulator partitions qualify together",
+		11,
+		"Seven lanes and four simulator partitions qualify together",
 	);
 	for (const other of [...names("123", "1"), ...names("124", "2")])
 		assert(

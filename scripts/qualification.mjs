@@ -65,7 +65,18 @@ export const requiredChecks = {
 		),
 	],
 	"android-failures": ["package", "dependency-failures"],
-	"capacitor-android": ["package", "api33-bridge"],
+	"capacitor-android": ["package", "api33-bridge", "api33-bridge-minimum"],
+	"capacitor-ios": [
+		"package",
+		...[
+			"8.0.0",
+			JSON.parse(
+				readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+			).devDependencies["@capacitor/core"],
+		].flatMap((version) =>
+			["spm", "cocoapods"].map((manager) => `ios-${version}-${manager}`),
+		),
+	],
 	"ios-simulator": simulatorSuiteChecks("required"),
 	ios: [
 		"package",
@@ -243,6 +254,7 @@ export function aggregateReports(directory, sha, results) {
 		"ios-modern",
 		"ios-simulator",
 		"capacitor-android",
+		"capacitor-ios",
 	];
 	for (const job of jobs)
 		assert.equal(

@@ -39,6 +39,16 @@ function fixture(t, { version = "8.5.3", pins = {}, installed = {} } = {}) {
 		join(packed, "package.json"),
 		JSON.stringify({ name: "cordova-plugin-chooser", version: "2.0.0-rc.2" }),
 	);
+	for (const name of [
+		"www/chooser-core.js",
+		"src/browser/chooser-web.js",
+		"capacitor/index.js",
+	])
+		write(join(packed, name), "module.exports = {};");
+	write(
+		join(root, "node_modules/@capacitor/core/dist/index.cjs.js"),
+		"module.exports = {};",
+	);
 	const ownedTest = "app/src/androidTest/java/ChooserTest.java";
 	write(join(root, "tests/capacitor", ownedTest), "owned instrumentation");
 	write(join(root, "tests/capacitor/settings.gradle"), "owned settings");
@@ -73,7 +83,11 @@ function fixture(t, { version = "8.5.3", pins = {}, installed = {} } = {}) {
 			assert.equal(args[1], "sync");
 			write(
 				join(directory, "android/app/src/main/res/xml/config.xml"),
-				'<feature name="Chooser"><param value="com.cyph.cordova.Chooser"/></feature>',
+				"<widget />",
+			);
+			write(
+				join(directory, "android/app/src/main/assets/capacitor.plugins.json"),
+				JSON.stringify([{ classpath: "com.cyph.cordova.CapacitorChooser" }]),
 			);
 			write(
 				join(
@@ -125,8 +139,11 @@ for (const version of ["8.5.2", "8.5.3"]) {
 			"generated bridge",
 		);
 		assert.match(
-			readFileSync(join(android, "app/src/main/res/xml/config.xml"), "utf8"),
-			/com\.cyph\.cordova\.Chooser/,
+			readFileSync(
+				join(android, "app/src/main/assets/capacitor.plugins.json"),
+				"utf8",
+			),
+			/com\.cyph\.cordova\.CapacitorChooser/,
 		);
 		for (const path of [
 			"app/src/test/Demo.java",

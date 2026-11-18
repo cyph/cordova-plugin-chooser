@@ -44,6 +44,7 @@ function fixture(t) {
 	for (const name of [
 		"scripts",
 		"src",
+		"www",
 		"plugin.xml",
 		"package.json",
 		"tests/android/gradle/libs.versions.toml",

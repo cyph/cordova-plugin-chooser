@@ -26,9 +26,12 @@ const blobPolicies = {
 	allowed: { read: true, preview: true },
 };
 
-for (const engine of ["chromium", "firefox", "webkit"]) {
+const browserVariants = ["chromium", "firefox", "webkit"].flatMap((engine) =>
+	["index", "capacitor", "capacitor-minimum"].map((bridge) => [engine, bridge]),
+);
+for (const [engine, bridge] of browserVariants) {
 	test(
-		`${engine}: packed Cordova bridge, CSP and resource ownership`,
+		`${engine}: packed ${bridge === "index" ? "cordova" : bridge} bridge, CSP and resource ownership`,
 		{ timeout: 90000 },
 		async (context) => {
 			const server = createServer(async (req, res) => {
@@ -76,7 +79,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 				page.setDefaultTimeout(10000);
 				const errors = [];
 				page.on("pageerror", (error) => errors.push(error.message));
-				const url = `http://127.0.0.1:${server.address().port}/index.html`;
+				const url = `http://127.0.0.1:${server.address().port}/${bridge}.html`;
 				await page.goto(url);
 				await page.waitForFunction(
 					() => !document.getElementById("pick").disabled,

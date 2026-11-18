@@ -12,7 +12,7 @@ If the dialog responds, cancel it and wait for the original request to settle be
 
 Stalls have occurred in both open-in-place and import modes. Some runs also showed FileProvider URL or bookmark resolution errors in an independent UIKit control without Cordova or Chooser. The cause remains unknown. The available evidence does not establish the impact on physical devices or other providers. Switching picker modes and using iOS 15 are not verified general fixes.
 
-Required CI exercises controlled native picker contracts and a Cordova bridge smoke test across iPhone and iPad with both maintained Cordova iOS families. Real Files and provider UI cases run separately in the manual iOS picker investigation workflow. Their separation does not mean those cases pass or that the issue is resolved. [Verification](VERIFICATION.md#simulator-and-framework-integration) describes the suites and how to interpret their results. Capacitor iOS and Web do not have equivalent integration coverage to Capacitor Android.
+Required CI exercises controlled native picker contracts and a Cordova bridge smoke test across iPhone and iPad with both maintained Cordova iOS families. Real Files and provider UI cases run separately in the manual iOS picker investigation workflow. Their separation does not mean those cases pass or that the issue is resolved. [Verification](VERIFICATION.md#simulator-and-framework-integration) describes the suites and how to interpret their results. The Capacitor iOS integration tests also supply controlled picker results.
 
 When reporting a reproduction, include the device or simulator, OS, provider and location, method and options, and a small nonprivate file. See [reporting guidance](TROUBLESHOOTING.md#report-a-reproducible-issue).
 

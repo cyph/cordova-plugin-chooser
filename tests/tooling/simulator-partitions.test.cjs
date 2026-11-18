@@ -63,6 +63,7 @@ async function fixture(t) {
 			"ios-modern",
 			"ios-simulator",
 			"capacitor-android",
+			"capacitor-ios",
 		].map((job) => [job, { result: "success" }]),
 	);
 	const report = (lane, checks) => ({

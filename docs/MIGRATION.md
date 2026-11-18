@@ -6,10 +6,11 @@ RC2 changes how selection, cancellation, and resource ownership work. Check the 
 
 ## Update the installation
 
-For new applications, install `cordova-plugin-chooser@next`. Stable 2.0.0 is expected very soon, pending further testing and validation. In Capacitor, update the dependency, sync, and rebuild the native project.
+For new applications, install `cordova-plugin-chooser@next`. Stable 2.0.0 is expected very soon, pending further testing and validation. Upgrade the app to Capacitor 8.x, update the dependency, and rebuild your web assets before syncing the native project.
 
 ```sh
 npm install cordova-plugin-chooser@next
+npm run build
 npx cap sync
 npx cap ls
 ```
@@ -23,7 +24,7 @@ cordova prepare
 cordova plugin ls
 ```
 
-RC2 supports Cordova Android 14/15 and iOS 7/8. The plugin requires a deployment target of at least iOS 15 and is tested in Swift 5 language mode. Capacitor does not run the Cordova validation hook, so set the target in the native project and retain any higher requirement of the host or its dependencies. Review lockfile and native project changes, then rebuild. Chooser no longer needs `cordova-plugin-add-swift-support`. Remove it only if no other plugin uses it. RC2's declarations require TypeScript 5.7 or newer.
+RC2 supports Cordova Android 14/15 and iOS 7/8. The plugin requires a deployment target of at least iOS 15 and is tested in Swift 5 language mode. Chooser no longer needs `cordova-plugin-add-swift-support`. Remove it only if no other plugin uses it. RC2's declarations require TypeScript 5.7 or newer.
 
 <a id="existing-calls"></a>
 
@@ -95,7 +96,13 @@ Use `source: 'photos'` and optionally `mediaTypes: ['image']` or `['video']` for
 
 ## Framework and lifecycle integration
 
-Call the injected global after `deviceready`. The [TypeScript example](API.md#typescript) supplies its type without importing the runtime module.
+Capacitor registers RC2 as a native plugin. Replace references to `window.chooser` with this import and register your UI handlers when the UI mounts. Remove any Chooser startup dependency on Cordova's `deviceready`.
+
+```ts
+import { Chooser as chooser } from 'cordova-plugin-chooser/capacitor';
+```
+
+In Cordova, continue to use the injected global after `deviceready`. See [TypeScript setup](API.md#typescript).
 
 ### Awesome Cordova Plugins and fork-specific wrappers
 
@@ -103,7 +110,7 @@ The Awesome Cordova Plugins Chooser wrapper [changed to the MaximBelov fork](htt
 
 ### Android lifecycle
 
-A destroyed WebView loses the pending Promise. Cordova can deliver a raw native envelope in `resume.pendingResult`, but it is not the public managed or data result and does not resume JavaScript work. See [restored Android results](PLATFORMS.md#restored-android-results).
+A destroyed WebView loses the pending Promise. Cordova can deliver a raw native envelope in `resume.pendingResult`, but it is not the public managed or data result and does not resume JavaScript work. Capacitor reports an interrupted picker through its restored-result event. See [restored Android results](PLATFORMS.md#restored-android-results).
 
 ## Check the application upgrade
 

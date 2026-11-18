@@ -15,6 +15,8 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { installCapacitorHost } from "./capacitor-host.mjs";
+import { writeCapacitorFixture } from "./capacitor-web-fixture.mjs";
 import { stageFrozenPackage } from "./fixture-packages.mjs";
 import {
 	withFinalizers,
@@ -34,9 +36,19 @@ export function runInstrumentation(execute, results, destination) {
 	]);
 }
 
-export function prepareCapacitor({ root, output, run, pack }) {
+export function prepareCapacitor({
+	root,
+	output,
+	run,
+	pack,
+	hostModules,
+	hostVersion,
+}) {
 	const packed = pack();
-	const directory = join(output, "capacitor");
+	const directory = join(
+		output,
+		hostVersion ? `capacitor-${hostVersion}` : "capacitor",
+	);
 	rmSync(directory, { recursive: true, force: true });
 	mkdirSync(directory, { recursive: true });
 	const dependencies = { "cordova-plugin-chooser": "file:" + packed };
@@ -44,23 +56,21 @@ export function prepareCapacitor({ root, output, run, pack }) {
 	const pins = JSON.parse(
 		readFileSync(join(root, "package.json"), "utf8"),
 	).devDependencies;
-	const version = pins?.["@capacitor/core"];
+	const version = hostVersion ?? pins?.["@capacitor/core"];
+	const modules = hostModules ?? join(root, "node_modules");
 	assert.match(
 		version ?? "",
 		/^\d+\.\d+\.\d+$/,
 		"Capacitor requires exact project pins",
 	);
-	for (const name of names)
+	for (const name of hostVersion ? [] : names)
 		assert.equal(
 			pins[name],
 			version,
 			`${name} must match the @capacitor/core project pin`,
 		);
 	for (const name of names) {
-		const installed = stageFrozenPackage(
-			directory,
-			join(root, "node_modules", name),
-		);
+		const installed = stageFrozenPackage(directory, join(modules, name));
 		assert.equal(installed.name, name, `Unexpected frozen package for ${name}`);
 		assert.equal(
 			installed.version,
@@ -88,11 +98,16 @@ export function prepareCapacitor({ root, output, run, pack }) {
 		}),
 	);
 	mkdirSync(join(directory, "www"));
-	writeFileSync(
-		join(directory, "www/index.html"),
-		'<!doctype html><html><head><meta charset="utf-8"></head><body><script>document.addEventListener("deviceready",()=>window.fixtureReady=true,false);</script></body></html>',
+	writeCapacitorFixture(
+		join(directory, "www"),
+		packed,
+		join(modules, "@capacitor/core"),
 	);
-	const cli = join(root, "node_modules/@capacitor/cli/bin/capacitor");
+	cpSync(
+		join(directory, "www/capacitor.html"),
+		join(directory, "www/index.html"),
+	);
+	const cli = join(modules, "@capacitor/cli/bin/capacitor");
 	const env = { npm_config_offline: "true", npm_config_ignore_scripts: "true" };
 	run("node", [cli, "add", "android"], directory, false, env);
 	run("node", [cli, "sync", "android"], directory, false, env);
@@ -102,47 +117,41 @@ export function prepareCapacitor({ root, output, run, pack }) {
 			recursive: true,
 			force: true,
 		});
-	const registration = readFileSync(
-		join(directory, "android/app/src/main/res/xml/config.xml"),
-		"utf8",
-	);
-	rmSync(join(directory, "android/app/src/main/res"), {
-		recursive: true,
-		force: true,
-	});
-	mkdirSync(join(directory, "android/app/src/main/res/xml"), {
-		recursive: true,
-	});
-	writeFileSync(
-		join(directory, "android/app/src/main/res/xml/config.xml"),
-		registration,
-	);
-	// Keep CLI-generated bridge assets and registration, then apply the frozen
-	// fixture's Gradle ownership and instrumentation without editing npm packages.
+	const res = join(directory, "android/app/src/main/res");
+	const registration = readFileSync(join(res, "xml/config.xml"));
+	rmSync(res, { recursive: true, force: true });
+	mkdirSync(join(res, "xml"), { recursive: true });
+	writeFileSync(join(res, "xml/config.xml"), registration);
+	// Keep discovery and bridge assets from the CLI. The emulator fixture owns
+	// its locked Gradle build and instrumentation sources.
+
 	cpSync(join(root, "tests/capacitor"), join(directory, "android"), {
 		recursive: true,
 		filter: (source) =>
 			!/[\\/](?:build|\.gradle)(?:[\\/]|$)/.test(source) &&
 			!source.endsWith("local.properties"),
 	});
-	assert(
-		existsSync(
-			join(directory, "android/app/src/main/assets/public/cordova_plugins.js"),
-		),
-		"Missing generated Cordova bridge assets",
+	const assets = join(directory, "android/app/src/main/assets");
+	const entries = JSON.parse(
+		readFileSync(join(assets, "capacitor.plugins.json"), "utf8"),
 	);
 	assert(
-		readFileSync(
-			join(directory, "android/app/src/main/res/xml/config.xml"),
-			"utf8",
-		).includes("com.cyph.cordova.Chooser"),
-		"Missing generated plugin registration",
+		entries.some(
+			(plugin) => plugin.classpath === "com.cyph.cordova.CapacitorChooser",
+		),
+		"Missing CLI-generated native plugin registration",
+	);
+	assert(
+		!readFileSync(join(assets, "public/cordova_plugins.js"), "utf8").includes(
+			"cordova-plugin-chooser",
+		),
+		"Chooser was also registered as a Cordova plugin",
 	);
 	return {
 		directory,
 		version,
 		env: {
-			CHOOSER_NODE_MODULES: join(root, "node_modules"),
+			CHOOSER_NODE_MODULES: modules,
 			CHOOSER_PLUGIN: packed,
 		},
 	};
@@ -161,8 +170,24 @@ export async function verifyCapacitorAndroid(context) {
 	report.toolchain.gradle = run("gradle", ["--version"], root, true);
 	assert.match(report.toolchain.gradle, /Gradle 8\./);
 	assert.match(report.toolchain.gradle, /(?:JVM|Java).*21[. ]/);
-	const { directory, env, version } = prepareCapacitor(context);
-	report.toolchain.capacitor = version;
+	const packed = pack();
+	const pinned = prepareCapacitor({ ...context, pack: () => packed });
+	const minimum = "8.0.0";
+	const minimumModules = installCapacitorHost(
+		root,
+		join(output, "capacitor-minimum-host"),
+		"android",
+		minimum,
+		run,
+	);
+	const minimumApp = prepareCapacitor({
+		...context,
+		pack: () => packed,
+		hostModules: minimumModules,
+		hostVersion: minimum,
+	});
+	report.toolchain.capacitor = [pinned.version, minimum];
+	const { env } = pinned;
 	const sdk = process.env.CHOOSER_EMULATOR_SDK;
 	assert(sdk, "Missing Nix-owned emulator SDK");
 	const avdHome = join(output, "capacitor-avd");
@@ -290,35 +315,36 @@ export async function verifyCapacitorAndroid(context) {
 			"ro.build.fingerprint",
 		]);
 		adb(["shell", "input", "keyevent", "82"]);
-		const results = join(
-			directory,
-			"android/app/build/outputs/androidTest-results/connected",
-		);
-		runInstrumentation(
-			() => {
-				run(
-					"gradle",
-					[
-						"--no-daemon",
-						"--dependency-verification",
-						"strict",
-						`-Pandroid.aapt2FromMavenOverride=${aapt2Path("36.0.0")}`,
-						":app:connectedDebugAndroidTest",
-					],
-					join(directory, "android"),
-					false,
-					{ ...env, ANDROID_SERIAL: serial },
-				);
-			},
-			results,
-			join(reportDirectory, "instrumentation"),
-		);
-		run("python3", [
-			join(root, "scripts/android_reports.py"),
-			"instrumentation",
-			results,
-		]);
-		checked("api33-bridge");
+		for (const fixture of [pinned, minimumApp]) {
+			const results = join(
+				fixture.directory,
+				"android/app/build/outputs/androidTest-results/connected",
+			);
+			runInstrumentation(
+				() =>
+					run(
+						"gradle",
+						[
+							"--no-daemon",
+							"--dependency-verification",
+							"strict",
+							`-Pandroid.aapt2FromMavenOverride=${aapt2Path("36.0.0")}`,
+							":app:connectedDebugAndroidTest",
+						],
+						join(fixture.directory, "android"),
+						false,
+						{ ...env, ...fixture.env, ANDROID_SERIAL: serial },
+					),
+				results,
+				join(reportDirectory, `instrumentation-${fixture.version}`),
+			);
+			run("python3", [
+				join(root, "scripts/android_reports.py"),
+				"instrumentation",
+				results,
+			]);
+			checked(fixture === pinned ? "api33-bridge" : "api33-bridge-minimum");
+		}
 	}, [
 		() => {
 			if (emulator?.pid)

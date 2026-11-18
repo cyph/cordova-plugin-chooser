@@ -325,6 +325,7 @@ test("qualification requires every successful job, complete reports and the same
 			"ios-modern",
 			"ios-simulator",
 			"capacitor-android",
+			"capacitor-ios",
 		].map((name) => [name, { result: "success" }]),
 	);
 	const reports = Object.entries(requiredChecks).map(([lane, checks]) => ({
@@ -353,7 +354,7 @@ test("qualification requires every successful job, complete reports and the same
 	);
 	reports.forEach(save);
 	const qualified = aggregateReports(directory, sha, jobs);
-	assert.equal(qualified.lanes.length, 8);
+	assert.equal(qualified.lanes.length, Object.keys(requiredChecks).length);
 	assert.equal(qualified.integrity, reports[0].package.integrity);
 	assert.equal(qualified.commit, sha);
 	const output = join(directory, "github-output");

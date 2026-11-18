@@ -1,10 +1,13 @@
 import Foundation
 
+typealias ChooserReply = (_ value: Any, _ failed: Bool) -> Bool
+
 enum ChooserReadMode: String { case data, metadata, copy }
 enum ChooserRequestState { case selecting, processing, completing, finished }
 
 final class ChooserRequest {
 	let callback: String
+	let reply: ChooserReply
 	let id: String
 	let source: String
 	let mediaTypes: [String]
@@ -29,12 +32,13 @@ final class ChooserRequest {
 	private var coordinator: NSFileCoordinator?
 	private var resource: ChooserTransaction?
 
-	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0, worker: ChooserWork? = nil, id: String? = nil, source: String = "documents", mediaTypes: [String] = ["image", "video"]) {
+	init(callback: String, accept: String, mode: ChooserReadMode, multiple: Bool, limit: Int64, maxFiles: Int64 = 0, maxTotalSize: Int64 = 0, worker: ChooserWork? = nil, id: String? = nil, source: String = "documents", mediaTypes: [String] = ["image", "video"], reply: @escaping ChooserReply = { _, _ in false }) {
 		self.id = id ?? callback
 		self.source = source
 		self.mediaTypes = mediaTypes
 		self.worker = worker
 		self.callback = callback
+		self.reply = reply
 		self.accept = accept
 		self.mode = mode
 		self.multiple = multiple

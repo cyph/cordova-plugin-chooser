@@ -1,7 +1,6 @@
 package com.cyph.cordova;
 
 import android.os.CancellationSignal;
-import org.apache.cordova.CallbackContext;
 
 final class ChooserRequest {
 	enum Mode {
@@ -14,7 +13,7 @@ final class ChooserRequest {
 		}
 	}
 	enum State { SELECTING, PROCESSING, COMPLETING, FINISHED }
-	final CallbackContext callback;
+	final ChooserEngine.Reply callback;
 	final String requestId;
 	final String source;
 	final String[] mediaTypes;
@@ -35,14 +34,14 @@ final class ChooserRequest {
 	private ChooserTransaction transaction;
 	private java.io.InputStream input;
 
-	ChooserRequest(CallbackContext callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, int code) {
+	ChooserRequest(ChooserEngine.Reply callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, int code) {
 		this(callback, accept, mode, multiple, localOnly, limit, 0, 0, code);
 	}
-	ChooserRequest(CallbackContext callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, long maxFiles, long maxTotalSize, int code) {
+	ChooserRequest(ChooserEngine.Reply callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, long maxFiles, long maxTotalSize, int code) {
 		this(callback, accept, mode, multiple, localOnly, limit, maxFiles, maxTotalSize, code,
 			java.util.UUID.randomUUID().toString(), "documents", new String[]{"image", "video"});
 	}
-	ChooserRequest(CallbackContext callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, long maxFiles, long maxTotalSize, int code, String requestId, String source, String[] mediaTypes) {
+	ChooserRequest(ChooserEngine.Reply callback, String accept, Mode mode, boolean multiple, boolean localOnly, long limit, long maxFiles, long maxTotalSize, int code, String requestId, String source, String[] mediaTypes) {
 		this.callback = callback;
 		this.requestId = requestId;
 		this.source = source;

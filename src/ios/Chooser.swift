@@ -2,9 +2,6 @@ import Foundation
 import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
-#if canImport(Cordova)
-import Cordova
-#endif
 
 private final class ChooserDocumentPicker: UIDocumentPickerViewController {
 	var request: ChooserRequest?
@@ -30,8 +27,18 @@ private final class ChooserPresentation {
 	}
 }
 
-@objc(Chooser)
-class Chooser: CDVPlugin {
+struct ChooserCommand {
+	let arguments: [Any]
+	let callbackId: String
+	let reply: ChooserReply
+}
+
+final class ChooserEngine: NSObject {
+	private let presenter: () -> UIViewController?
+
+	init(presenter: @escaping () -> UIViewController?) {
+		self.presenter = presenter
+	}
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
@@ -44,10 +51,9 @@ class Chooser: CDVPlugin {
 	@MainActor
 	#endif
 	private var generation: UInt64 = 0
-	let resources = ChooserResources(cache: Chooser.cacheDirectory)
+	let resources = ChooserResources(cache: ChooserEngine.cacheDirectory)
 
-	@objc(pick:)
-	func pick(command: CDVInvokedUrlCommand) {
+	func pick(command: ChooserCommand) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
@@ -75,9 +81,9 @@ class Chooser: CDVPlugin {
 				let normalized = accept.lowercased().components(separatedBy: .whitespacesAndNewlines).joined()
 				let request = ChooserRequest(callback: command.callbackId, accept: normalized.isEmpty ? "*/*" : normalized,
 					mode: mode, multiple: multiple, limit: limit, maxFiles: maxFiles, maxTotalSize: maxTotalSize,
-					worker: ChooserWork.reserve(), id: id, source: source, mediaTypes: mediaTypes)
+					worker: ChooserWork.reserve(), id: id, source: source, mediaTypes: mediaTypes, reply: command.reply)
 				plugin.begin(request)
-			} catch { plugin.sendFailure(error, callback: command.callbackId, fallback: .invalidArgument) }
+			} catch { plugin.sendFailure(error, callback: command.reply, fallback: .invalidArgument) }
 		}
 	}
 
@@ -99,8 +105,7 @@ class Chooser: CDVPlugin {
 		return Int64(size)
 	}
 
-	@objc(readFile:)
-	func readFile(command: CDVInvokedUrlCommand) {
+	func readFile(command: ChooserCommand) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
@@ -111,13 +116,12 @@ class Chooser: CDVPlugin {
 				let offset = try Self.integer(command.arguments[1])
 				let length = try Self.integer(command.arguments[2])
 				guard length <= 262144 else { throw ChooserFailure(code: .invalidArgument, detail: "Read chunk exceeds 262144 bytes.") }
-				plugin.read(id: id, offset: offset, length: Int(length), owner: plugin.generation, callback: command.callbackId)
-			} catch { plugin.sendFailure(error, callback: command.callbackId, fallback: .readFailed) }
+				plugin.read(id: id, offset: offset, length: Int(length), owner: plugin.generation, callback: command.reply)
+			} catch { plugin.sendFailure(error, callback: command.reply, fallback: .readFailed) }
 		}
 	}
 
-	@objc(cancelRead:)
-	func cancelRead(command: CDVInvokedUrlCommand) {
+	func cancelRead(command: ChooserCommand) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
@@ -126,22 +130,20 @@ class Chooser: CDVPlugin {
 					throw ChooserFailure(code: .invalidArgument, detail: "Expected a transient source id.")
 				}
 				try plugin.resources.cancelRead(id: id)
-				plugin.send([:], .ok, command.callbackId)
-			} catch { plugin.sendFailure(error, callback: command.callbackId) }
+				_ = command.reply([String: Any](), false)
+			} catch { plugin.sendFailure(error, callback: command.reply) }
 		}
 	}
 
-	@objc(statFile:)
-	func statFile(command: CDVInvokedUrlCommand) {
+	func statFile(command: ChooserCommand) {
 		resourceCommand(command, releasing: false)
 	}
 
-	@objc(releaseFile:)
-	func releaseFile(command: CDVInvokedUrlCommand) {
+	func releaseFile(command: ChooserCommand) {
 		resourceCommand(command, releasing: true)
 	}
 
-	private func resourceCommand(_ command: CDVInvokedUrlCommand, releasing: Bool) {
+	private func resourceCommand(_ command: ChooserCommand, releasing: Bool) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
@@ -150,20 +152,20 @@ class Chooser: CDVPlugin {
 					throw ChooserFailure(code: .invalidArgument, detail: "Expected a managed file id.")
 				}
 				if releasing { try plugin.resources.prepareRelease(id: id) }
-				plugin.resource(id: id, releasing: releasing, owner: plugin.generation, callback: command.callbackId)
-			} catch { plugin.sendFailure(error, callback: command.callbackId, fallback: releasing ? .releaseFailed : .fileUnavailable) }
+				plugin.resource(id: id, releasing: releasing, owner: plugin.generation, callback: command.reply)
+			} catch { plugin.sendFailure(error, callback: command.reply, fallback: releasing ? .releaseFailed : .fileUnavailable) }
 		}
 	}
 
 	// Construct background callbacks outside the UI actor's lexical context.
-	private func read(id: String, offset: Int64, length: Int, owner: UInt64, callback: String) {
+	private func read(id: String, offset: Int64, length: Int, owner: UInt64, callback: @escaping ChooserReply) {
 		resources.enqueue {
 			let result = Result { try self.resources.read(id: id, offset: offset, length: length) }
 			self.resourceResult(result, owner: owner, callback: callback, fallback: .readFailed)
 		}
 	}
 
-	private func resource(id: String, releasing: Bool, owner: UInt64, callback: String) {
+	private func resource(id: String, releasing: Bool, owner: UInt64, callback: @escaping ChooserReply) {
 		if releasing {
 			resources.release(id: id) { result in
 				self.resourceResult(result.map { [:] }, owner: owner, callback: callback, fallback: .releaseFailed)
@@ -176,25 +178,24 @@ class Chooser: CDVPlugin {
 		}
 	}
 
-	private func resourceResult(_ result: Result<[String: Any], Error>, owner: UInt64, callback: String, fallback: ChooserErrorCode) {
-		let reference = ChooserMainReference((self, result))
+	private func resourceResult(_ result: Result<[String: Any], Error>, owner: UInt64, callback: @escaping ChooserReply, fallback: ChooserErrorCode) {
+		let reference = ChooserMainReference((self, result, callback))
 		ChooserMain.run {
-			let (plugin, result) = reference.value
+			let (plugin, result, callback) = reference.value
 			guard plugin.generation == owner else { return }
 			switch result {
-			case .success(let object): plugin.send(object, .ok, callback)
+			case .success(let object): _ = callback(object, false)
 			case .failure(let error): plugin.sendFailure(error, callback: callback, fallback: fallback)
 			}
 		}
 	}
 
-	@objc(cancelPick:)
-	func cancelPick(command: CDVInvokedUrlCommand) {
+	func cancelPick(command: ChooserCommand) {
 		let reference = ChooserMainReference((self, command))
 		ChooserMain.run {
 			let (plugin, command) = reference.value
 			guard command.arguments.count == 1, let id = command.arguments.first as? String, !id.isEmpty else {
-				plugin.sendFailure(ChooserFailure(code: .invalidArgument, detail: "Expected a request id."), callback: command.callbackId)
+				plugin.sendFailure(ChooserFailure(code: .invalidArgument, detail: "Expected a request id."), callback: command.reply)
 				return
 			}
 			if let request = plugin.active, request.id == id {
@@ -202,7 +203,7 @@ class Chooser: CDVPlugin {
 				request.signalCancel(reason: "signal")
 				if selecting { plugin.deliver(request, result: .success([:])) }
 			}
-			plugin.send([:], .ok, command.callbackId)
+			_ = command.reply([String: Any](), false)
 		}
 	}
 
@@ -219,12 +220,12 @@ class Chooser: CDVPlugin {
 	private func begin(_ request: ChooserRequest) {
 		guard active == nil, presentation == nil else {
 			request.finish()
-			sendFailure(ChooserFailure(code: .busy, detail: "A file picker is already active."), callback: request.callback)
+			sendFailure(ChooserFailure(code: .busy, detail: "A file picker is already active."), callback: request.reply)
 			return
 		}
-		guard let presenter = viewController, presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil else {
+		guard let presenter = presenter(), presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil else {
 			request.finish()
-			sendFailure(ChooserFailure(code: .pickerFailed, detail: "The app is not ready to present a file picker."), callback: request.callback)
+			sendFailure(ChooserFailure(code: .pickerFailed, detail: "The app is not ready to present a file picker."), callback: request.reply)
 			return
 		}
 		let controller: UIViewController
@@ -420,17 +421,16 @@ class Chooser: CDVPlugin {
 			}
 			self.active = nil
 			defer { request.finish() }
-			if let cleanup = request.cleanupError { self.send(cleanup, .error, request.callback); return }
+			if let cleanup = request.cleanupError { _ = request.reply(cleanup, true); return }
 			var delivered = false
 			switch result {
 			case .success(let object):
 				do {
 					let bytes = try JSONSerialization.data(withJSONObject: object)
 					guard let message = String(data: bytes, encoding: .utf8) else { throw ChooserFailure(code: .readFailed, detail: "Cannot serialize selection.") }
-					delivered = self.commandDelegate != nil
-					self.commandDelegate?.send(CDVPluginResult(status: .ok, messageAs: message), callbackId: request.callback)
-				} catch { self.sendFailure(error, callback: request.callback) }
-			case .failure(let error): self.sendFailure(error, callback: request.callback)
+					delivered = request.reply(message, false)
+				} catch { self.sendFailure(error, callback: request.reply) }
+			case .failure(let error): self.sendFailure(error, callback: request.reply)
 			}
 			request.finishResources(delivered: delivered)
 		}
@@ -498,8 +498,8 @@ class Chooser: CDVPlugin {
 				let canceled: [String: Any] = ["code": "CANCELLED", "reason": request.cancellationReason ?? "signal", "message": "Selection canceled."]
 				if var cleanup = request.cleanupError {
 					cleanup["cause"] = canceled
-					plugin.send(cleanup, .error, request.callback)
-				} else { plugin.send(canceled, .error, request.callback) }
+					_ = request.reply(cleanup, true)
+				} else { _ = request.reply(canceled, true) }
 			}
 		}
 	}
@@ -507,21 +507,14 @@ class Chooser: CDVPlugin {
 	#if compiler(>=5.9)
 	@MainActor
 	#endif
-	private func send(_ object: [String: Any], _ status: CDVCommandStatus, _ callback: String) {
-		commandDelegate?.send(CDVPluginResult(status: status, messageAs: object), callbackId: callback)
-	}
-
-	#if compiler(>=5.9)
-	@MainActor
-	#endif
-	private func sendFailure(_ error: Error, callback: String, fallback: ChooserErrorCode = .readFailed) {
+	private func sendFailure(_ error: Error, callback: ChooserReply, fallback: ChooserErrorCode = .readFailed) {
 		let failure = error as? ChooserFailure
 		var object: [String: Any] = ["code": (failure?.code ?? fallback).rawValue, "message": failure?.detail ?? error.localizedDescription]
 		if failure?.code == .cancelled { object["reason"] = "signal" }
-		send(object, .error, callback)
+		_ = callback(object, true)
 	}
 
-	override func onReset() {
+	func onReset() {
 		let reference = ChooserMainReference(self)
 		ChooserMain.run {
 			let plugin = reference.value
@@ -541,14 +534,12 @@ class Chooser: CDVPlugin {
 			plugin.resources.resetSources()
 		}
 	}
-
-	override func dispose() { onReset(); super.dispose() }
 }
 
 #if compiler(>=5.9)
 @MainActor
 #endif
-extension Chooser: UIDocumentPickerDelegate {
+extension ChooserEngine: UIDocumentPickerDelegate {
 	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { selected(controller, urls: urls) }
 	func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentAt url: URL) { selected(controller, urls: [url]) }
 	func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
@@ -561,7 +552,7 @@ extension Chooser: UIDocumentPickerDelegate {
 #if compiler(>=5.9)
 @MainActor
 #endif
-extension Chooser: PHPickerViewControllerDelegate {
+extension ChooserEngine: PHPickerViewControllerDelegate {
 	func picker(_ controller: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
 		guard presentation?.controller === controller, let request = active, request.process() else { return }
 		var assets = Set<String>()
@@ -580,7 +571,7 @@ extension Chooser: PHPickerViewControllerDelegate {
 #if compiler(>=5.9)
 @MainActor
 #endif
-extension Chooser: UIAdaptivePresentationControllerDelegate {
+extension ChooserEngine: UIAdaptivePresentationControllerDelegate {
 	func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
 		guard presentationController.presentedViewController === presentation?.controller, let request = active, request.state == .selecting else { return }
 		request.signalCancel(reason: "picker")

@@ -35,6 +35,9 @@ import {
 	simulatorPartitionOptions,
 } from "./simulator-results.mjs";
 import { spawnVerified } from "./verification-command.mjs";
+import { installCapacitorHost } from "./capacitor-host.mjs";
+import { writeCapacitorFixture } from "./capacitor-web-fixture.mjs";
+import { verifyCapacitorIos } from "./capacitor-ios.mjs";
 import { verifyCapacitorAndroid, prepareCapacitor } from "./capacitor.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -291,6 +294,25 @@ function browser() {
 		recursive: true,
 	});
 	cordova(["prepare", "browser"], destination);
+	const browserRoot = join(destination, "platforms/browser/www");
+	writeCapacitorFixture(
+		browserRoot,
+		packed,
+		join(root, "node_modules/@capacitor/core"),
+	);
+	const minimum = installCapacitorHost(
+		root,
+		join(output, "capacitor-web-minimum"),
+		"web",
+		"8.0.0",
+		run,
+	);
+	writeCapacitorFixture(
+		browserRoot,
+		packed,
+		join(minimum, "@capacitor/core"),
+		"capacitor-minimum",
+	);
 	run(
 		"node",
 		["--test", "--test-force-exit", "tests/browser/integration.test.cjs"],
@@ -728,6 +750,8 @@ const lanes = {
 			checked,
 			aapt2Path,
 		}),
+	"capacitor-ios": () =>
+		verifyCapacitorIos({ root, output, run, pack, checked }),
 	"capacitor-prepare": () => prepareCapacitor({ root, output, run, pack }),
 	"android-failures"() {
 		androidEnvironment(true);

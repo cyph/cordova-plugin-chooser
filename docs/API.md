@@ -1,6 +1,6 @@
 # API reference
 
-This reference describes 2.0.0-rc.2. The runtime injects `chooser` after `deviceready` in a Capacitor or Cordova application. Every picker returns a Promise and takes an options object. Only one picker can run at a time. Concurrent selection can fail with `BUSY`, although reading a file already selected does not open another picker.
+This reference describes 2.0.0-rc.2. In Capacitor, import `Chooser` from `cordova-plugin-chooser/capacitor`. In Cordova, use the `chooser` global after `deviceready`. Every picker returns a Promise and takes an options object. Only one picker can run at a time. Concurrent selection can fail with `BUSY`, although reading a file already selected does not open another picker.
 
 ## Methods
 
@@ -121,7 +121,7 @@ Other failures use `ChooserError.code`, including `INVALID_ARGUMENT`, `BUSY`, li
 
 ## TypeScript
 
-Declarations require TypeScript 5.7 or newer and DOM types. For the injected global in a module, use a type query with no runtime import.
+Declarations require TypeScript 5.7 or newer and DOM types. The Capacitor import includes the declarations. In Cordova the global also has bundled types. For the injected global in a module, use a type query with no runtime import.
 
 ```ts
 export {};
@@ -133,4 +133,4 @@ async function describeSelection(): Promise<string> {
 }
 ```
 
-Wait for `deviceready` before calling it. Installing the package in an ordinary web or Node.js project does not supply the Cordova bridge or a standalone picker.
+Wait for `deviceready` before calling the Cordova global. The Capacitor entry point works in web applications with the DOM and browser APIs listed in [platform requirements](PLATFORMS.md#browser).

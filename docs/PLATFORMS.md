@@ -9,11 +9,13 @@ Chooser delegates selection to the operating system or browser. Your app control
 | Cordova Android | Android platform 14.x or 15.x, Android 7.0 / API 24 or newer |
 | Cordova iOS | iOS platform 7.x or 8.x, deployment target iOS 15 or newer. Project tests use Swift 5 language mode |
 | Cordova Browser | Platform 7.x and the browser APIs listed below |
-| Capacitor Android | Tested with Capacitor 8.5.3 on an API 33 emulator with controlled picker responses |
+| Capacitor Android | Capacitor 8.x, Android 7.0 / API 24 or newer |
+| Capacitor iOS | Capacitor 8.x, iOS 15 or newer |
+| Capacitor Web | Capacitor 8.x and the browser APIs listed below |
 
 The native Cordova engine minimums declared by the plugin are Android 14 and iOS 7. Follow Cordova's [Android](https://cordova.apache.org/docs/en/latest/guide/platforms/android/) and [iOS](https://cordova.apache.org/docs/en/latest/guide/platforms/ios/) setup instructions for their toolchains. Your host framework or other plugins can require higher native targets.
 
-The Capacitor Android lane exercises a real bridge and provider reads, but it does not exercise a real picker interface or cloud providers. Capacitor iOS and Web do not have equivalent project coverage. Cordova Browser tests do not establish Capacitor Web support. Verify your app on its intended platforms and providers. See [verification](VERIFICATION.md) for what each test covers.
+The standard Capacitor 8 templates meet these platform minimums. The Capacitor tests exercise both native bridges with controlled picker results and the web picker in three browser engines. See [verification](VERIFICATION.md) for the test cases.
 
 ## Android
 
@@ -35,6 +37,8 @@ An Android activity can be recreated while its picker is open. A destroyed WebVi
 
 ### Restored Android results
 
+In Capacitor, an activity recreation during a pending picker discards that selection. With `@capacitor/app`, listen for `appRestoredResult` from plugin ID `Chooser` and method `pick` with error code `READ_INTERRUPTED`. Offer a new selection once the old result returns. Previously delivered managed references can still be restored while their cache files survive.
+
 A Cordova application handling activity recreation can inspect `resume.pendingResult`. Check `pluginServiceName === 'Chooser'` and `pluginStatus`. This is a raw native envelope, not an already constructed public result.
 
 For a managed-copy payload, parse the reference and use `restoreFile` before using it. If discarding the payload, release the managed ID. Metadata has no managed resource. Direct-data operations can expose a temporary source-reader payload, not a `FileData` result. Release any returned source IDs and ask for a new selection. `RESULT_CANCELED` denotes cancellation. Record enough application state to identify the interrupted operation, but do not assume recovery is always possible or that an interrupted upload resumed.
@@ -53,7 +57,7 @@ For a Cordova app, set the deployment target explicitly in `config.xml` before i
 
 Keep a higher existing deployment target. Chooser's Cordova prepare hook checks this target and rejects a missing target or one below 15. It does not check Swift settings. The project is tested in Swift 5 language mode, which the host may already select. If needed, set `<preference name="SwiftVersion" value="5.0" />` in the iOS platform configuration. Cordova iOS supplies Swift integration, so this plugin no longer needs `cordova-plugin-add-swift-support`.
 
-Capacitor does not execute that hook or apply the Cordova preferences. Configure the native iOS project for at least iOS 15 and any higher minimum required by your Capacitor version and dependencies. The project uses Swift 5 language mode in its iOS builds. Sync and rebuild the native app. RC2 itself uses an iOS 15 Photos picker API. This minimum is separate from the unresolved Files issue below.
+The iOS minimum comes from the Photos picker API used by RC2.
 
 <a id="document-access-and-presentation"></a>
 
@@ -79,8 +83,8 @@ Document filters map MIME types to system type identifiers. Unknown mappings can
 
 ## Browser
 
-Cordova Browser needs Promises, typed arrays, `File` and `Blob` APIs including `slice()` and `arrayBuffer()`, Blob URLs, Web Crypto, `AbortController`, `ReadableStream`, `TextDecoder`, and the file-input `cancel` event. If cancellation events are unavailable, dismissal can remain pending until the app aborts the operation.
+The Cordova Browser and Capacitor Web pickers need Promises, typed arrays, `File` and `Blob` APIs including `slice()` and `arrayBuffer()`, Blob URLs, Web Crypto, `AbortController`, `ReadableStream`, `TextDecoder`, and the file-input `cancel` event. If cancellation events are unavailable, dismissal can remain pending until the app aborts the operation.
 
-Call the picker from a user gesture after `deviceready`, before awaiting a timer or network operation. For `source: 'photos'`, a filtered file input is used and the browser and OS determine the interface. A dedicated library UI is not guaranteed. `preferLocal` has no effect, and browser results do not reveal an original filesystem path.
+Call the picker directly from a user gesture, before awaiting a timer or network operation. Cordova Browser also needs `deviceready`. For `source: 'photos'`, a filtered file input is used and the browser and OS determine the interface. A dedicated library UI is not guaranteed. `preferLocal` has no effect, and browser results do not reveal an original filesystem path.
 
 Managed files hold a `File` and Blob URL until release or `pagehide`, including back/forward-cache navigation. Metadata and direct data do not hold a managed resource in RC2. Saved references cannot recreate browser resources after their page registry is gone. Configure [CSP](FILE-HANDLING.md#content-security-policy) for Blob URL consumers.

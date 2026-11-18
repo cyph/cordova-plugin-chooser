@@ -7,7 +7,7 @@ import vm from "node:vm";
 
 const chunkBytes = 262144;
 const id = "12345678-1234-4234-8234-123456789abc";
-const chooserURL = new URL("../www/chooser.js", import.meta.url);
+const chooserURL = new URL("../www/chooser-core.js", import.meta.url);
 export const scenarios = [
 	"managed-stream",
 	"managed-bytes",
@@ -205,8 +205,8 @@ function loadChooser(source, exec) {
 		AbortController,
 		AbortSignal,
 	};
-	vm.runInNewContext(source, context, { filename: "www/chooser.js" });
-	return context.module.exports;
+	vm.runInNewContext(source, context, { filename: "www/chooser-core.js" });
+	return context.module.exports(exec);
 }
 
 export async function runScenario(scenario, bytes, options = {}) {
@@ -396,7 +396,10 @@ export async function runComparison({
 			platform: process.platform,
 			arch: process.arch,
 		},
-		implementation: { path: "www/chooser.js", sha256: sha256(chooserSource) },
+		implementation: {
+			path: "www/chooser-core.js",
+			sha256: sha256(chooserSource),
+		},
 		fixture: {
 			bytes: bytes.length,
 			sha256: sha256(bytes),

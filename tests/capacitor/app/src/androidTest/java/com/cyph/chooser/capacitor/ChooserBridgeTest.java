@@ -131,6 +131,47 @@ public final class ChooserBridgeTest {
             } finally { Intents.release(); }
         }
     }
+    @Test public void recreationDiscardsTheOldSelectionAndAllowsAnotherPicker() throws Exception {
+        try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
+            scenario = activity;
+            awaitValue("window.chooser && window.fixtureReady ? 'ready' : null");
+            activity.onActivity(value -> value.holdPicker = true);
+            evaluate("void chooser.getFile({maxFileSize:1024}).catch(() => {})");
+            int code = 0;
+            long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (code == 0 && System.nanoTime() < end) {
+                java.util.concurrent.atomic.AtomicInteger request = new java.util.concurrent.atomic.AtomicInteger();
+                activity.onActivity(value -> request.set(value.heldRequestCode));
+                code = request.get();
+                if (code == 0) Thread.sleep(30);
+            }
+            assertNotEquals(0, code);
+            activity.recreate();
+            awaitValue("window.chooser && window.fixtureReady ? 'ready' : null");
+            assertChooserError(result("chooser.getFile({maxFileSize:1024})"), "BUSY", "ChooserError");
+            int requestCode = code;
+            AtomicReference<String> restored = new AtomicReference<>();
+            CountDownLatch delivered = new CountDownLatch(1);
+            activity.onActivity(value -> {
+                value.getBridge().getApp().setAppRestoredListener(response -> {
+                    restored.set(response.getWrappedResult().toString());
+                    delivered.countDown();
+                });
+                value.deliverResult(requestCode, Activity.RESULT_OK,
+                    new Intent().setData(Uri.parse("content://chooser.capacitor.fixture/1")));
+            });
+            assertTrue("No restored plugin result", delivered.await(10, TimeUnit.SECONDS));
+            JSONObject reply = new JSONObject(restored.get());
+            assertFalse(reply.getBoolean("success"));
+            assertEquals("READ_INTERRUPTED", reply.getJSONObject("error").getString("code"));
+            Intents.init();
+            try {
+                intending(hasAction(Intent.ACTION_CHOOSER)).respondWith(new ActivityResult(Activity.RESULT_CANCELED, null));
+                assertChooserError(result("chooser.getFile({maxFileSize:1024})"), "CANCELLED", "CancellationError");
+            } finally { Intents.release(); }
+        }
+    }
+
     @Test public void unknownLengthPdfPipesPreserveBytes() throws Exception {
         android.content.Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         byte[] pdf = new byte[]{37, 80, 68, 70, 45, 49, 46, 52, 10, 0, (byte)255};

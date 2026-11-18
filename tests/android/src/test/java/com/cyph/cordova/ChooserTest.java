@@ -538,8 +538,8 @@ public class ChooserTest {
 	}
 
 	@Test public void requestStateRejectsDuplicateCompletionAndCancellationIsRequestOwned() {
-		ChooserRequest first = new ChooserRequest(new Recorded("first"), "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1001);
-		ChooserRequest second = new ChooserRequest(new Recorded("second"), "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1002);
+		ChooserRequest first = new ChooserRequest(result -> {}, "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1001);
+		ChooserRequest second = new ChooserRequest(result -> {}, "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1002);
 		assertEquals(ChooserRequest.State.SELECTING, first.state());
 		assertTrue(first.process());
 		assertFalse(first.process());
@@ -818,7 +818,7 @@ public class ChooserTest {
 		for (long[] selection : new long[][]{{0, 0}, {1, 1}, {1, 2}, {1, 0}}) {
 			boolean multiple = selection[0] != 0;
 			long maxFiles = selection[1];
-			ChooserRequest request = new ChooserRequest(new Recorded("photo-intent"), "*/*", ChooserRequest.Mode.METADATA,
+			ChooserRequest request = new ChooserRequest(result -> {}, "*/*", ChooserRequest.Mode.METADATA,
 				multiple, false, 0, maxFiles, 0, 1001, "photo-intent", "photos", new String[]{"image", "video"});
 			Intent intent = plugin.pickerIntent(request);
 			boolean documents = Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());
@@ -868,7 +868,7 @@ public class ChooserTest {
 	}
 
 	@Test public void requestCancellationClosesAnActiveCopyAndLateProviderStreams() throws Exception {
-		ChooserRequest request = new ChooserRequest(new Recorded("copy-cancel"), "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1001);
+		ChooserRequest request = new ChooserRequest(result -> {}, "*/*", ChooserRequest.Mode.COPY, false, false, 0, 1001);
 		java.util.concurrent.atomic.AtomicInteger closes = new java.util.concurrent.atomic.AtomicInteger();
 		java.io.InputStream input = new java.io.ByteArrayInputStream(new byte[]{1}) {
 			@Override public void close() { closes.incrementAndGet(); }

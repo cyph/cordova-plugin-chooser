@@ -22,14 +22,16 @@ test("npm 12 pack output identifies exactly one named archive", async () => {
 });
 
 function packageFiles() {
-	const sources = readdirSync(resolve(root, "src"), {
-		recursive: true,
-		withFileTypes: true,
-	})
-		.filter((entry) => entry.isFile())
-		.map((entry) =>
-			resolve(entry.parentPath, entry.name).slice(root.length + 1),
-		);
+	const sources = ["src", "capacitor"].flatMap((directory) =>
+		readdirSync(resolve(root, directory), {
+			recursive: true,
+			withFileTypes: true,
+		})
+			.filter((entry) => entry.isFile())
+			.map((entry) =>
+				resolve(entry.parentPath, entry.name).slice(root.length + 1),
+			),
+	);
 	return [
 		"package.json",
 		"plugin.xml",
@@ -37,6 +39,9 @@ function packageFiles() {
 		pkg.types,
 		"LICENSE",
 		"NOTICE",
+		"Package.swift",
+		"CordovaPluginChooser.podspec",
+		"www/chooser-core.js",
 		...sources,
 	];
 }

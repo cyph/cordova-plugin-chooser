@@ -17,10 +17,11 @@ RC2 changes the file API introduced by the transitional RC1. Managed files are n
 
 ### Platforms and verification
 
+- Added native Capacitor 8 integration on Android and iOS and a web picker through the typed `cordova-plugin-chooser/capacitor` import. Capacitor users upgrading from the Cordova compatibility bridge should switch to the import. Cordova uses the existing global.
 - Added image and video library selection using iOS PHPicker and Android Photo Picker, with an Android document-picker fallback. Cordova Browser uses a filtered file input. Picker and provider behavior varies by platform.
-- Raised the plugin's iOS minimum to 15 and added deployment-target validation to Cordova preparation. The bundled declarations require TypeScript 5.7 or later. Capacitor apps must configure their own native deployment target because Capacitor does not run Cordova hooks.
+- Raised the plugin's iOS minimum to 15 and added deployment-target validation to Cordova preparation. The bundled declarations require TypeScript 5.7 or later.
 - Fixed iOS request-finalization and stale-callback races during cancellation and dismissal. Metadata selection retains RC1's iOS import behavior. The separate intermittent [Files selection issue](docs/KNOWN-ISSUES.md) remains unresolved.
-- Expanded controlled iOS native and bridge coverage and added separate real-provider investigations. Added Capacitor Android bridge testing and a synthetic comparison of file-reading paths. Release verification checks the packed candidate and collects qualification evidence across required lanes. These checks have different scopes and do not establish compatibility with every device or provider. See [verification](docs/VERIFICATION.md).
+- Expanded controlled iOS native and bridge coverage and added separate real-provider investigations. Added Capacitor Android, iOS, and web integration tests and a synthetic comparison of file-reading paths. Release verification checks the packed candidate and collects qualification evidence across required lanes. These checks have different scopes and do not establish compatibility with every device or provider. See [verification](docs/VERIFICATION.md).
 
 ## [2.0.0-rc.1](https://registry.npmjs.org/cordova-plugin-chooser/2.0.0-rc.1) — 2026-11-06
 
