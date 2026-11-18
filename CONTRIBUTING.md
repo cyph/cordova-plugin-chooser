@@ -1,44 +1,40 @@
 # Contributing
 
-Issues and pull requests are welcome. Before changing the public interface, read the [API reference](docs/API.md) and [platform guide](docs/PLATFORMS.md). For a bug report, follow the [reproduction checklist](docs/TROUBLESHOOTING.md#report-a-reproducible-issue).
+Bug reports and pull requests are welcome. For a report, collect the information in the [troubleshooting checklist](docs/TROUBLESHOOTING.md#report-a-reproducible-issue). For a change, describe the observed problem, the resulting behavior, and the checks you ran.
 
 ## Development setup
 
-Install Git, Nix with flakes enabled, and `just`, then run:
+Install Git, Nix with flakes enabled, and `just`. From a checkout of `master`, run.
 
 ```sh
-git clone --branch master https://github.com/cyph/cordova-plugin-chooser.git
-cd cordova-plugin-chooser
 just setup
 just doctor
 ```
 
-If `just` is not installed separately, use the flake-provided executable:
+If `just` is not installed, the flake can provide it.
 
 ```sh
 nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
 ```
 
-Chainman owns the toolchain, frozen dependencies, update policy, and verification tasks. Setup installs those dependencies and Git hooks. Repeat it after changing toolchain or dependency configuration. Use the [verification guide](docs/VERIFICATION.md) for host requirements and dependency updates rather than installing unpinned substitutes.
+Setup installs the project's pinned dependencies and Git hooks. Run it again after changing toolchain or dependency configuration. The [verification guide](docs/VERIFICATION.md) maps changes to checks and lists host requirements. Use the pinned environment rather than substituting unpinned tools.
 
 ## Changes and review
 
-Describe the problem, resulting behavior, and validation in your pull request. Add regression coverage at the public API, provider, or resource-ownership boundary affected by the change. Keep the JavaScript bridge, [TypeScript declarations](index.d.ts), native implementations, and documentation aligned.
+Keep the JavaScript bridge, [declarations](index.d.ts), native implementations, and user documentation consistent. Add regression coverage at the boundary affected by a behavior change. Test type changes with both the minimum TypeScript version and the pinned current compiler. Check both Capacitor and Cordova instructions when a release changes installation or the injected interface.
 
-RC2 picker methods are Promise-only and use options objects. Cancellation rejects with `CancellationError`; successful plural calls return nonempty arrays. Managed selection, metadata, and direct data have different memory and ownership behavior. Type declarations must work with TypeScript 5.7 and the pinned current compiler.
+The public RC2 contract is Promise-based and uses options objects. Picker cancellation rejects, while successful plural selection is nonempty. Metadata, complete data, and managed handles have different resource and memory costs. Use [API reference](docs/API.md) and [platform guide](docs/PLATFORMS.md) as the shared contract when reviewing changes.
 
 ## Implementation boundaries
 
-Keep provider and lifecycle behavior behind the shared contract. Preserve metadata paths that do not read complete contents, actual-byte budget enforcement, bounded bridge reads, and cleanup after partial failure. Provider names and supplied URIs must never determine cache paths.
+Preserve actual-byte budget enforcement, bounded bridge reads, and cleanup of partial failures. Provider-supplied names and URIs must not determine cache paths. Metadata paths must not read complete contents in plugin code merely to report metadata.
 
-Managed aliases share ownership by ID. Releasing an ID prevents new reads, stops unfinished plugin streams, waits for started reads and actual native I/O, and leaves source files alone. Cover stale callbacks, cancellation/reset races, failed deletion and retry, cache eviction, and concurrent reads when changing these paths.
+Managed handles share ownership by ID. Release blocks new reads, stops unfinished streams, waits for started reads and native I/O, and must leave the source intact. Exercise stale callbacks, reset and cancellation races, deletion failure and retry, cache eviction, and concurrent reads when changing lifetime code. A scoped helper must retain the consumer's outcome even if cleanup fails, so an app can distinguish a completed upload from a failed one.
 
-Scoped helpers must preserve the consumer's original result or exception. Cleanup failure carries that outcome separately; it must not imply that a completed upload failed. Typed error codes are part of the API, while explanatory message wording is not.
-
-Use the Cordova dispatcher or appropriate native fixtures to exercise integration boundaries. The [known iOS provider cases](docs/KNOWN-ISSUES.md) retain their assertions in a separate investigation workflow; do not broaden those exclusions to hide unrelated failures.
+Use the dispatcher or relevant native fixtures for integration changes. The separate iOS provider investigation retains its assertions. Do not broaden exclusions to hide unrelated failures. Document what you could not test and retain failed investigation evidence.
 
 ## Attribution and submission
 
-Preserve authorship when importing work; use `git cherry-pick -x` where appropriate. For an adaptation, credit the contributor and link to the original commit. Retain copyright and license notices, and distinguish the original author's work from later modifications.
+Preserve existing copyright and license notices. Credit the original contributor and link the original commit when adapting work from elsewhere. Use `git cherry-pick -x` when appropriate and distinguish later modifications from the original contribution.
 
-Develop against `master`. Run portable checks and native lanes relevant to the change, and report checks you could not run. Record public changes in the appropriate changelog entry without rewriting historical behavior or inventing publication dates. See [release preparation](docs/VERIFICATION.md#release-preparation) for package and release checks.
+Develop against `master`, run checks appropriate to the changed boundary, and include their results in the pull request. Record public changes in the current changelog entry without altering earlier history or inventing a publication date. Release qualification and package checks are described in [release preparation](docs/VERIFICATION.md#release-preparation).

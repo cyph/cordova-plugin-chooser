@@ -1,43 +1,50 @@
+<a id="migrating-from-132-to-20"></a>
+
 # Migrating to 2.0.0-rc.2
 
-RC2 makes managed files the default and moves complete-data reads into explicitly named methods. It also changes cancellation to an exception, requires byte budgets, adds Photos selection, and removes callback overloads. These changes apply to applications upgrading from both RC1 and 1.x.
-
-RC1 was published on November 6, 2026. It retained the earlier call forms while adding multiple selection, managed URI methods, browser support, and types. Its release notes and contributor credits remain in the [changelog](../CHANGELOG.md).
+RC2 changes how selection, cancellation, and resource ownership work. Check the installed version with `npm ls cordova-plugin-chooser` before changing application code. The main steps below convert a 1.x application.
 
 ## Update the installation
 
-Use Cordova Android 14/15 or Cordova iOS 7/8. iOS apps must target iOS 15 or later and use Swift 5 language mode. Before installing or preparing RC2, add the preferences shown in [iOS build configuration](PLATFORMS.md#build-configuration), preserving an existing higher deployment target. An absent target now fails preparation.
+For new applications, install `cordova-plugin-chooser@next`. Stable 2.0.0 is expected very soon, pending further testing and validation. In Capacitor, update the dependency, sync, and rebuild the native project.
 
-Replace the previous plugin installation from your Cordova application directory:
+```sh
+npm install cordova-plugin-chooser@next
+npx cap sync
+npx cap ls
+```
+
+Before installing RC2 in a Cordova iOS app, explicitly set the deployment target to at least iOS 15. The project is tested in Swift 5 language mode, which the host may already select. See [build configuration](PLATFORMS.md#build-configuration), then replace the installed plugin and prepare the app.
 
 ```sh
 cordova plugin remove cordova-plugin-chooser
-cordova plugin add cordova-plugin-chooser@2.0.0-rc.2
+cordova plugin add cordova-plugin-chooser@next
+cordova prepare
+cordova plugin ls
 ```
 
-Prepare and rebuild the application, and review manifest and lockfile changes. Chooser no longer uses `cordova-plugin-add-swift-support`; remove that helper only if no other plugin needs it. Neither document selection nor the new photo picker needs broad Android storage or photo-library permission. TypeScript applications need version 5.7 or later. See the [README](../README.md#installation) for installation requirements.
+RC2 supports Cordova Android 14/15 and iOS 7/8. The plugin requires a deployment target of at least iOS 15 and is tested in Swift 5 language mode. Capacitor does not run the Cordova validation hook, so set the target in the native project and retain any higher requirement of the host or its dependencies. Review lockfile and native project changes, then rebuild. Chooser no longer needs `cordova-plugin-add-swift-support`. Remove it only if no other plugin uses it. RC2's declarations require TypeScript 5.7 or newer.
+
+<a id="existing-calls"></a>
 
 ## Replace earlier calls
 
-| RC1 or 1.x use | RC2 equivalent |
+| Earlier application code | RC2 approach |
 | --- | --- |
-| `getFile(accept)` for bytes and data URI | `getFileData({accept, maxFileSize, format: 'bytesAndDataURI'})` |
-| `getFiles(accept)` for complete data | `getFilesData({accept, maxFileSize, maxTotalSize, format})` |
+| `getFile(accept)` for bytes and a data URI | `getFileData({accept, maxFileSize, format: 'bytesAndDataURI'})` |
 | `getFileMetadata(accept)` | `getFileMetadata({accept})` |
-| `getFilesMetadata(accept)` | `getFilesMetadata({accept, maxFiles})` |
-| `getFileUri(options)` | `getFile(options)` |
-| `getFilesUri(options)` | `getFiles(options)` |
-| Manual select/use/release in one function | `withFile(options, consume)` or `withFiles(options, consume)` |
-| Success/failure callbacks | `await` with `try`/`catch`, or Promise handlers |
-| `result === undefined` for cancellation | Catch `chooser.CancellationError` |
+| Success and failure callbacks | Await the Promise or attach Promise handlers |
+| Cancellation resolves to `undefined` | Catch `CancellationError` |
 
-Options objects replace bare MIME strings. Callback arguments and unknown options reject. `getFile()` no longer reads the contents into `data` and `dataURI`; it returns a managed handle with reading methods and a temporary URI.
+RC2 expects options objects. Bare MIME strings, callback arguments, and unknown keys reject. `getFile` now returns a managed handle rather than eager `data` and `dataURI`. Select a direct-data format when a whole-file representation is needed. Formats include `bytes`, `text`, `dataURI`, `bytesAndDataURI`, `blob`, and `arrayBuffer`.
 
-When only one representation is needed, choose `'bytes'`, `'text'`, `'blob'`, `'arrayBuffer'`, or `'dataURI'`. Use `'bytesAndDataURI'` to retain the useful RC1 pair without two content reads. For large inputs, choose managed selection and read incrementally.
+<a id="multiple-selection-and-large-files"></a>
+
+RC1 users also need to replace its plural eager-data calls with `getFilesData` and its `getFileUri` / `getFilesUri` calls with managed `getFile` / `getFiles`. RC1's `localOnly` option becomes `preferLocal`, and its omitted or zero unlimited byte limits must become explicit `null`. Surviving RC1 native managed IDs remain releasable. The other changes on this page apply to RC1 as well.
 
 ## Make budgets explicit
 
-Managed and direct-data selection require `maxFileSize`. Plural calls also require `maxTotalSize`. Set positive byte counts, or explicit `null` for unlimited; RC1's omitted/zero unlimited limits are no longer accepted. `maxFiles` is optional, but a supplied value must be positive or `null`.
+Set a positive `maxFileSize` on managed and direct-data pickers. Plural versions also require `maxTotalSize`. Pass explicit `null` only if the application accepts an unlimited size. Omitted and zero byte limits are no longer unlimited. `maxFiles` is optional on plural methods and takes a positive count or `null`.
 
 ```js
 const file = await chooser.getFileData({
@@ -48,15 +55,13 @@ const file = await chooser.getFileData({
 const value = JSON.parse(file.text);
 ```
 
-Metadata methods accept no byte budgets and do not read or bridge complete file contents, but the OS or provider may still materialize an entire file. Managed whole-file reads require a separate `maxBytes`; a copy allowed onto disk may still be too large to load into memory. Use `file.readRange({offset, length})` and streams for incremental access. Text methods accept `encoding` and `fatal` as top-level options; data formats other than `text` reject them.
+Whole-file methods on a managed handle require a separate `maxBytes`. Use a range or stream for incremental processing when a complete result would be too large for memory. Text operations accept `encoding` and `fatal` at the top level. Metadata does not take byte limits and does not bridge complete contents, although the provider or OS may still copy or download a file.
 
-Android document methods now allow remote providers by default, including single-file metadata selection. Set `preferLocal: true` if the app wants to request the earlier local-provider preference.
-
-On iOS, document metadata selection asks UIKit to import a copy, as in RC1; managed-copy and direct-data selection open in place. The import may copy or download the entire file, adding latency and disk use outside plugin byte budgets. iOS manages the temporary import, and the optional borrowed `sourceUri` may identify it rather than the original provider location. It is not persistent or a managed resource and has no release obligation. Review the [known iOS Files issue](KNOWN-ISSUES.md) and test the providers and workflows your app uses before adopting RC2.
+Android now allows remote document providers by default, including for single-file metadata. Use `preferLocal: true` as a provider hint when needed.
 
 ## Handle cancellation and cleanup
 
-Picker dismissal and `AbortSignal` cancellation reject with `CancellationError`. Its `reason` distinguishes `'picker'` from `'signal'`. When an operation is canceled by its supplied `AbortSignal`, `cause` preserves that signal's reason. There is no cancellation-related `undefined` result or boolean success flag.
+RC2 rejects on picker dismissal and on signal cancellation. `CancellationError.reason` distinguishes `'picker'` from `'signal'`, and cancellation caused by a supplied signal preserves its reason in `cause`. Pass a signal to each later read that should also be abortable.
 
 ```js
 try {
@@ -67,46 +72,39 @@ try {
   console.log(name);
 } catch (error) {
   if (error instanceof chooser.CancellationError) {
-    // The user dismissed selection or the operation was aborted.
+    // Selection was dismissed or aborted.
   } else if (error instanceof chooser.CleanupError) {
-    console.error('Cleanup failed:', error.failures);
-    console.log('Operation outcome:', error.outcome);
+    console.error('Cleanup failed', error.failures, error.outcome);
   } else {
     console.error(error);
   }
 }
 ```
 
-A scoped helper preserves the consumer's value or original exception, including cancellation caused by an operation's signal and its cause. If cleanup fails, `CleanupError.outcome` records whether the consumer fulfilled or rejected. Do not retry an upload merely because deleting its temporary file failed. See [cleanup handling](FILE-HANDLING.md#consume-then-release).
-
-Pass a signal to each operation that should be abortable. A selection signal does not automatically cancel later reads or a scoped consumer. The helper waits for the consumer to settle before release.
+Scoped helpers wait for their consumer and release the selected files afterward. If cleanup fails, `CleanupError.outcome` keeps the completed value or original error. Check that outcome before retrying an operation with side effects. See [file handling](FILE-HANDLING.md#consume-then-release).
 
 ## Update ownership and result fields
 
-Only managed results have `id`, `uri`, reading methods, and a release obligation. Browser metadata and direct-data results no longer retain Blob URLs. Metadata uses optional borrowed `sourceUri` instead of a managed `uri`; direct data likewise has no retained plugin reference.
+Managed results alone have an `id`, `uri`, read methods, and a release obligation. Metadata and direct-data results do not retain a managed Blob URL or ID in RC2. An optional `sourceUri` is borrowed and is not a managed reference. On iOS, metadata still uses an import that may copy or download a whole file outside byte budgets. Its URI can refer to the temporary import rather than the original location.
 
-`file.release()`, `releaseFile(id)`, and `releaseFiles(ids)` share resource ownership. Restoring a saved reference creates another handle to the same resource, not a separate copy. Releasing an ID closes every alias, stops unfinished plugin streams, and waits for started one-shot reads. Wait for external URI consumers yourself.
-
-Save references with `file.toJSON()` and restore them with `restoreFile`. Native cache eviction and browser navigation still invalidate resources. Surviving native RC1 managed IDs remain releasable, but saved cache references are not durable storage.
+Use `file.release()`, `releaseFile(id)`, or `releaseFiles(ids)` after all consumers finish. Restored handles for one ID share the same resource. Save the complete `file.toJSON()` reference if later restoration is useful, but do not treat an evictable cache as persistent storage. Browser references do not survive loss of the page registry.
 
 ## Add photo-library selection
 
-Use `source: 'photos'` with optional `mediaTypes: ['image']` or `['video']`. Use the document source for files in Files or other document providers. The photo source adds library selection, not camera capture, editing, or a promise of the original encoded representation. See [platform details](PLATFORMS.md).
+Use `source: 'photos'` and optionally `mediaTypes: ['image']` or `['video']` for library selection. Document selection remains the default. Library selection does not provide camera capture, editing, or a guarantee of original encoded bytes. The system picker and fallback vary by platform.
 
 ## Framework and lifecycle integration
 
-The package includes [TypeScript declarations](API.md#typescript). Wait for `deviceready` and call the injected global directly unless a wrapper explicitly supports this RC2 contract.
+Call the injected global after `deviceready`. The [TypeScript example](API.md#typescript) supplies its type without importing the runtime module.
 
 ### Awesome Cordova Plugins and fork-specific wrappers
 
-The Awesome Cordova Plugins Chooser wrapper [changed to the MaximBelov fork](https://github.com/danielsogl/awesome-cordova-plugins/commit/ba37646fc4b7cc86b497affa0ef932ad374b9080). Its `mimeTypes` input and `path`, `displayName`, and `mimeType` fields do not match this plugin. Installing Chooser does not translate a wrapper's interface.
-
-Use `accept`, `name`, and `mediaType`, and choose a managed or direct-data method explicitly. An object such as `{mimeTypes: 'text/csv', maxFileSize: 1}` rejects because `mimeTypes` is unknown. Copying the wrapper's type declarations or casting to `any` does not repair the runtime call.
+The Awesome Cordova Plugins Chooser wrapper [changed to the MaximBelov fork](https://github.com/danielsogl/awesome-cordova-plugins/commit/ba37646fc4b7cc86b497affa0ef932ad374b9080). Its `mimeTypes`, `path`, `displayName`, and `mimeType` interface differs from this package's `accept`, `name`, and `mediaType`. A cast or copied type declaration cannot translate the runtime contract. Call this package's injected global or use a wrapper that explicitly supports its RC2 API.
 
 ### Android lifecycle
 
-A Promise cannot survive WebView destruction. Cordova's `resume.pendingResult` can contain a raw native payload, which is different from the public RC2 result. Review [restored Android results](PLATFORMS.md#restored-android-results) if the application handles activity recreation.
+A destroyed WebView loses the pending Promise. Cordova can deliver a raw native envelope in `resume.pendingResult`, but it is not the public managed or data result and does not resume JavaScript work. See [restored Android results](PLATFORMS.md#restored-android-results).
 
 ## Check the application upgrade
 
-Exercise selection, cancellation, immediate reopening, limits, decoding, release, cache eviction, and the providers your app uses. Confirm that no consumer outlives scoped cleanup and that cleanup errors cannot repeat completed business operations. Review the [known iOS Files issue](KNOWN-ISSUES.md) when qualifying document selection.
+Exercise selection and dismissal, limits, decoding, provider access, immediate reopening, cleanup, and cache eviction with the app's own devices and providers. Confirm all URI consumers finish before release. Review the [iOS Files issue](KNOWN-ISSUES.md) when qualifying document selection.

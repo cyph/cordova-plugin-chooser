@@ -2,14 +2,20 @@
 
 ## Intermittent iOS Files selection
 
-In simulator tests, Files has intermittently remained open after selecting local CSV, JSON, PDF, image, or video files. Both open-in-place and import picker modes can stall, and cancellation has also stalled during investigation. Without a selection or dismissal callback, the request can remain pending and later picker calls can report `BUSY`.
+### Symptoms and recovery
 
-Native FileProvider URL or bookmark resolution errors have been observed in some cases, including in a plain UIKit reference app without Cordova or Chooser. Document metadata selection uses import mode, but Files and provider stalls remain possible for PNG and other file types. The cause and impact on physical devices and other providers remain unknown. Import mode is not a verified general workaround, and requiring iOS 15 does not establish a fix.
+In simulator investigations, Files has sometimes remained open after a local document was selected or after dismissal was requested. A pending picker may cause subsequent requests to fail with `BUSY`. CSV, JSON, PDF, image, and video cases have been observed.
 
-If Files responds, cancel and wait for the request to settle before retrying. An `AbortSignal` requests cancellation through the plugin, but cannot guarantee recovery of an unresponsive system picker. An app restart may be necessary if Files remains stuck.
+If the dialog responds, cancel it and wait for the original request to settle before opening another. An `AbortSignal` asks Chooser to cancel, but cannot guarantee that a stuck system picker will respond. Restarting the app may be necessary when the interface remains unresponsive.
+
+### Evidence and limits
+
+Stalls have occurred in both open-in-place and import modes. Some runs also showed FileProvider URL or bookmark resolution errors in an independent UIKit control without Cordova or Chooser. The cause remains unknown. The available evidence does not establish the impact on physical devices or other providers. Switching picker modes and using iOS 15 are not verified general fixes.
+
+Required CI exercises controlled native picker contracts and a Cordova bridge smoke test across iPhone and iPad with both maintained Cordova iOS families. Real Files and provider UI cases run separately in the manual iOS picker investigation workflow. Their separation does not mean those cases pass or that the issue is resolved. [Verification](VERIFICATION.md#simulator-and-framework-integration) describes the suites and how to interpret their results. Capacitor iOS and Web do not have equivalent integration coverage to Capacitor Android.
+
+When reporting a reproduction, include the device or simulator, OS, provider and location, method and options, and a small nonprivate file. See [reporting guidance](TROUBLESHOOTING.md#report-a-reproducible-issue).
 
 ## Separate investigation coverage
 
-Required CI runs controlled native picker contract tests across Cordova iOS 7 and 8 on iPhone and iPad, independently of Files preparation. Real picker and provider UI cases remain in the manually dispatched **iOS picker investigation** workflow, where setup and all assertions still gate the workflow. This separation does not establish that the issue is fixed or prove real provider UI behavior. The complete local simulator suite remains available. See [verification](VERIFICATION.md#simulator-and-framework-integration) for commands, report handling, and the criteria for returning cases to required CI.
-
-To report a current reproduction, include device or simulator, OS version, provider/location, method/options, and a small nonprivate example. See [reporting guidance](TROUBLESHOOTING.md#report-a-reproducible-issue).
+The manual provider suite retains its setup and assertions. It is useful evidence for an investigation but does not replace required release qualification. Preserve failures and unstarted cases when reporting results.
