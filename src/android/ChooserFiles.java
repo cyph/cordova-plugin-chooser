@@ -17,6 +17,8 @@ import java.util.regex.Pattern;
 /** Bounded I/O and cache ownership checks. */
 final class ChooserFiles {
 	static final long MAX_SAFE_INTEGER = 9007199254740991L;
+	private static final boolean HAS_NIO = Build.VERSION.SDK_INT >= 26
+		|| !"Dalvik".equals(System.getProperty("java.vm.name"));
 	private static final Pattern ID = Pattern.compile(
 		"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
 	);
@@ -91,7 +93,7 @@ final class ChooserFiles {
 
 	// Check the entry itself, including a dangling link, without listing the directory.
 	static boolean entryExists(File file) throws IOException {
-		if (Build.VERSION.SDK_INT == 0) return JvmFileSystem.entryExists(file);
+		if (HAS_NIO) return NioFileSystem.entryExists(file);
 		try { Os.lstat(file.getPath()); return true; }
 		catch (ErrnoException error) {
 			if (error.errno == OsConstants.ENOENT) return false;
@@ -99,8 +101,8 @@ final class ChooserFiles {
 		}
 	}
 
-	// The stub Android SDK reports zero in host JVM tests. Android always uses lstat.
-	private static final class JvmFileSystem {
+	// Use the host JVM's filesystem in Robolectric because it shadows lstat.
+	private static final class NioFileSystem {
 		@android.annotation.SuppressLint("NewApi")
 		static boolean entryExists(File file) throws IOException {
 			try {
