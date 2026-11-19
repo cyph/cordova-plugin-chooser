@@ -263,51 +263,6 @@ doctor = ["doctor-project"]
 [hooks]
 enabled = true
 
-[[audits.exceptions.js]]
-id = "1247710"
-package = "picomatch"
-versions = ["2.3.2"]
-reason = "CVE-2026-112366 has no patched npm release. The reviewed paths belong to Cordova development and build tooling only, and the packages are outside the published Chooser archive."
-review_after = "2026-12-02"
-paths = [
-  ".>cordova-ios>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova-android>fast-glob>micromatch>picomatch",
-  ".>cordova-android>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova-browser>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-create>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-create>globby>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-lib>globby>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-lib>cordova-common>fast-glob>micromatch>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>cordova-common>fast-glob>micromatch>picomatch",
-]
-
-[[audits.exceptions.js]]
-id = "1247710"
-package = "picomatch"
-versions = ["4.0.7"]
-reason = "CVE-2026-112366 has no patched npm release. The reviewed paths belong to Cordova development and build tooling only, and the packages are outside the published Chooser archive."
-review_after = "2026-12-02"
-paths = [
-  ".>cordova>cordova-create>cordova-fetch>pacote>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>pacote>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>@npmcli/arborist>@npmcli/metavuln-calculator>pacote>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>@npmcli/arborist>@npmcli/metavuln-calculator>pacote>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>@npmcli/arborist>pacote>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>@npmcli/arborist>pacote>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>@npmcli/arborist>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-create>cordova-fetch>@npmcli/arborist>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>pacote>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>pacote>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>@npmcli/arborist>@npmcli/metavuln-calculator>pacote>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>@npmcli/arborist>@npmcli/metavuln-calculator>pacote>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>@npmcli/arborist>pacote>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>@npmcli/arborist>pacote>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>@npmcli/arborist>@npmcli/run-script>node-gyp>tinyglobby>fdir>picomatch",
-  ".>cordova>cordova-lib>cordova-fetch>@npmcli/arborist>@npmcli/run-script>node-gyp>tinyglobby>picomatch",
-]
-
 [[dependencies.exclusions]]
 pattern = "Package.swift"
 reason = "Library manifest declares the Capacitor 8 compatibility range. The generated Capacitor app resolves the exact Swift package version, and the Capacitor iOS lane builds both ends of the tested range."
