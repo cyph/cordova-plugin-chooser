@@ -8,8 +8,10 @@ final class ChooserTransaction {
 	// which Swift's actor checker cannot infer for this legacy synchronous API.
 	#if compiler(>=5.10)
 	nonisolated(unsafe) private static var initialized = Set<String>()
+	nonisolated(unsafe) private static var failedRollbacks: [URL: ChooserTransaction] = [:]
 	#else
 	private static var initialized = Set<String>()
+	private static var failedRollbacks: [URL: ChooserTransaction] = [:]
 	#endif
 	struct Operations {
 		var move: (URL, URL) throws -> Void
@@ -28,15 +30,20 @@ final class ChooserTransaction {
 	private var entries: [Entry] = []
 	private var committed = false
 	private var settled = false
+	private let cleanup = NSLock()
 
 	static func begin(in cache: URL) throws -> ChooserTransaction {
+		try ensureRecovered(in: cache)
+		return try ChooserTransaction(cache: cache)
+	}
+
+	private static func ensureRecovered(in cache: URL) throws {
 		initialization.lock(); defer { initialization.unlock() }
 		let root = try ChooserFiles.directory(in: cache)
 		if !initialized.contains(root.path) {
 			try recover(in: cache)
 			initialized.insert(root.path)
 		}
-		return try ChooserTransaction(cache: cache)
 	}
 
 	init(cache: URL, operations: Operations = .files) throws {
@@ -97,20 +104,58 @@ final class ChooserTransaction {
 
 	var fileIDs: [String] { return entries.map { $0.id } }
 
+	func prepareTemporary() throws { try save(committed: false) }
+
+	func releaseTemporary(_ id: String) throws {
+		cleanup.lock(); defer { cleanup.unlock() }
+		guard !settled, entries.contains(where: { $0.id == id }) else { return }
+		try Self.removeRegular(staging.appendingPathComponent(id), operations: operations)
+		let remaining = entries.filter { $0.id != id }
+		if remaining.isEmpty {
+			try Self.removeStaging(staging, operations: operations)
+			settled = true
+		}
+		entries = remaining
+	}
+
+	static func release(in cache: URL, id: String) throws {
+		try ensureRecovered(in: cache)
+		let key = try ChooserFiles.directory(in: cache).appendingPathComponent(id)
+		initialization.lock()
+		let transaction = failedRollbacks[key]
+		initialization.unlock()
+		try transaction?.finishChecked(delivered: false)
+		try ChooserFiles.release(in: cache, id: id)
+	}
+
 	func finish(delivered: Bool) {
 		do { try finishChecked(delivered: delivered) }
 		catch { Self.diagnostic() }
 	}
 
 	func finishChecked(delivered: Bool) throws {
+		cleanup.lock(); defer { cleanup.unlock() }
 		guard !settled else { return }
-		if !delivered || !committed {
-			do { try save(committed: false) }
-			catch { Self.diagnostic() }
-			try Self.rollback(root: root, folder: staging, entries: entries, operations: operations)
+		do {
+			if !delivered || !committed {
+				do { try save(committed: false) }
+				catch { Self.diagnostic() }
+				try Self.rollback(root: root, folder: staging, entries: entries, operations: operations)
+			}
+			try Self.removeStaging(staging, operations: operations)
+			settled = true
+		} catch {
+			if !delivered { recordRollbackFailure() }
+			throw error
 		}
-		try Self.removeStaging(staging, operations: operations)
-		settled = true
+		Self.initialization.lock()
+		for entry in entries { Self.failedRollbacks.removeValue(forKey: root.appendingPathComponent(entry.id)) }
+		Self.initialization.unlock()
+	}
+
+	private func recordRollbackFailure() {
+		Self.initialization.lock(); defer { Self.initialization.unlock() }
+		for entry in entries { Self.failedRollbacks[root.appendingPathComponent(entry.id)] = self }
 	}
 
 	private func save(committed: Bool) throws {

@@ -296,7 +296,11 @@ final class ChooserEngine: NSObject {
 				}
 				let values = try produce()
 				try request.checkCanceled()
-				try request.transaction?.commit(canceled: { request.canceled })
+				if request.mode == .data {
+					try request.transaction?.prepareTemporary()
+				} else {
+					try request.transaction?.commit(canceled: { request.canceled })
+				}
 				result = .success(request.multiple ? values as Any : values[0] as Any)
 			} catch {
 				request.recordFailure(error)
@@ -365,9 +369,8 @@ final class ChooserEngine: NSObject {
 	}
 
 	private func copyBytes(from source: URL, to destination: URL, budget: ChooserBudget, request: ChooserRequest) throws -> Int64 {
-		guard let input = InputStream(url: source), let output = OutputStream(url: destination, append: false) else {
-			throw ChooserFailure(code: .copyFailed, detail: "Could not open file streams.")
-		}
+		guard let input = InputStream(url: source) else { throw ChooserFailure(code: .readFailed, detail: "Cannot open selected file.") }
+		guard let output = OutputStream(url: destination, append: false) else { throw ChooserFailure(code: .copyFailed, detail: "Cannot open cached file.") }
 		return try ChooserFiles.copy(input: input, output: output, budget: budget, canceled: { request.canceled })
 	}
 
@@ -384,13 +387,11 @@ final class ChooserEngine: NSObject {
 					// PHPicker's URL expires when this callback returns. Stage only that
 					// provider-required import; all bridge data still uses bounded reads.
 					guard let transaction = request.transaction else { throw ChooserFailure(code: .cacheFailed, detail: "Missing photo import transaction.") }
-					let cache = try Self.cacheDirectory()
 					let staged = try transaction.create()
-					let imported = try transaction.destination(for: staged)
 					let id = staged.lastPathComponent
 					_ = try self.copyBytes(from: url, to: staged, budget: request.importBudget, request: request)
 					try request.checkCanceled()
-					let source = ChooserSource(url: imported, budget: request.budget, cleanup: { try ChooserFiles.release(in: cache, id: id) })
+					let source = ChooserSource(url: staged, budget: request.budget, cleanup: { try transaction.releaseTemporary(id) })
 					_ = try self.resources.register(source, id: id)
 					request.trackSource(id, in: self.resources)
 					var file = metadata
@@ -415,7 +416,7 @@ final class ChooserEngine: NSObject {
 			// Claim completion before asynchronous cancellation rollback starts.
 			finalized = true
 			guard self.active === request else { request.finishResources(delivered: false); return }
-			if request.canceled {
+			if request.canceled && !request.hasSelectionFailure {
 				self.rollbackCancellation(request)
 				return
 			}

@@ -1,16 +1,21 @@
 package com.cyph.cordova;
 
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -19,7 +24,7 @@ import java.util.logging.Logger;
 import java.util.function.BooleanSupplier;
 
 /** Cache-only work never waits behind document-provider I/O. */
-final class ChooserTransaction {
+final class ChooserTransaction implements Closeable {
 	static final ExecutorService HOUSEKEEPING = Executors.newSingleThreadExecutor(action -> {
 		Thread thread = new Thread(action, "Chooser-cache");
 		thread.setDaemon(true);
@@ -34,6 +39,8 @@ final class ChooserTransaction {
 		public boolean delete(File file) { return file.delete(); }
 	};
 	private static final Set<String> initialized = new HashSet<>();
+	private static final Set<String> live = new HashSet<>();
+	private static final Map<File, ChooserTransaction> failedRollbacks = new HashMap<>();
 	private static final Logger LOG = Logger.getLogger("Chooser");
 	private static final class Entry {
 		final String id;
@@ -46,15 +53,20 @@ final class ChooserTransaction {
 	private final List<Entry> entries = new ArrayList<>();
 	private boolean committed;
 	private boolean settled;
+	private RandomAccessFile ownership;
 
 	static ChooserTransaction begin(File cache) throws IOException {
+		ensureRecovered(cache);
+		return new ChooserTransaction(cache, FILES);
+	}
+
+	static void ensureRecovered(File cache) throws IOException {
 		synchronized (ChooserTransaction.class) {
 			File root = ChooserFiles.directory(cache);
 			if (!initialized.contains(root.getPath())) {
 				recover(cache, FILES);
 				initialized.add(root.getPath());
 			}
-			return new ChooserTransaction(cache, FILES);
 		}
 	}
 
@@ -62,13 +74,21 @@ final class ChooserTransaction {
 		this.root = ChooserFiles.directory(cache);
 		this.operations = operations;
 		File parent = directory(new File(root, ".pending"));
-		File created = null;
-		for (int attempt = 0; attempt < 10; attempt++) {
-			File candidate = new File(parent, UUID.randomUUID().toString());
-			if (candidate.mkdir()) { created = candidate; break; }
+		synchronized (ChooserTransaction.class) {
+			try (RandomAccessFile lock = lockFile(parent); FileLock ignored = lock.getChannel().lock()) {
+				File created = null;
+				for (int attempt = 0; attempt < 10; attempt++) {
+					File candidate = new File(parent, UUID.randomUUID().toString());
+					if (candidate.mkdir()) { created = candidate; break; }
+				}
+				if (created == null) throw failure();
+				staging = created;
+				ownership = lockFile(staging);
+				try { ownership.getChannel().lock(); }
+				catch (IOException | RuntimeException error) { ownership.close(); throw error; }
+				live.add(staging.getPath());
+			}
 		}
-		if (created == null) throw failure();
-		staging = created;
 	}
 
 	File create() throws IOException {
@@ -121,12 +141,44 @@ final class ChooserTransaction {
 
 	synchronized void finishChecked(boolean delivered) throws IOException {
 		if (settled) return;
-		if (!delivered || !committed) {
-			save(false);
-			rollback(root, staging, entries, operations);
+		File parent = staging.getParentFile();
+		synchronized (ChooserTransaction.class) {
+			try (RandomAccessFile lock = lockFile(parent); FileLock ignored = lock.getChannel().lock()) {
+				if (ChooserFiles.entryExists(staging)) {
+					if (!delivered || !committed) {
+						save(false);
+						rollback(root, staging, entries, operations);
+					}
+					removeStaging(staging, operations);
+				}
+				settled = true;
+				for (Entry entry : entries) failedRollbacks.remove(new File(root, entry.id), this);
+			}
+			catch (IOException error) {
+				if (!delivered) for (Entry entry : entries) failedRollbacks.put(new File(root, entry.id), this);
+				throw error;
+			}
+			finally {
+				close();
+			}
 		}
-		removeStaging(staging, operations);
-		settled = true;
+	}
+
+	@Override public void close() throws IOException {
+		synchronized (ChooserTransaction.class) {
+			live.remove(staging.getPath());
+			if (ownership != null) { ownership.close(); ownership = null; }
+		}
+	}
+
+	static void release(File cache, String id) throws IOException {
+		ensureRecovered(cache);
+		ChooserTransaction transaction;
+		synchronized (ChooserTransaction.class) {
+			transaction = failedRollbacks.get(new File(ChooserFiles.directory(cache), id));
+		}
+		if (transaction != null) transaction.finishChecked(false);
+		ChooserFiles.release(cache, id);
 	}
 
 	List<String> ids() {
@@ -149,16 +201,25 @@ final class ChooserTransaction {
 		if (!operations.move(temp, journalFile)) throw failure();
 	}
 
-	/** Invoke only before starting transactions in a process; never sweep active writers. */
-	static void recover(File cache, Operations operations) throws IOException {
+	/** Only abandoned transactions are eligible for recovery. */
+	static synchronized void recover(File cache, Operations operations) throws IOException {
 		File root = ChooserFiles.directory(cache);
 		File parent = directory(new File(root, ".pending"));
+		try (RandomAccessFile lock = lockFile(parent); FileLock ignored = lock.getChannel().lock()) {
+			recoverFolders(root, parent, operations);
+		}
+	}
+
+	private static void recoverFolders(File root, File parent, Operations operations) throws IOException {
 		File[] children = parent.listFiles();
 		if (children == null) throw failure();
 		for (File folder : children) {
+			if (folder.getName().equals(".lock") || live.contains(folder.getPath())) continue;
 			try {
 				if (!ChooserFiles.isId(folder.getName())) throw failure();
 				directory(folder);
+				try (RandomAccessFile owner = lockFile(folder); FileLock held = owner.getChannel().tryLock()) {
+				if (held == null) continue;
 				List<Entry> entries = new ArrayList<>();
 				boolean complete = false;
 				File journal = new File(folder, "journal");
@@ -181,9 +242,16 @@ final class ChooserTransaction {
 				}
 				if (!complete) rollback(root, folder, entries, operations);
 				removeStaging(folder, operations);
+				}
 			}
 			catch (IOException error) { diagnostic(); }
 		}
+	}
+
+	private static RandomAccessFile lockFile(File folder) throws IOException {
+		File file = new File(folder, ".lock");
+		if (ChooserFiles.entryExists(file)) regular(file);
+		return new RandomAccessFile(file, "rw");
 	}
 
 	private static String record(BufferedReader reader) throws IOException {
@@ -214,12 +282,13 @@ final class ChooserTransaction {
 		if (files == null) throw failure();
 		// Validate the complete flat directory before deleting any journal evidence.
 		for (File file : files) {
-			if (!ChooserFiles.isId(file.getName()) && !file.getName().equals("journal") && !file.getName().equals("journal.tmp")) throw failure();
+			if (!ChooserFiles.isId(file.getName()) && !file.getName().equals("journal") && !file.getName().equals("journal.tmp") && !file.getName().equals(".lock")) throw failure();
 			regular(file);
 		}
-		for (File file : files) if (!file.getName().startsWith("journal")) removeRegular(file, operations);
+		for (File file : files) if (ChooserFiles.isId(file.getName())) removeRegular(file, operations);
 		removeRegular(new File(folder, "journal.tmp"), operations);
 		removeRegular(new File(folder, "journal"), operations);
+		removeRegular(new File(folder, ".lock"), operations);
 		if (!operations.delete(folder)) throw failure();
 	}
 	private static void removeRegular(File file, Operations operations) throws IOException {
@@ -232,7 +301,7 @@ final class ChooserTransaction {
 	}
 	private static File directory(File file) throws IOException {
 		if (!file.getCanonicalFile().equals(file.getAbsoluteFile())) throw failure();
-		if (!file.isDirectory() && !file.mkdir()) throw failure();
+		if (!file.isDirectory() && !file.mkdir() && !file.isDirectory()) throw failure();
 		return file;
 	}
 	private static void checkCanceled(BooleanSupplier canceled) throws ChooserError {

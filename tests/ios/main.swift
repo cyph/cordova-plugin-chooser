@@ -501,6 +501,21 @@ do {
 	try require(output.streamStatus == .closed, "failed input left the copy output open")
 }
 
+// Temporary Photos imports are recoverable until the source reader releases them.
+do {
+	let cache = try newCache()
+	let importBatch = try ChooserTransaction.begin(in: cache)
+	let first = try importBatch.create()
+	let second = try importBatch.create()
+	try Data([1]).write(to: first)
+	try Data([2]).write(to: second)
+	try importBatch.prepareTemporary()
+	try importBatch.releaseTemporary(first.lastPathComponent)
+	try require(!exists(first) && exists(second), "release removed a different temporary source")
+	try ChooserTransaction.recover(in: cache)
+	try require(!exists(second) && !exists(importBatch.staging), "recovery retained an interrupted photo import")
+}
+
 // Sources are lazy, sequential, share actual-byte budgets, and cannot be restored.
 do {
 	let cache = try newCache()
@@ -520,6 +535,7 @@ do {
 	let tail = try store.read(id: first, offset: 2, length: 2)
 	try require(try decoded(tail) == Data([3]) && tail["eof"] as? Bool == true, "source short EOF incorrect")
 	try require(probe.counts.0 == 1, "source reopened for each chunk")
+	try require(probe.counts.1 == 1, "source held its stream after EOF")
 	_ = try store.read(id: second, offset: 0, length: 1)
 	do {
 		_ = try store.read(id: second, offset: 1, length: 1)
@@ -641,7 +657,7 @@ do {
 	}))
 	try rejects("source open failure accepted") { _ = try store.read(id: id, offset: 0, length: 1) }
 	try rejects("failed source retried its stream") { _ = try store.read(id: id, offset: 0, length: 1) }
-	try require(probe.counts.0 == 1 && probe.counts.1 == 0, "failed source reopened or closed before release")
+	try require(probe.counts.0 == 1 && probe.counts.1 == 1, "failed source did not close its stream promptly")
 	try rejects("cleanup failure ignored") { try store.release(id: id) }
 	try require(probe.counts.1 == 1, "failed source cleanup did not close its stream")
 	try rejects("failed release reopened resource") { _ = try store.read(id: id, offset: 0, length: 1) }

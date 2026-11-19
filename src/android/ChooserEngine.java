@@ -71,7 +71,8 @@ final class ChooserEngine {
 	private long generation;
 	private ChooserResources resources;
 	private static final ExecutorService READS = Executors.newFixedThreadPool(4, action -> daemon(action, "Chooser-read"));
-	private static final ExecutorService CLEANUP = Executors.newCachedThreadPool(action -> daemon(action, "Chooser-release"));
+	private static final ExecutorService CLEANUP = Executors.newFixedThreadPool(4, action -> daemon(action, "Chooser-release"));
+	private static final ExecutorService CANCEL = Executors.newFixedThreadPool(4, action -> daemon(action, "Chooser-cancel"));
 	private static Thread daemon(Runnable action, String name) {
 		Thread thread = new Thread(action, name);
 		thread.setDaemon(true);
@@ -171,7 +172,8 @@ final class ChooserEngine {
 			synchronized (lock) { owner = generation; }
 			if ("releaseFile".equals(action)) owned.beginRelease(id);
 			if ("cancelRead".equals(action)) owned.beginCancelRead(id);
-			ExecutorService executor = "readFile".equals(action) ? READS : ("releaseFile".equals(action) || "cancelRead".equals(action)) ? CLEANUP : ChooserTransaction.HOUSEKEEPING;
+			ExecutorService executor = "readFile".equals(action) ? READS :
+				"releaseFile".equals(action) ? CLEANUP : "cancelRead".equals(action) ? CANCEL : ChooserTransaction.HOUSEKEEPING;
 			executor.execute(() -> {
 				Response result;
 				try {
@@ -254,7 +256,7 @@ final class ChooserEngine {
 			request.canceled = true;
 			if (!awaitingResult && request.state() == ChooserRequest.State.SELECTING) finishCancellation(request);
 		}
-		CLEANUP.execute(() -> {
+		CANCEL.execute(() -> {
 			try { request.cancel(); } catch (RuntimeException ignored) {}
 			if (awaitingResult) {
 				// Settle only when this result drains, so the caller can safely open another picker.
@@ -326,7 +328,7 @@ final class ChooserEngine {
 					long size;
 					try (InputStream input = open(resolver, uri, request.cancellation)) {
 						request.attachInput(input);
-						try (FileOutputStream output = new FileOutputStream(file)) {
+						try (FileOutputStream output = openCopyDestination(file)) {
 							size = ChooserFiles.copy(input, output, request.budget, () -> request.canceled);
 						}
 						finally { request.detachInput(input); }
@@ -352,7 +354,8 @@ final class ChooserEngine {
 		}
 		catch (OutOfMemoryError error) { failed = detail(ChooserError.Code.OUT_OF_MEMORY, "Insufficient memory for file selection."); }
 		catch (Exception error) {
-			failed = request.canceled ? cancellationDetail() : failureDetail(error, ChooserError.Code.READ_FAILED);
+			failed = request.canceled && (!(error instanceof ChooserError) || ((ChooserError) error).code == ChooserError.Code.READ_INTERRUPTED)
+				? cancellationDetail() : failureDetail(error, ChooserError.Code.READ_FAILED);
 		}
 		finally {
 			if (!delivered) {
@@ -369,11 +372,15 @@ final class ChooserEngine {
 					catch (JSONException impossible) { throw new IllegalStateException(impossible); }
 					finishTerminal(request, Response.failed(detail), true);
 				}
-				else if (request.canceled) finishCancellation(request);
-				else if (failed != null) finish(request, Response.failed(failed));
+				else finishTerminal(request, Response.failed(original), true);
 			}
 			else request.finishResources(true);
 		}
+	}
+
+	private static FileOutputStream openCopyDestination(File file) throws IOException {
+		try { return new FileOutputStream(file); }
+		catch (IOException error) { throw ChooserFiles.copyFailure(error); }
 	}
 
 	private JSONArray rollback(ChooserRequest request) {
@@ -528,7 +535,7 @@ final class ChooserEngine {
 			}
 			catch (Exception error) { callback.send(error(ChooserError.Code.READ_INTERRUPTED, "Picker state could not be restored.")); }
 		}
-		if (previous != null) CLEANUP.execute(() -> { try { previous.cancel(); } catch (RuntimeException ignored) {} });
+		if (previous != null) CANCEL.execute(() -> { try { previous.cancel(); } catch (RuntimeException ignored) {} });
 	}
 	private static long restoredLimit(Bundle state, String name) {
 		long value = state.getLong(name);
@@ -545,7 +552,7 @@ final class ChooserEngine {
 			if (previous != null) previous.canceled = true;
 			owned = resources;
 		}
-		if (previous != null) CLEANUP.execute(() -> { try { previous.cancel(); } catch (RuntimeException ignored) {} });
+		if (previous != null) CANCEL.execute(() -> { try { previous.cancel(); } catch (RuntimeException ignored) {} });
 		if (owned != null) for (String id : owned.sources()) CLEANUP.execute(() -> {
 			try { owned.release(id); } catch (IOException ignored) { /* Explicit release can retry. */ }
 		});

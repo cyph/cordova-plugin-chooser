@@ -66,7 +66,10 @@ public final class CapacitorChooser extends Plugin {
 	@PluginMethod public void statFile(PluginCall call) { dispatch("statFile", call); }
 	@PluginMethod public void releaseFile(PluginCall call) { dispatch("releaseFile", call); }
 
-	@Override protected Bundle saveInstanceState() { return engine.onSaveInstanceState(); }
+	@Override protected Bundle saveInstanceState() {
+		// Capacitor persists the pending PluginCall only when this returns a bundle.
+		return awaitingRestoredResult ? new Bundle() : engine.onSaveInstanceState();
+	}
 	@Override protected void restoreState(Bundle state) { awaitingRestoredResult = true; }
 
 	@Override protected void handleOnActivityResult(int code, int status, Intent data) {

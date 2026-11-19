@@ -4,6 +4,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import android.os.Build;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
@@ -49,7 +55,8 @@ final class ChooserFiles {
 				throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Request was reset.");
 			}
 			budget.consume(total, count);
-			output.write(buffer, 0, count);
+			try { output.write(buffer, 0, count); }
+			catch (IOException error) { throw copyFailure(error); }
 			total += count;
 		}
 	}
@@ -59,7 +66,7 @@ final class ChooserFiles {
 		if (!root.getCanonicalFile().equals(root.getAbsoluteFile())) {
 			throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cache directory must not be a symbolic link.");
 		}
-		if (!root.isDirectory() && !root.mkdirs()) {
+		if (!root.isDirectory() && !root.mkdirs() && !root.isDirectory()) {
 			throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot create private cache directory.");
 		}
 		return root;
@@ -76,13 +83,26 @@ final class ChooserFiles {
 		throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot allocate a unique cache file.");
 	}
 
-	// Directory lookup detects dangling links too; File.exists() follows their missing targets.
+	static ChooserError copyFailure(IOException error) {
+		ChooserError failure = new ChooserError(ChooserError.Code.COPY_FAILED, "Could not write the cached file.");
+		failure.initCause(error);
+		return failure;
+	}
+
+	// Check the entry itself, including a dangling link, without listing the directory.
 	static boolean entryExists(File file) throws IOException {
-		if (file.exists()) return true;
-		String[] entries = file.getParentFile().list();
-		if (entries == null) throw new ChooserError(ChooserError.Code.CACHE_FAILED, "Cannot inspect cache directory.");
-		for (String entry : entries) if (entry.equals(file.getName())) return true;
-		return false;
+		if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= 26) {
+			try {
+				Files.readAttributes(file.toPath(), java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+				return true;
+			}
+			catch (java.nio.file.NoSuchFileException missing) { return false; }
+		}
+		try { Os.lstat(file.getPath()); return true; }
+		catch (ErrnoException error) {
+			if (error.errno == OsConstants.ENOENT) return false;
+			throw new IOException("Cannot inspect cache entry.", error);
+		}
 	}
 
 	static File managed(File cache, String id) throws IOException {
@@ -103,7 +123,7 @@ final class ChooserFiles {
 		if (!file.getCanonicalFile().equals(file.getAbsoluteFile()) || (exists && !file.isFile())) {
 			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Not a managed regular file.");
 		}
-		if (exists && !file.delete()) {
+		if (exists && !file.delete() && entryExists(file)) {
 			throw new ChooserError(ChooserError.Code.RELEASE_FAILED, "Could not remove the cached file.");
 		}
 	}

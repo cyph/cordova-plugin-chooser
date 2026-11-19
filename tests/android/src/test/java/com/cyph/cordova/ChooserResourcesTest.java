@@ -45,6 +45,7 @@ public class ChooserResourcesTest {
 		assertArrayEquals(Arrays.copyOfRange(bytes, 3, 18), resources.read(file.getName(), 3, 15).data);
 		assertTrue(resources.read(file.getName(), bytes.length - 2, 8).eof);
 		assertTrue(resources.read(file.getName(), bytes.length + 10, 8).eof);
+		assertTrue(resources.read(file.getName(), ChooserFiles.MAX_SAFE_INTEGER, 0).eof);
 		assertEquals(0, resources.read(file.getName(), 0, 0).data.length);
 		assertFalse(resources.read(file.getName(), 0, 0).eof);
 		assertThrows(ChooserError.class, () -> resources.read(file.getName(), 0, ChooserResources.MAX_CHUNK + 1));
@@ -52,7 +53,7 @@ public class ChooserResourcesTest {
 		resources.release(file.getName());
 		resources.release(file.getName());
 		assertFalse(file.exists());
-		assertEquals(ChooserError.Code.FILE_RELEASED, assertThrows(ChooserError.class, () -> resources.read(file.getName(), 0, 1)).code);
+		assertEquals(ChooserError.Code.FILE_UNAVAILABLE, assertThrows(ChooserError.class, () -> resources.stat(file.getName())).code);
 	}
 
 	@Test public void statAndReleaseRefuseForeignPathsSymlinksAndDirectories() throws Exception {
@@ -94,7 +95,7 @@ public class ChooserResourcesTest {
 		resources.release(id);
 		assertEquals(1, closed.get());
 		assertEquals(1, source.cancels.get());
-		assertEquals(ChooserError.Code.FILE_RELEASED, assertThrows(ChooserError.class, () -> resources.read(id, 3, 1)).code);
+		assertEquals(ChooserError.Code.FILE_UNAVAILABLE, assertThrows(ChooserError.class, () -> resources.read(id, 3, 1)).code);
 		Source unopened = new Source(new ByteArrayInputStream(new byte[]{9}));
 		String unopenedId = resources.register(unopened, batch(0, 0));
 		resources.release(unopenedId);

@@ -1,6 +1,6 @@
 import Foundation
 
-/** A lazy provider stream retains its security scope until release. */
+/** A lazy provider stream holds its security scope during reads. */
 final class ChooserSource {
 	private let url: URL
 	private let budget: ChooserBudget
@@ -80,7 +80,12 @@ final class ChooserSource {
 			}
 			catch { readError = error }
 		}
-		if let error = readError ?? coordinationError { failure = error; throw error }
+		if let error = readError ?? coordinationError {
+			failure = error
+			closeStream()
+			throw error
+		}
+		if ended { closeStream() }
 		return ["data": bytes.base64EncodedString(), "eof": ended]
 	}
 
@@ -88,12 +93,16 @@ final class ChooserSource {
 		io.lock(); defer { io.unlock() }
 		if !closed {
 			closed = true
-			stream?.close()
-			stream = nil
-			if scoped { url.stopAccessingSecurityScopedResource(); scoped = false }
+			closeStream()
 		}
 		// Retrying cleanup is safe even after the stream and scope were closed.
 		try cleanup()
+	}
+
+	private func closeStream() {
+		stream?.close()
+		stream = nil
+		if scoped { url.stopAccessingSecurityScopedResource(); scoped = false }
 	}
 }
 
@@ -105,7 +114,6 @@ final class ChooserResources {
 		let transient: Bool
 		var leases = 0
 		var releasing = false
-		var released = false
 		var cleanupScheduled = false
 		var completions: [(Result<Void, Error>) -> Void] = []
 		init(id: String, source: ChooserSource? = nil) { self.id = id; self.source = source; self.transient = source != nil }
@@ -152,7 +160,7 @@ final class ChooserResources {
 		condition.lock(); defer { condition.unlock() }
 		let entry = entries[id] ?? Entry(id: id)
 		entries[id] = entry
-		guard !entry.releasing, !entry.released else {
+		guard !entry.releasing else {
 			throw ChooserFailure(code: managedOnly ? .fileUnavailable : .fileReleased, detail: "The file was released.")
 		}
 		guard !managedOnly || !entry.transient else {
@@ -166,6 +174,7 @@ final class ChooserResources {
 		condition.lock()
 		entry.leases -= 1
 		let ready = readyForCleanup(entry)
+		if entry.leases == 0 && !entry.transient && !entry.releasing { entries.removeValue(forKey: entry.id) }
 		condition.unlock()
 		if ready { scheduleCleanup(entry) }
 	}
@@ -201,7 +210,7 @@ final class ChooserResources {
 
 	// Caller holds condition. Waiting for a lease never occupies a cleanup worker.
 	private func readyForCleanup(_ entry: Entry) -> Bool {
-		guard entry.releasing, !entry.released, !entry.cleanupScheduled,
+		guard entry.releasing, !entry.cleanupScheduled,
 			entry.leases == 0, !entry.completions.isEmpty else { return false }
 		entry.cleanupScheduled = true
 		return true
@@ -211,16 +220,16 @@ final class ChooserResources {
 		ChooserWork.enqueue(on: cleanups) {
 			let result = Result { () throws -> Void in
 				if let source = entry.source { try source.close() }
-				else { try ChooserFiles.release(in: self.cache(), id: entry.id) }
+				else { try ChooserTransaction.release(in: self.cache(), id: entry.id) }
 			}
 			self.condition.lock()
-			if case .success = result { entry.released = true; entry.source = nil }
+			if case .success = result { self.entries.removeValue(forKey: entry.id); entry.source = nil }
 			entry.cleanupScheduled = false
 			let callbacks = entry.completions
 			entry.completions = []
 			self.condition.unlock()
 			// Complete outside the registry lock. A failed attempt can be retried;
-			// successful entries retain neither provider objects nor callbacks.
+			// successful entries are removed from the registry.
 			for callback in callbacks { callback(result) }
 		}
 	}
@@ -229,8 +238,9 @@ final class ChooserResources {
 		do { try prepareRelease(id: id) }
 		catch { completion(.failure(error)); return }
 		condition.lock()
-		let entry = entries[id]!
-		if entry.released { condition.unlock(); completion(.success(())); return }
+		let entry = entries[id] ?? Entry(id: id)
+		entry.releasing = true
+		entries[id] = entry
 		entry.completions.append(completion)
 		let ready = readyForCleanup(entry)
 		condition.unlock()
@@ -272,7 +282,7 @@ final class ChooserResources {
 	func resetSources() {
 		condition.lock()
 		let ids = entries.compactMap { id, entry -> String? in
-			guard entry.transient, !entry.released else { return nil }
+			guard entry.transient else { return nil }
 			entry.releasing = true
 			return id
 		}

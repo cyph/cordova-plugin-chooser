@@ -18,5 +18,6 @@ android {
 
 dependencies {
     implementation project(':capacitor-android')
-    implementation 'androidx.activity:activity:1.7.0'
+    implementation "androidx.appcompat:appcompat:${rootProject.ext.has('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'}"
+    implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.7.0'}"
 }

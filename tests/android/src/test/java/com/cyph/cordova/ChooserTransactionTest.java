@@ -1,9 +1,12 @@
 package com.cyph.cordova;
 
 import java.io.File;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.concurrent.TimeUnit;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -41,6 +44,7 @@ public class ChooserTransactionTest {
 		assertFalse(source.exists());
 		assertArrayEquals(new byte[]{42}, Files.readAllBytes(destination.toPath()));
 		// Simulate process exit after commit but before housekeeping removes the journal.
+		transaction.close();
 		ChooserTransaction.recover(cache, ChooserTransaction.FILES);
 		assertFalse(transaction.staging.exists());
 		assertArrayEquals(new byte[]{42}, Files.readAllBytes(destination.toPath()));
@@ -52,6 +56,7 @@ public class ChooserTransactionTest {
 		File cache = temporary.newFolder();
 		ChooserTransaction abandoned = new ChooserTransaction(cache, ChooserTransaction.FILES);
 		write(abandoned, 1);
+		abandoned.close();
 		ChooserTransaction active = ChooserTransaction.begin(cache);
 		assertFalse(abandoned.staging.exists());
 		File source = write(active, 2);
@@ -73,6 +78,7 @@ public class ChooserTransactionTest {
 		assertThrows(IOException.class, transaction::commit);
 		assertTrue(transaction.destination(first).exists());
 		assertTrue(second.exists());
+		transaction.close();
 		ChooserTransaction.recover(cache, ChooserTransaction.FILES);
 		assertFalse(transaction.destination(first).exists());
 		assertFalse(transaction.destination(second).exists());
@@ -155,10 +161,59 @@ public class ChooserTransactionTest {
 		Files.delete(destination.toPath());
 		Files.createSymbolicLink(destination.toPath(), foreign.toPath());
 		Files.write(new File(linked.staging, "journal").toPath(), ("chooser-1\npending\np:" + destination.getName() + "\n").getBytes(StandardCharsets.US_ASCII));
+		malformed.close();
+		linked.close();
 		ChooserTransaction.recover(cache, ChooserTransaction.FILES);
 		assertArrayEquals(new byte[]{99}, Files.readAllBytes(foreign.toPath()));
 		assertTrue(Files.isSymbolicLink(destination.toPath()));
 		assertTrue(new File(linked.staging, "journal").exists());
 		assertTrue(new File(malformed.staging, "journal").exists());
+	}
+
+	@Test public void retryingAReportedIdRemovesTheStagedCopy() throws Exception {
+		File cache = temporary.newFolder();
+		Faults faults = new Faults();
+		ChooserTransaction.ensureRecovered(cache);
+		ChooserTransaction transaction = new ChooserTransaction(cache, faults);
+		File staged = write(transaction, 1);
+		faults.refuseDelete = staged;
+		assertThrows(IOException.class, () -> transaction.finishChecked(false));
+		assertTrue(staged.exists());
+		faults.refuseDelete = null;
+		ChooserTransaction.release(cache, staged.getName());
+		assertFalse(staged.exists());
+		assertFalse(transaction.staging.exists());
+	}
+
+	public static class TransactionWriter {
+		public static void main(String[] args) throws Exception {
+			ChooserTransaction writer = ChooserTransaction.begin(new File(args[0]));
+			File file = writer.create();
+			Files.write(file.toPath(), new byte[]{42});
+			System.out.println(file.getAbsolutePath());
+			System.in.read();
+		}
+	}
+
+	@Test(timeout = 15000) public void recoverySkipsAnotherProcessUntilItExits() throws Exception {
+		File cache = temporary.newFolder();
+		StringBuilder classpath = new StringBuilder();
+		for (Class<?> type : new Class<?>[]{TransactionWriter.class, ChooserTransaction.class, android.os.Build.class}) {
+			if (classpath.length() > 0) classpath.append(File.pathSeparator);
+			classpath.append(new File(type.getProtectionDomain().getCodeSource().getLocation().toURI()));
+		}
+		Process writer = new ProcessBuilder(new File(System.getProperty("java.home"), "bin/java").getPath(), "-cp",
+			classpath.toString(), TransactionWriter.class.getName(), cache.getPath()).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+		try (BufferedReader output = new BufferedReader(new InputStreamReader(writer.getInputStream(), StandardCharsets.UTF_8))) {
+			String path = output.readLine();
+			assertNotNull(path);
+			File staged = new File(path);
+			ChooserTransaction.recover(cache, ChooserTransaction.FILES);
+			assertArrayEquals(new byte[]{42}, Files.readAllBytes(staged.toPath()));
+			assertTrue(writer.destroyForcibly().waitFor(5, TimeUnit.SECONDS));
+			ChooserTransaction.recover(cache, ChooserTransaction.FILES);
+			assertFalse(staged.exists());
+		}
+		finally { if (writer.isAlive()) writer.destroyForcibly(); }
 	}
 }

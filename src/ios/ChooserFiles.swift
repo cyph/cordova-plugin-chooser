@@ -17,7 +17,9 @@ enum ChooserFiles {
 			output.close()
 		}
 		if input.streamStatus == .error { throw input.streamError ?? ChooserFailure(code: .readFailed, detail: "Cannot open selected file.") }
-		if output.streamStatus == .error { throw output.streamError ?? ChooserFailure(code: .copyFailed, detail: "Cannot open cached file.") }
+		if output.streamStatus == .error {
+			throw ChooserFailure(code: .copyFailed, detail: output.streamError?.localizedDescription ?? "Cannot open cached file.")
+		}
 		var buffer = [UInt8](repeating: 0, count: 64 * 1024)
 		var total: Int64 = 0
 		while true {
@@ -32,7 +34,9 @@ enum ChooserFiles {
 				while offset < count {
 					if canceled() { throw ChooserFailure(code: .readInterrupted, detail: "Request was reset.") }
 					let written = output.write(base.advanced(by: offset), maxLength: count - offset)
-					if written <= 0 { throw output.streamError ?? ChooserFailure(code: .copyFailed, detail: "Cannot write cached file.") }
+					if written <= 0 {
+						throw ChooserFailure(code: .copyFailed, detail: output.streamError?.localizedDescription ?? "Cannot write cached file.")
+					}
 					offset += written
 				}
 			}
@@ -120,7 +124,7 @@ enum ChooserFiles {
 		}
 		let (fd, _, size) = try descriptor(in: cache, id: id)
 		defer { Darwin.close(fd) }
-		if length == 0 { return ["data": "", "eof": offset >= size] }
+		if length == 0 || offset >= size { return ["data": "", "eof": offset >= size] }
 		var buffer = [UInt8](repeating: 0, count: length)
 		var count = 0
 		try buffer.withUnsafeMutableBytes { pointer in

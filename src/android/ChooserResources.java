@@ -69,7 +69,6 @@ final class ChooserResources {
 	}
 	private final File cache;
 	private final Map<String, Entry> entries = new HashMap<>();
-	private final Map<String, Boolean> released = new HashMap<>();
 	private final Semaphore readers = new Semaphore(4, true);
 
 	ChooserResources(File cache) { this.cache = cache; }
@@ -77,7 +76,7 @@ final class ChooserResources {
 	synchronized String register(SourceAccess source, Batch batch) throws IOException {
 		String id;
 		do { id = UUID.randomUUID().toString(); }
-		while (entries.containsKey(id) || released.containsKey(id) || ChooserFiles.entryExists(new File(ChooserFiles.directory(cache), id)));
+		while (entries.containsKey(id) || ChooserFiles.entryExists(new File(ChooserFiles.directory(cache), id)));
 		entries.put(id, new Entry(id, source, batch));
 		return id;
 	}
@@ -87,19 +86,19 @@ final class ChooserResources {
 		Entry value = entries.get(id);
 		if (value == null) {
 			value = new Entry(id, null, null);
-			Boolean wasSource = released.get(id);
-			if (wasSource != null) {
-				value.released = true;
-				value.releasing = true;
-				value.transientSource = wasSource;
-			}
-			else entries.put(id, value);
+			entries.put(id, value);
 		}
 		return value;
 	}
 
 	/** Mark synchronously at bridge dispatch, before a release worker can be delayed. */
-	void beginRelease(String id) throws ChooserError { entry(id).markReleasing(); }
+	synchronized void beginRelease(String id) throws ChooserError { entry(id).markReleasing(); }
+
+	private synchronized Entry acquire(String id) throws ChooserError {
+		Entry value = entry(id);
+		value.acquire();
+		return value;
+	}
 
 	static final class Stat {
 		final File file;
@@ -108,39 +107,44 @@ final class ChooserResources {
 	}
 
 	Stat stat(String id) throws IOException {
-		Entry value = entry(id);
-		value.acquire();
+		Entry value = acquire(id);
 		try {
 			if (value.transientSource) throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Transient sources cannot be restored.");
 			return new Stat(ChooserFiles.managed(cache, id));
 		}
-		finally { value.done(); }
+		finally { done(value); }
+	}
+
+	private synchronized void done(Entry value) {
+		value.done();
+		synchronized (value) {
+			if (value.leases == 0 && !value.releasing && !value.transientSource) entries.remove(value.id, value);
+		}
 	}
 
 	Chunk read(String id, long offset, int length) throws IOException {
 		if (offset < 0 || offset > ChooserFiles.MAX_SAFE_INTEGER || length < 0 || length > MAX_CHUNK || offset > ChooserFiles.MAX_SAFE_INTEGER - length) {
 			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Invalid chunk range.");
 		}
-		Entry value = entry(id);
 		try { readers.acquire(); }
 		catch (InterruptedException error) {
 			Thread.currentThread().interrupt();
 			throw new ChooserError(ChooserError.Code.READ_INTERRUPTED, "Read was interrupted.");
 		}
-		boolean leased = false;
+		Entry value = null;
 		try {
-			value.acquire();
-			leased = true;
+			value = acquire(id);
 			if (!value.transientSource) return readManaged(value.id, offset, length);
 			synchronized (value.readLock) { return readSource(value, offset, length); }
 		}
-		finally { if (leased) value.done(); readers.release(); }
+		finally { if (value != null) done(value); readers.release(); }
 	}
 
 	private Chunk readManaged(String id, long offset, int length) throws IOException {
 		File file = ChooserFiles.managed(cache, id);
 		try (RandomAccessFile input = new RandomAccessFile(file, "r")) {
 			long size = input.length();
+			if (offset >= size) return new Chunk(new byte[0], true);
 			int count = (int) Math.min(length, Math.max(0, size - offset));
 			byte[] bytes = new byte[count];
 			input.seek(offset);
@@ -198,13 +202,19 @@ final class ChooserResources {
 		}
 		catch (IOException | RuntimeException error) {
 			value.failed = true;
-			if (value.interrupted) throw new ChooserError(ChooserError.Code.CANCELLED, "Source read was cancelled.");
+			if (value.interrupted && !(error instanceof ChooserError)) checkInterrupted(value);
 			throw error;
 		}
 	}
 
 	void beginCancelRead(String id) throws ChooserError {
-		Entry value = entry(id);
+		Entry value;
+		synchronized (this) { value = entries.get(id); }
+		if (value == null) throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Only transient sources can be cancelled.");
+		interrupt(value);
+	}
+
+	private void interrupt(Entry value) throws ChooserError {
 		synchronized (value) {
 			if (!value.transientSource) throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Only transient sources can be cancelled.");
 			value.interrupted = true;
@@ -213,8 +223,16 @@ final class ChooserResources {
 
 	/** Closing a provider stream can interrupt read(); it never removes a managed file. */
 	void cancelRead(String id) throws IOException {
-		Entry value = entry(id);
-		beginCancelRead(id);
+		Entry value;
+		synchronized (this) { value = entries.get(id); }
+		if (value != null) cancelRead(value);
+		else if (ChooserFiles.entryExists(new File(ChooserFiles.directory(cache), id))) {
+			throw new ChooserError(ChooserError.Code.INVALID_ARGUMENT, "Only transient sources can be cancelled.");
+		}
+	}
+
+	private void cancelRead(Entry value) throws IOException {
+		interrupt(value);
 		SourceAccess source;
 		SourceStream input;
 		synchronized (value) { source = value.source; input = value.input; }
@@ -232,12 +250,15 @@ final class ChooserResources {
 	}
 
 	void release(String id) throws IOException {
-		Entry value = entry(id);
-		value.markReleasing();
+		Entry value;
+		synchronized (this) {
+			value = entry(id);
+			value.markReleasing();
+		}
 		synchronized (value.releaseLock) {
 			synchronized (value) { if (value.released) return; }
 			// Cancellation may call an untrusted provider; do it outside registry/lease monitors.
-			if (value.transientSource) cancelRead(id);
+			if (value.transientSource) cancelRead(value);
 			synchronized (value) {
 				while (value.leases != 0) {
 					try { value.wait(); }
@@ -247,7 +268,7 @@ final class ChooserResources {
 					}
 				}
 			}
-			if (!value.transientSource) ChooserFiles.release(cache, id);
+			if (!value.transientSource) ChooserTransaction.release(cache, id);
 			else if (value.input != null) value.input.close();
 			synchronized (value) {
 				value.released = true;
@@ -256,10 +277,7 @@ final class ChooserResources {
 				value.input = null;
 				value.batch = null;
 			}
-			synchronized (this) {
-				entries.remove(id);
-				released.put(id, value.transientSource);
-			}
+			synchronized (this) { entries.remove(id, value); }
 		}
 	}
 

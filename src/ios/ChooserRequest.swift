@@ -112,7 +112,7 @@ final class ChooserRequest {
 		// Source releases must finish before rollback can unlink their imported
 		// files. Notify schedules the transaction only after its own leases end.
 		releases.notify(queue: ChooserTransaction.housekeeping, work: DispatchWorkItem {
-			if let transaction = value {
+			if let transaction = value, !delivered || self.mode != .data {
 				do { try transaction.finishChecked(delivered: delivered) }
 				catch {
 					if delivered { NSLog("Chooser cache journal cleanup incomplete; recovery retained.") }
@@ -127,8 +127,17 @@ final class ChooserRequest {
 		let failure = error as? ChooserFailure
 		lock.lock(); defer { lock.unlock() }
 		if originalFailure == nil {
-			originalFailure = ["code": (failure?.code ?? .readFailed).rawValue, "message": failure?.detail ?? error.localizedDescription]
+			if let reason = interruption, failure?.code == .cancelled || failure?.code == .readInterrupted || failure == nil {
+				originalFailure = ["code": "CANCELLED", "reason": reason, "message": "Selection canceled."]
+			} else {
+				originalFailure = ["code": (failure?.code ?? .readFailed).rawValue, "message": failure?.detail ?? error.localizedDescription]
+			}
 		}
+	}
+
+	var hasSelectionFailure: Bool {
+		lock.lock(); defer { lock.unlock() }
+		return originalFailure.map { $0["code"] as? String != "CANCELLED" } ?? false
 	}
 
 	private func recordCleanup(_ error: Error, ids: [String]) {
@@ -142,7 +151,9 @@ final class ChooserRequest {
 		lock.lock(); defer { lock.unlock() }
 		guard cleanupFailed else { return nil }
 		let reason: [String: Any]
-		if let cancellation = interruption {
+		if let failure = originalFailure {
+			reason = failure
+		} else if let cancellation = interruption {
 			reason = ["code": "CANCELLED", "reason": cancellation, "message": "Selection canceled."]
 		} else if invalidated {
 			reason = ["code": "CANCELLED", "reason": "signal", "message": "Selection was reset."]

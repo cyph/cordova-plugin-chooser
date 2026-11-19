@@ -16,16 +16,34 @@ public final class CapacitorChooser: CAPPlugin, CAPBridgedPlugin {
 	]
 
 	private lazy var engine = ChooserEngine { [weak self] in self?.bridge?.viewController }
-	private var navigation: NSKeyValueObservation?
+	private static let documentHandler = "cordovaPluginChooserDocument"
+	private weak var contentController: WKUserContentController?
 
-	public override func load() {
-		let engine = engine
-		navigation = webView?.observe(\.isLoading, options: [.new]) { [weak engine] _, change in
-			if change.newValue == true { engine?.onReset() }
+	private final class DocumentStart: NSObject, WKScriptMessageHandler {
+		weak var engine: ChooserEngine?
+		init(engine: ChooserEngine) { self.engine = engine }
+		func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+			if message.frameInfo.isMainFrame { engine?.onReset() }
 		}
 	}
 
-	deinit { engine.onReset() }
+	public override func load() {
+		guard let controller = webView?.configuration.userContentController else { return }
+		let name = Self.documentHandler
+		contentController = controller
+		controller.add(DocumentStart(engine: engine), contentWorld: .defaultClient, name: name)
+		controller.addUserScript(WKUserScript(
+			source: "window.webkit.messageHandlers.\(name).postMessage(null)",
+			injectionTime: .atDocumentStart,
+			forMainFrameOnly: true,
+			in: .defaultClient
+		))
+	}
+
+	deinit {
+		contentController?.removeScriptMessageHandler(forName: Self.documentHandler, contentWorld: .defaultClient)
+		engine.onReset()
+	}
 
 	private func command(_ call: CAPPluginCall) -> ChooserCommand {
 		ChooserCommand(arguments: call.options["args"] as? [Any] ?? [], callbackId: call.callbackId) { [weak self] value, failed in
