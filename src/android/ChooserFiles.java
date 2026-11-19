@@ -91,17 +91,23 @@ final class ChooserFiles {
 
 	// Check the entry itself, including a dangling link, without listing the directory.
 	static boolean entryExists(File file) throws IOException {
-		if (Build.VERSION.SDK_INT == 0 || Build.VERSION.SDK_INT >= 26) {
+		if (Build.VERSION.SDK_INT == 0) return JvmFileSystem.entryExists(file);
+		try { Os.lstat(file.getPath()); return true; }
+		catch (ErrnoException error) {
+			if (error.errno == OsConstants.ENOENT) return false;
+			throw new IOException("Cannot inspect cache entry.", error);
+		}
+	}
+
+	// The stub Android SDK reports zero in host JVM tests. Android always uses lstat.
+	private static final class JvmFileSystem {
+		@android.annotation.SuppressLint("NewApi")
+		static boolean entryExists(File file) throws IOException {
 			try {
 				Files.readAttributes(file.toPath(), java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
 				return true;
 			}
 			catch (java.nio.file.NoSuchFileException missing) { return false; }
-		}
-		try { Os.lstat(file.getPath()); return true; }
-		catch (ErrnoException error) {
-			if (error.errno == OsConstants.ENOENT) return false;
-			throw new IOException("Cannot inspect cache entry.", error);
 		}
 	}
 

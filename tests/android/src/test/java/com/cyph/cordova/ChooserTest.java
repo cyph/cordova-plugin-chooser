@@ -230,7 +230,10 @@ public class ChooserTest {
 		File root = ChooserFiles.directory(activity.getCacheDir());
 		for (File file : root.listFiles()) {
 			assertEquals(".pending", file.getName());
-			assertEquals(0, file.list().length);
+			for (File marker : file.listFiles()) {
+				assertEquals(".lock", marker.getName());
+				assertTrue("Expected an empty coordination file", marker.isFile() && marker.length() == 0);
+			}
 		}
 	}
 
@@ -926,6 +929,10 @@ public class ChooserTest {
 				assertEquals(1, failures.length());
 				assertTrue(ChooserFiles.isId(failures.getJSONObject(0).getString("id")));
 				assertEquals("RELEASE_FAILED", failures.getJSONObject(0).getJSONObject("error").getString("code"));
+				assertTrue(blockedJournal.getAndSet(null).delete());
+				Recorded retry = new Recorded("retry-partial-copy");
+				plugin.execute("releaseFile", new JSONArray().put(failures.getJSONObject(0).getString("id")), retry);
+				assertEquals(PluginResult.Status.OK.ordinal(), retry.only().getStatus());
 			}
 			finally {
 				resumeOpen.countDown();
