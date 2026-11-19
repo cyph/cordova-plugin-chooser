@@ -3,13 +3,16 @@ plugins {
     id 'com.android.application' apply false
     id 'com.android.library' apply false
 }
+ext.androidxActivityVersion = '1.11.0'
 abstract class PreferJar implements AttributeDisambiguationRule<String> {
     void execute(MultipleCandidatesDetails<String> details) {
         if (details.consumerValue == null && details.candidateValues.contains('jar')) details.closestMatch('jar')
     }
 }
 allprojects {
-    buildscript.configurations.classpath.resolutionStrategy.activateDependencyLocking()
+    if (project.name != 'cordova-plugin-chooser') {
+        buildscript.configurations.classpath.resolutionStrategy.activateDependencyLocking()
+    }
     group = 'com.cyph.chooser.fixtures'
     version = '1.0'
     dependencies.attributesSchema.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE) {
@@ -18,7 +21,7 @@ allprojects {
     dependencyLocking {
         lockAllConfigurations()
         lockMode = LockMode.STRICT
-        lockFile = rootProject.file("locks/${project.name}.lockfile")
+        lockFile = rootProject.file("locks/${project.name == 'capacitor-android' ? 'runtime' : project.name}.lockfile")
     }
     // AGP lazily uses maybeCreate("androidApis") for Nix-owned SDK files.
     // Register it before resolution so its empty Maven lock state is frozen too.

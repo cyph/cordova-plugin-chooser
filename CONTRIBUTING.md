@@ -19,7 +19,7 @@ nix --extra-experimental-features 'nix-command flakes' run .#just -- setup
 
 Setup installs the project's pinned dependencies and Git hooks. Run it again after changing toolchain or dependency configuration. The [verification guide](docs/VERIFICATION.md) maps changes to checks and lists host requirements. Use the pinned environment rather than substituting unpinned tools.
 
-The shipped JavaScript is compiled from strict TypeScript. Edit its source in `typescript/` and run `npm run build` to regenerate the files loaded by Cordova and Capacitor. Include the generated files in the same commit. The portable checks verify that the compiler produces identical files.
+The shipped JavaScript is compiled from strict TypeScript. Edit its source in `typescript/` and run `npm run build:runtime` to regenerate the files loaded by Cordova and Capacitor. Include the generated files in the same commit. The portable checks verify that the compiler produces identical files.
 
 ## Changes and review
 

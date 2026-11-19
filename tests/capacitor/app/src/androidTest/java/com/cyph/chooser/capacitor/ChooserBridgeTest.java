@@ -149,6 +149,9 @@ public final class ChooserBridgeTest {
             activity.recreate();
             awaitValue("window.chooser && window.fixtureReady ? 'ready' : null");
             assertChooserError(result("chooser.getFile({maxFileSize:1024})"), "BUSY", "ChooserError");
+            activity.recreate();
+            awaitValue("window.chooser && window.fixtureReady ? 'ready' : null");
+            assertChooserError(result("chooser.getFile({maxFileSize:1024})"), "BUSY", "ChooserError");
             int requestCode = code;
             AtomicReference<String> restored = new AtomicReference<>();
             CountDownLatch delivered = new CountDownLatch(1);

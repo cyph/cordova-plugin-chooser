@@ -10,7 +10,11 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { appleEnvironment, prepareBridgingHeader } from "./apple.mjs";
+import {
+	appleEnvironment,
+	prepareBridgingHeader,
+	verifySimulatorToolchain,
+} from "./apple.mjs";
 import {
 	simulatorSelection,
 	simulatorTestArguments,
@@ -515,20 +519,7 @@ export function verifyIosSimulator({
 		"DEVELOPMENT_TEAM=",
 		`IPHONEOS_DEPLOYMENT_TARGET=${deploymentTarget}`,
 	];
-	assert.equal(
-		run("/usr/bin/xcodebuild", ["-version"], root, true, env),
-		`Xcode ${apple.xcode}\nBuild version ${apple.build}`,
-	);
-	assert.equal(
-		run(
-			"/usr/bin/xcrun",
-			["--sdk", "iphonesimulator", "--show-sdk-version"],
-			root,
-			true,
-			env,
-		),
-		apple.iphoneos,
-	);
+	verifySimulatorToolchain(run, root, env, apple);
 	report.toolchain.apple = apple;
 	report.toolchain.xcodegen = run("xcodegen", ["--version"], root, true, env);
 	const simctl = (args) =>

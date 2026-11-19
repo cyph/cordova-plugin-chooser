@@ -18,3 +18,5 @@ tests/capacitor/build/
 tests/capacitor/app/build/
 tests/capacitor/runtime/build/
 tests/capacitor/local.properties
+capacitor/android/.gradle/
+capacitor/android/build/

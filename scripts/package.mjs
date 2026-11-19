@@ -44,17 +44,23 @@ export function checkPackedFiles(root, pkg, entries) {
 	}
 	checkDirectory("src");
 	if (pkg.capacitor) {
-		checkDirectory("capacitor");
+		checkDirectory("capacitor/android/src/main");
+		checkDirectory("capacitor/ios");
 		for (const name of [
 			"Package.swift",
 			"CordovaPluginChooser.podspec",
 			"www/chooser-core.js",
+			"capacitor/adapter.js",
+			"capacitor/index.js",
+			"capacitor/index.mjs",
+			"capacitor/index.d.ts",
+			"capacitor/android/build.gradle",
 		])
 			assert(files.has(name), `Missing packed ${name}`);
 	}
 	for (const name of files)
 		assert(
-			!/^(tests|scripts|node_modules|\.verification|\.chainman|\.github)\//.test(
+			!/^(tests|scripts|node_modules|\.verification|\.chainman|\.github)\/|^capacitor\/android\/(?:build|\.gradle)\//.test(
 				name,
 			),
 			`Unexpected packed ${name}`,

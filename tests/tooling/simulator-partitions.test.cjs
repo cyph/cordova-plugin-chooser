@@ -77,6 +77,14 @@ async function fixture(t) {
 		...(lane === "ios-simulator"
 			? { simulator: simulator.simulatorManifest("required") }
 			: {}),
+		...(lane === "capacitor-ios"
+			? {
+					toolchain: {
+						apple: { ...apple, sdk: apple.iphoneos },
+						simulatorRuntime: `com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`,
+					},
+				}
+			: {}),
 	});
 	const other = Object.entries(requiredChecks)
 		.filter(([lane]) => lane !== "ios-simulator")

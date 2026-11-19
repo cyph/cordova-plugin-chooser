@@ -8,4 +8,7 @@ pluginManagement {
 buildscript { configurations.classpath { resolutionStrategy.activateDependencyLocking() } }
 dependencyResolutionManagement { repositories { google(); mavenCentral() } }
 rootProject.name = 'chooser-capacitor'
-include ':app', ':runtime'
+include ':app', ':capacitor-android', ':cordova-plugin-chooser'
+project(':capacitor-android').projectDir = file('runtime')
+def chooser = System.getenv('CHOOSER_PLUGIN') ?: file('../..').path
+project(':cordova-plugin-chooser').projectDir = new File(chooser, 'capacitor/android')

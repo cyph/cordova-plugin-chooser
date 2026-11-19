@@ -134,7 +134,20 @@ function validateReportBase(report, sha) {
 	);
 	assert(
 		report.commands.length > 0 &&
-			report.commands.every((command) => command.status === 0),
+			report.commands.every((command, index) => {
+				if (command.status === 0) return true;
+				const next = report.commands[index + 1];
+				return (
+					report.lane === "android" &&
+					command.command === "gradle" &&
+					[1, 2].includes(command.attempt) &&
+					next?.attempt === command.attempt + 1 &&
+					next.command === command.command &&
+					JSON.stringify(next.args) === JSON.stringify(command.args) &&
+					command.args.includes("prepareRobolectricSdks") &&
+					command.args.includes("resolveVerificationDependencies")
+				);
+			}),
 		`Failed or missing commands in ${report.lane}`,
 	);
 }
@@ -145,6 +158,20 @@ export function validateReport(report, sha) {
 		!Object.hasOwn(report, "partition"),
 		"A partial simulator report cannot qualify alone",
 	);
+	if (report.lane === "capacitor-ios") {
+		const apple = JSON.parse(
+			readFileSync(new URL("../chainman/apple.json", import.meta.url), "utf8"),
+		);
+		assert.deepEqual(
+			report.toolchain?.apple,
+			{ ...apple, sdk: apple.iphoneos },
+			"Missing or incorrect Capacitor Xcode and SDK evidence",
+		);
+		assert.equal(
+			report.toolchain.simulatorRuntime,
+			`com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`,
+		);
+	}
 	if (report.lane === "ios-simulator") {
 		validateSimulatorManifest(report);
 		assert.deepEqual(

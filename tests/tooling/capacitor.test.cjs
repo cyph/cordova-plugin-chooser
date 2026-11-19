@@ -43,6 +43,7 @@ function fixture(t, { version = "8.5.3", pins = {}, installed = {} } = {}) {
 		"www/chooser-core.js",
 		"src/browser/chooser-web.js",
 		"capacitor/index.js",
+		"capacitor/adapter.js",
 	])
 		write(join(packed, name), "module.exports = {};");
 	write(

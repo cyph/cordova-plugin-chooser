@@ -151,7 +151,13 @@ async function fixture(t, faults = {}) {
 		"tests/ios/simulator",
 	]) {
 		mkdirSync(dirname(join(root, name)), { recursive: true });
-		cpSync(join(repository, name), join(root, name), { recursive: true });
+		cpSync(join(repository, name), join(root, name), {
+			recursive: true,
+			filter: (path) =>
+				!/[\\/]capacitor[\\/]android[\\/](?:build|\.gradle)(?:[\\/]|$)/.test(
+					path,
+				),
+		});
 	}
 	const sourceFiles = files(root);
 	const packageFiles = Object.fromEntries(

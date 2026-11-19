@@ -10,27 +10,41 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { appleEnvironment } from "./apple.mjs";
+import { appleEnvironment, verifySimulatorToolchain } from "./apple.mjs";
 import { installCapacitorHost } from "./capacitor-host.mjs";
 import { writeCapacitorFixture } from "./capacitor-web-fixture.mjs";
 import { withFinalizers } from "./verification-lifecycle.mjs";
 
-export function verifyCapacitorIos({ root, output, run, pack, checked }) {
+export function verifyCapacitorIos({
+	root,
+	output,
+	report,
+	run,
+	pack,
+	checked,
+}) {
 	assert.equal(process.platform, "darwin");
 	const apple = JSON.parse(
 		readFileSync(join(root, "chainman/apple.json"), "utf8"),
 	);
 	const env = appleEnvironment(apple);
+	report.toolchain.apple = verifySimulatorToolchain(run, root, env, apple);
 	const ios = (args, directory = root) =>
 		run("/usr/bin/xcrun", ["simctl", ...args], directory, true, env);
 	const runtime = `com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`;
 	const types = JSON.parse(ios(["list", "devicetypes", "--json"])).devicetypes;
 	const type = types.find((value) => value.identifier.endsWith(".iPhone-17"));
 	assert(type, "Missing iPhone 17 simulator device type");
-	const device = ios(["create", "Chooser Capacitor", type.identifier, runtime]);
-	const packed = pack();
 	const pinned = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
 		.devDependencies["@capacitor/core"];
+	const packed = pack();
+	const runtimes = JSON.parse(ios(["list", "runtimes", "--json"])).runtimes;
+	assert(
+		runtimes.some((value) => value.identifier === runtime && value.isAvailable),
+		`Unavailable simulator runtime: ${runtime}`,
+	);
+	report.toolchain.simulatorRuntime = runtime;
+	const device = ios(["create", "Chooser Capacitor", type.identifier, runtime]);
 
 	withFinalizers(() => {
 		ios(["boot", device]);
@@ -63,6 +77,7 @@ export function verifyCapacitorIos({ root, output, run, pack, checked }) {
 						appId: id,
 						appName: "Chooser fixture",
 						webDir: "www",
+						server: { allowNavigation: ["127.0.0.1"] },
 					}),
 				);
 				const web = join(directory, "www");
@@ -116,6 +131,17 @@ export function verifyCapacitorIos({ root, output, run, pack, checked }) {
 					readFileSync(
 						join(root, "tests/ios/capacitor/ChooserFixtureController.swift"),
 					),
+				);
+				run(
+					"/usr/libexec/PlistBuddy",
+					[
+						"-c",
+						"Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true",
+						join(project, "App/Info.plist"),
+					],
+					root,
+					false,
+					env,
 				);
 
 				const data = join(directory, "derived");

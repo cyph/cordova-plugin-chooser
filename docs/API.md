@@ -67,7 +67,7 @@ A `ManagedFile` adds an opaque `id`, temporary `uri`, and methods for reading an
 | `file.dataURI({maxBytes, signal?})` | Base64 data URI |
 | `file.getData({format, maxBytes, ...})` | Metadata plus the selected data representation |
 | `file.readRange({offset?, length, signal?})` | Bytes in the requested range |
-| `file.stream({offset?, length?, signal?}?)` | Byte `ReadableStream` |
+| `file.stream({offset?, length?, signal?}?)` | `ReadableStream<Uint8Array>` with a default reader |
 | `file.textStream({offset?, length?, encoding?, fatal?, signal?}?)` | String `ReadableStream` |
 
 Offsets and lengths count bytes. They must be nonnegative safe integers whose sum does not overflow. Offset defaults to zero. A range requires `length`, whereas a stream defaults to the remaining bytes. Zero length is valid. At the end of a file a range can be shorter than requested, including empty beyond EOF. A text range can start or end within a character.
@@ -107,7 +107,7 @@ Call `file.release()`, `releaseFile(id)`, or `releaseFiles(ids)` after all consu
 
 `releaseFiles` takes a dense array of IDs. It validates the entire array before mutation, deduplicates IDs, attempts every unique release, and reports per-ID failures. Do not derive IDs from names or URIs.
 
-Save the complete plain reference from `file.toJSON()` and pass it to `restoreFile(reference, {signal}?)`. Restoration validates the reference and checks the plugin's authoritative resource state. It does not make cache durable. Native cache can be evicted, and browser references require the original page's live registry.
+Save the complete plain reference from `file.toJSON()` and pass it to `restoreFile(reference, {signal}?)`. Restoring a reference after release or eviction reports `FILE_UNAVAILABLE`. Browser references require the original page's live registry.
 
 <a id="promises-and-callbacks"></a>
 

@@ -79,7 +79,36 @@ npx cap sync
 npx cap run android
 ```
 
-Use `npx cap run ios` for iOS. In Cordova, load the generated `cordova.js`, replace the import with `declare const chooser: typeof import('cordova-plugin-chooser');`, and replace the final call with `document.addEventListener('deviceready', () => start(chooser))`. Use TypeScript 5.7 or newer with either framework.
+Use `npx cap run ios` for iOS. Use TypeScript 5.7 or newer with either framework.
+
+### Pick a text file in Cordova
+
+Load the generated `cordova.js` and use the same HTML. Add this TypeScript module to the app.
+
+```ts
+export {};
+declare const chooser: typeof import('cordova-plugin-chooser');
+
+document.addEventListener('deviceready', () => {
+  const button = document.querySelector<HTMLButtonElement>('#choose-file')!;
+  const output = document.querySelector<HTMLElement>('#file-result')!;
+  button.disabled = false;
+  button.addEventListener('click', async () => {
+    try {
+      const file = await chooser.getFileData({
+        accept: 'text/plain',
+        format: 'text',
+        maxFileSize: 1024 * 1024
+      });
+      output.textContent = `${file.name}\n${file.text}`;
+    } catch (error) {
+      if (!(error instanceof chooser.CancellationError)) {
+        output.textContent = error instanceof Error ? error.message : String(error);
+      }
+    }
+  });
+});
+```
 
 The direct-data method cleans up its temporary resources and keeps the complete decoded text in memory. For large files or a URI, see [file handling](https://github.com/cyph/cordova-plugin-chooser/blob/master/docs/FILE-HANDLING.md).
 

@@ -8,6 +8,8 @@ RC2 changes the file API introduced by the transitional RC1. Managed files are n
 
 ### API and file handling
 
+- Released handles and aliases report `FILE_RELEASED` on read. A saved reference to an already released or evicted file reports `FILE_UNAVAILABLE` on restore.
+
 - `getFile` and `getFiles` return managed handles with temporary URIs and methods for whole-file, range, and streaming reads. These replace RC1's `getFileUri` and `getFilesUri` methods.
 - Added `withFile` and `withFiles` for scoped cleanup, `restoreFile` for saved references, and `releaseFiles` for batch release. Handles for the same ID share ownership. Release stops unfinished streams, waits for started reads, and leaves the original selection untouched.
 - Added `getFileData`, `getFilesData`, and managed `getData` with explicit `bytes`, `text`, `blob`, `arrayBuffer`, `dataURI`, and `bytesAndDataURI` formats. Metadata and direct-data results do not retain a managed resource. Text reads support explicit decoding and error handling.

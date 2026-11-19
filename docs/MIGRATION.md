@@ -6,7 +6,11 @@ RC2 changes how selection, cancellation, and resource ownership work. Check the 
 
 ## Update the installation
 
-For new applications, install `cordova-plugin-chooser@next`. Stable 2.0.0 is expected very soon, pending further testing and validation. Upgrade the app to Capacitor 8.x, update the dependency, and rebuild your web assets before syncing the native project.
+For new applications, install `cordova-plugin-chooser@next`. Stable 2.0.0 is expected very soon, pending further testing and validation.
+
+### Capacitor
+
+Upgrade the app to Capacitor 8.x, update the dependency, and rebuild your web assets before syncing the native project.
 
 ```sh
 npm install cordova-plugin-chooser@next
@@ -14,6 +18,8 @@ npm run build
 npx cap sync
 npx cap ls
 ```
+
+### Cordova
 
 Before installing RC2 in a Cordova iOS app, explicitly set the deployment target to at least iOS 15. The project is tested in Swift 5 language mode, which the host may already select. See [build configuration](PLATFORMS.md#build-configuration), then replace the installed plugin and prepare the app.
 

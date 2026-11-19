@@ -312,6 +312,7 @@ test("qualification requires every successful job, complete reports and the same
 		await import("../../scripts/qualification.mjs");
 	const { simulatorManifest } =
 		await import("../../scripts/simulator-results.mjs");
+	const apple = require("../../chainman/apple.json");
 	const directory = mkdtempSync(join(tmpdir(), "chooser-qualification-"));
 	t.after(() => rmSync(directory, { recursive: true, force: true }));
 	const sha = "a".repeat(40);
@@ -339,6 +340,14 @@ test("qualification requires every successful job, complete reports and the same
 		...(lane === "ios-simulator"
 			? { simulator: simulatorManifest("required") }
 			: {}),
+		...(lane === "capacitor-ios"
+			? {
+					toolchain: {
+						apple: { ...apple, sdk: apple.iphoneos },
+						simulatorRuntime: `com.apple.CoreSimulator.SimRuntime.iOS-${apple.iphoneos.replaceAll(".", "-")}`,
+					},
+				}
+			: {}),
 	}));
 	const save = (report) => {
 		mkdirSync(join(directory, report.lane), { recursive: true });
@@ -353,6 +362,31 @@ test("qualification requires every successful job, complete reports and the same
 		/Unknown qualification lane/,
 	);
 	reports.forEach(save);
+	const android = reports.find((report) => report.lane === "android");
+	const dependencyAttempt = {
+		command: "gradle",
+		args: [
+			"-p",
+			"tests/android",
+			"prepareRobolectricSdks",
+			"resolveVerificationDependencies",
+		],
+		attempt: 1,
+		status: 1,
+	};
+	const recovered = { ...dependencyAttempt, attempt: 2, status: 0 };
+	validateReport({ ...android, commands: [dependencyAttempt, recovered] }, sha);
+	assert.throws(
+		() =>
+			validateReport(
+				{
+					...android,
+					commands: [dependencyAttempt, { ...recovered, args: ["test"] }],
+				},
+				sha,
+			),
+		/Failed or missing commands/,
+	);
 	const qualified = aggregateReports(directory, sha, jobs);
 	assert.equal(qualified.lanes.length, Object.keys(requiredChecks).length);
 	assert.equal(qualified.integrity, reports[0].package.integrity);

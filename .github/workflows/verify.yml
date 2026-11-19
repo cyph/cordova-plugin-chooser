@@ -111,7 +111,7 @@ jobs:
   android-failures:
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 110
     env:
       CHAINMAN_MODE: host-nix
     steps:

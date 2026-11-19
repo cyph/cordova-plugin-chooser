@@ -1,6 +1,6 @@
 # File handling
 
-This guide follows an RC2 selection from choosing a read strategy through cleanup. Call the picker directly from the user's click. The examples use `chooser`. Import `Chooser as chooser` from `cordova-plugin-chooser/capacitor` in Capacitor, or wait for `deviceready` to use the Cordova global. The [API reference](API.md) lists every option and result.
+Call the picker directly from the user's click. The examples use Capacitor's `Chooser` import. In Cordova, use the `chooser` global after `deviceready`. See the [Cordova quick start](../README.md#pick-a-text-file-in-cordova) and [API reference](API.md).
 
 ## Choose an ownership model
 
@@ -15,12 +15,11 @@ A native managed file is a snapshot in private cache. A browser handle retains a
 The example below reads up to 1 MiB of text and puts it on the page. Provide an element with `id="file-result"` and call the function from a button.
 
 ```ts
-export {};
-declare const chooser: typeof import('cordova-plugin-chooser');
+import { Chooser } from 'cordova-plugin-chooser/capacitor';
 
 async function readTextFile(): Promise<void> {
   try {
-    const file = await chooser.getFileData({
+    const file = await Chooser.getFileData({
       accept: 'text/plain',
       maxFileSize: 1024 * 1024,
       format: 'text'
@@ -28,7 +27,7 @@ async function readTextFile(): Promise<void> {
     document.querySelector<HTMLElement>('#file-result')!.textContent =
       `${file.name}\n${file.text}`;
   } catch (error) {
-    if (!(error instanceof chooser.CancellationError)) {
+    if (!(error instanceof Chooser.CancellationError)) {
       console.error('Could not read the file', error);
     }
   }
@@ -51,7 +50,7 @@ For a short operation, `withFile` keeps the resource alive until the callback se
 
 ```js
 async function chooseAndUpload(uploadUri) {
-  return chooser.withFile({maxFileSize: 10 * 1024 * 1024}, async file => {
+  return Chooser.withFile({maxFileSize: 10 * 1024 * 1024}, async file => {
     const header = await file.readRange({offset: 0, length: 16});
     const receipt = await uploadUri(file.uri, file.name, file.mediaType);
     return {header, receipt};
@@ -71,7 +70,7 @@ The following callback consumes each text chunk before requesting the next. The 
 
 ```js
 async function processText(acceptChunk) {
-  return chooser.withFile({
+  return Chooser.withFile({
     accept: 'text/plain',
     maxFileSize: 100 * 1024 * 1024
   }, async file => {

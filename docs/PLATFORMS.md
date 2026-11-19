@@ -39,6 +39,17 @@ An Android activity can be recreated while its picker is open. A destroyed WebVi
 
 In Capacitor, an activity recreation during a pending picker discards that selection. With `@capacitor/app`, listen for `appRestoredResult` from plugin ID `Chooser` and method `pick` with error code `READ_INTERRUPTED`. Offer a new selection once the old result returns. Previously delivered managed references can still be restored while their cache files survive.
 
+```ts
+import { App } from '@capacitor/app';
+
+void App.addListener('appRestoredResult', event => {
+  if (event.pluginId === 'Chooser' && event.methodName === 'pick' &&
+      event.error && 'code' in event.error && event.error.code === 'READ_INTERRUPTED') {
+    console.info('The previous selection ended. You can choose a file again.');
+  }
+});
+```
+
 A Cordova application handling activity recreation can inspect `resume.pendingResult`. Check `pluginServiceName === 'Chooser'` and `pluginStatus`. This is a raw native envelope, not an already constructed public result.
 
 For a managed-copy payload, parse the reference and use `restoreFile` before using it. If discarding the payload, release the managed ID. Metadata has no managed resource. Direct-data operations can expose a temporary source-reader payload, not a `FileData` result. Release any returned source IDs and ask for a new selection. `RESULT_CANCELED` denotes cancellation. Record enough application state to identify the interrupted operation, but do not assume recovery is always possible or that an interrupted upload resumed.

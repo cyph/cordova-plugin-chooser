@@ -844,7 +844,7 @@ function createChooser(exec) {
         var parsed = objectOptions(options === undefined ? {} : options, ['signal']);
         var signal = signalOption(parsed.signal);
         checkSignal(signal);
-        var entry = resource(saved.id, 'managed', saved);
+        var entry = resource(saved.id, 'managed');
         var stat = await lease(entry, async function () {
             var result;
             try {
@@ -860,9 +860,13 @@ function createChooser(exec) {
                 typeof result.size !== 'number' || !Number.isSafeInteger(result.size) || result.size < 0) {
                 throw new ChooserError('FILE_UNAVAILABLE', 'Invalid authoritative file status.');
             }
-            return reference(Object.assign({}, saved, result));
+            entry.ref = reference(Object.assign({}, saved, result));
+            return entry.ref;
+        }).catch(function (error) {
+            if (!entry.ref && entry.state === 'active' && entry.reads.size === 0)
+                resources.delete(saved.id);
+            throw error;
         });
-        entry.ref = stat;
         return managedFile(stat);
     }
     function withSelection(options, consume, multiple, args) {

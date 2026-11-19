@@ -36,7 +36,7 @@ class AndroidReportsTests(unittest.TestCase):
 
     def test_bridge_instrumentation_requires_all_cases_and_no_skips(self):
         report = self.directory / "TEST-fixture.xml"
-        cases = ['realBridgeCopiesLargeFilesAndEnforcesLimits', 'cancellationSettlesOnceAndCanImmediatelyReopen', 'unknownLengthPdfPipesPreserveBytes']
+        cases = ['realBridgeCopiesLargeFilesAndEnforcesLimits', 'cancellationSettlesOnceAndCanImmediatelyReopen', 'unknownLengthPdfPipesPreserveBytes', 'recreationDiscardsTheOldSelectionAndAllowsAnotherPicker']
         content = ''.join(f'<testcase classname="ChooserBridgeTest" name="{name}"/>' for name in cases)
         report.write_text(f'<testsuite tests="3">{content}</testsuite>')
         check_instrumentation(self.directory)

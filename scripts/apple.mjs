@@ -56,3 +56,17 @@ export function appleEnvironment(apple, inherited = process.env) {
 			.join(":"),
 	};
 }
+
+export function verifySimulatorToolchain(run, root, env, apple) {
+	const xcode = run("/usr/bin/xcodebuild", ["-version"], root, true, env);
+	const sdk = run(
+		"/usr/bin/xcrun",
+		["--sdk", "iphonesimulator", "--show-sdk-version"],
+		root,
+		true,
+		env,
+	);
+	assert.equal(xcode, `Xcode ${apple.xcode}\nBuild version ${apple.build}`);
+	assert.equal(sdk, apple.iphoneos);
+	return { ...apple, sdk };
+}

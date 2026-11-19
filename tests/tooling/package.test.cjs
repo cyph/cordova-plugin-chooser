@@ -22,7 +22,11 @@ test("npm 12 pack output identifies exactly one named archive", async () => {
 });
 
 function packageFiles() {
-	const sources = ["src", "capacitor"].flatMap((directory) =>
+	const sources = [
+		"src",
+		"capacitor/android/src/main",
+		"capacitor/ios",
+	].flatMap((directory) =>
 		readdirSync(resolve(root, directory), {
 			recursive: true,
 			withFileTypes: true,
@@ -42,6 +46,11 @@ function packageFiles() {
 		"Package.swift",
 		"CordovaPluginChooser.podspec",
 		"www/chooser-core.js",
+		"capacitor/adapter.js",
+		"capacitor/index.js",
+		"capacitor/index.mjs",
+		"capacitor/index.d.ts",
+		"capacitor/android/build.gradle",
 		...sources,
 	];
 }
@@ -69,6 +78,7 @@ test("packing excludes development tools and fixtures", async () => {
 		"tests/ios/main.swift",
 		"scripts/privacy.py",
 		".chainman/state.json",
+		"capacitor/android/build/outputs/aar/chooser.aar",
 	]) {
 		assert.throws(
 			() => checkPackedFiles(root, pkg, [...packageFiles(), name]),

@@ -90,7 +90,7 @@ const run = (
 	cwd = root,
 	capture = false,
 	env = {},
-	{ timeout = 20 * 60 * 1000 } = {},
+	{ timeout = 20 * 60 * 1000, attempt } = {},
 ) => {
 	console.log(`> ${command} ${args.join(" ")}`);
 	const result = spawnVerified(command, args, {
@@ -107,7 +107,13 @@ const run = (
 		join(reportDirectory, log),
 		`${result.stdout || ""}${result.stderr || ""}`,
 	);
-	report.commands.push({ command, args, status: result.status, log });
+	report.commands.push({
+		command,
+		args,
+		status: result.status,
+		log,
+		...(attempt ? { attempt } : {}),
+	});
 	if (!capture) {
 		process.stdout.write(result.stdout || "");
 		process.stderr.write(result.stderr || "");
@@ -285,7 +291,8 @@ function portable() {
 		"*_test.py",
 	]);
 	checked("privacy");
-	pack();
+	const packed = pack();
+	run("node", ["scripts/check-types.mjs", packed]);
 }
 
 function browser() {
@@ -390,7 +397,7 @@ function androidArguments(fixture, buildTools, task) {
 function androidDependencies() {
 	androidEnvironment();
 	for (const [fixture, , buildTools] of androidFixtures)
-		retryDependencyPreparation((timeout) =>
+		retryDependencyPreparation((timeout, attempt) =>
 			run(
 				"gradle",
 				[
@@ -400,7 +407,7 @@ function androidDependencies() {
 				root,
 				false,
 				{},
-				{ timeout },
+				{ timeout, attempt },
 			),
 		);
 }
@@ -752,12 +759,19 @@ const lanes = {
 			aapt2Path,
 		}),
 	"capacitor-ios": () =>
-		verifyCapacitorIos({ root, output, run, pack, checked }),
+		verifyCapacitorIos({ root, output, report, run, pack, checked }),
 	"capacitor-prepare": () => prepareCapacitor({ root, output, run, pack }),
 	"android-failures"() {
 		androidEnvironment(true);
 		pack();
-		run("python3", [join(root, "scripts/android-failures.py")]);
+		run(
+			"python3",
+			[join(root, "scripts/android-failures.py")],
+			root,
+			false,
+			{},
+			{ timeout: 95 * 60 * 1000 },
+		);
 		checked("dependency-failures");
 	},
 	qualification() {
