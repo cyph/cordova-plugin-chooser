@@ -95,6 +95,10 @@ function createBrowserPicker(): Record<Action, Dispatch> {
 	function select(success: Callback, reject: Callback, value: unknown) {
 		if (!optionsValid(value)) { reject(failure('INVALID_ARGUMENT', 'Invalid picker options.')); return; }
 		if (active) { reject(failure('BUSY', 'A file picker is already active.')); return; }
+		if (typeof navigator !== 'undefined' && navigator.userActivation?.isActive === false) {
+			reject(failure('PICKER_FAILED', 'Open the browser picker directly from a user interaction.'));
+			return;
+		}
 		var options = value;
 		var input = document.createElement('input');
 		var finished = false;
@@ -113,10 +117,10 @@ function createBrowserPicker(): Record<Action, Dispatch> {
 			input.removeEventListener('cancel', onCancel);
 			input.remove();
 			if (error) {
-				Promise.allSettled(created.map(close)).then(function (releases) {
-					var failures = releases.flatMap(function (release, index) {
-						return release.status === 'rejected' ? [{id: created[index], error: release.reason}] : [];
-					});
+				Promise.all(created.map(function (id) {
+					return close(id).then(() => [], error => [{id, error}]);
+				})).then(function (releases) {
+					var failures = releases.flat();
 					if (failures.length) reject({code: 'CLEANUP_FAILED', message: 'Selection cleanup failed.',
 						outcome: {status: 'rejected', reason: error}, failures: failures});
 					else reject(error);
@@ -207,6 +211,7 @@ function createBrowserPicker(): Record<Action, Dispatch> {
 				var job = record.tail.then(async function () {
 					if (record.cancelled) throw {code: 'CANCELLED', reason: 'signal', message: 'Source read was cancelled.'};
 					if (record.source && offset !== record.offset) throw failure('INVALID_ARGUMENT', 'Source reads must be sequential.');
+					if (offset >= record.file.size) return {data: '', eof: true};
 					var bytes;
 					try { bytes = new Uint8Array(await record.file.slice(offset, offset + length).arrayBuffer()); }
 					catch (error) { throw failure('READ_FAILED', message(error, 'Could not read the browser file.')); }

@@ -1,13 +1,22 @@
-// Generated from typescript/www/chooser-core.ts. Run npm run build.
+// Generated from typescript/www/chooser-core.ts. Run npm run build:runtime.
 "use strict";
 function createChooser(exec) {
     var alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
     var managedId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
     var chunkSize = 262144;
     var resources = new Map();
+    var releaseQueue = [];
+    var activeReleases = 0;
     var readQueue = [];
     var activeReads = 0;
     var activePicker;
+    var random = new Uint32Array(4);
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function')
+        crypto.getRandomValues(random);
+    else
+        for (var i = 0; i < random.length; i++)
+            random[i] = Math.random() * 0x100000000;
+    var requestPrefix = Array.from(random, value => value.toString(16).padStart(8, '0')).join('');
     var requestSequence = 0;
     var formats = ['bytes', 'text', 'dataURI', 'bytesAndDataURI', 'blob', 'arrayBuffer'];
     var errorCodes = ['INVALID_ARGUMENT', 'BUSY', 'CANCELLED', 'UNSUPPORTED', 'PICKER_FAILED',
@@ -274,7 +283,7 @@ function createChooser(exec) {
                 detach();
                 reject(error);
             }
-            function aborted() { cancel(new CancellationError('signal', { cause: signal?.reason })); }
+            function aborted() { cancel(new CancellationError('signal', { cause: signal === null || signal === void 0 ? void 0 : signal.reason })); }
             if (signal)
                 signal.addEventListener('abort', aborted, { once: true });
             if (streamState)
@@ -305,12 +314,11 @@ function createChooser(exec) {
                 throw new ChooserError('FILE_RELEASED', 'The stream was stopped.');
             var value;
             try {
-                value = parseResponse(await bridge('readFile', [entry.id, offset, length], 'READ_FAILED'));
+                value = parseResponse(await bridge('readFile', [entry.id, offset, Math.min(length, Number.MAX_SAFE_INTEGER - offset)], 'READ_FAILED'));
             }
             catch (error) {
                 if (error instanceof CleanupError)
                     throw signalFailure(error, signal);
-                checkSignal(signal);
                 if (error instanceof ChooserError)
                     throw error;
                 throw new ChooserError('READ_FAILED', 'Invalid read response.', { cause: error });
@@ -352,10 +360,10 @@ function createChooser(exec) {
         if (typeof TextDecoder !== 'function')
             throw new ChooserError('UNSUPPORTED', 'TextDecoder is unavailable.');
         try {
-            return new TextDecoder(options?.encoding, { fatal: options?.fatal });
+            return new TextDecoder(options === null || options === void 0 ? void 0 : options.encoding, { fatal: options === null || options === void 0 ? void 0 : options.fatal });
         }
         catch (error) {
-            throw invalid('Unsupported text encoding: ' + options?.encoding + '.');
+            throw invalid('Unsupported text encoding: ' + (options === null || options === void 0 ? void 0 : options.encoding) + '.');
         }
     }
     function decoded(decoder, bytes, final) {
@@ -485,7 +493,7 @@ function createChooser(exec) {
                 if (error)
                     controller.error(error);
             } };
-        function aborted() { streamState.stop(new CancellationError('signal', { cause: options.signal?.reason })); }
+        function aborted() { var _a; streamState.stop(new CancellationError('signal', { cause: (_a = options.signal) === null || _a === void 0 ? void 0 : _a.reason })); }
         function close() {
             if (decoder) {
                 var tail = decoded(decoder, undefined, true);
@@ -556,13 +564,18 @@ function createChooser(exec) {
             readRange: function (options) { return promiseCall(arguments, 1, function () { return rangeRead(entry, rangeOptions(options, false)); }); },
             stream: function (options) { noExtraArguments(arguments, 1); return fileStream(entry, options, false); },
             textStream: function (options) { noExtraArguments(arguments, 1); return fileStream(entry, options, true); },
-            release: function () { return promiseCall(arguments, 0, function () { return releaseFile(ref.id); }); },
+            release: function () { return promiseCall(arguments, 0, function () { return releaseOne(ref.id, entry); }); },
             toJSON: function () { return Object.assign({}, ref); }
         });
         return Object.freeze(handle);
     }
-    function releaseOne(id) {
-        var entry = resources.get(id) ?? resource(id, 'managed');
+    function drainReleases() {
+        while (activeReleases < 4 && releaseQueue.length)
+            releaseQueue.shift()();
+    }
+    function releaseOne(id, entry) {
+        var _a;
+        if (entry === void 0) { entry = (_a = resources.get(id)) !== null && _a !== void 0 ? _a : resource(id, 'managed'); }
         if (entry.state === 'released')
             return Promise.resolve();
         if (entry.releasePromise)
@@ -570,10 +583,20 @@ function createChooser(exec) {
         entry.state = 'releasing';
         entry.streams.forEach(function (stream) { stream.stop(new ChooserError('FILE_RELEASED', 'The file was released.')); });
         entry.releasePromise = Promise.all(Array.from(entry.reads)).then(function () {
-            return bridge('releaseFile', [id], 'RELEASE_FAILED');
-        }).then(function () { entry.state = 'released'; entry.ref = undefined; }, function (error) {
-            /* Failed deletion is retryable; old handles remain closed to new reads. */
-            throw error;
+            return new Promise((resolve, reject) => {
+                releaseQueue.push(() => {
+                    activeReleases++;
+                    bridge('releaseFile', [id], 'RELEASE_FAILED').then(() => resolve(), reject).finally(() => {
+                        activeReleases--;
+                        drainReleases();
+                    });
+                });
+                drainReleases();
+            });
+        }).then(function () {
+            entry.state = 'released';
+            entry.ref = undefined;
+            resources.delete(id);
         }).finally(function () { entry.releasePromise = undefined; });
         return entry.releasePromise;
     }
@@ -625,7 +648,8 @@ function createChooser(exec) {
         if (!filters.length)
             throw invalid('accept must contain at least one MIME type.');
         var normalized = [];
-        filters.forEach(function (filter) {
+        for (var i = 0; i < filters.length; i++) {
+            var filter = own(filters, i) ? filters[i] : undefined;
             if (typeof filter !== 'string')
                 throw invalid('accept must be a MIME string or array of MIME strings.');
             filter.split(',').forEach(function (part) {
@@ -635,7 +659,7 @@ function createChooser(exec) {
                 if (normalized.indexOf(part) < 0)
                     normalized.push(part);
             });
-        });
+        }
         return normalized.join(',');
     }
     function pickerOptions(value, mode, multiple) {
@@ -645,13 +669,13 @@ function createChooser(exec) {
         var source = options.source === undefined ? 'documents' : options.source;
         if (source !== 'documents' && source !== 'photos')
             throw invalid('Unknown picker source.');
-        var wire = { requestId: 'chooser-' + (++requestSequence), source: source, accept: '*/*', mode: mode, multiple: multiple,
+        var wire = { requestId: 'chooser-' + requestPrefix + '-' + (++requestSequence), source: source, accept: '*/*', mode: mode, multiple: multiple,
             localOnly: false, maxFileSize: 0, maxTotalSize: 0, maxFiles: 0 };
         if (source === 'photos') {
             if (own(options, 'accept') || own(options, 'preferLocal'))
                 throw invalid('Photo selection accepts mediaTypes instead of document options.');
             var mediaTypes = options.mediaTypes === undefined ? ['image', 'video'] : options.mediaTypes;
-            if (!Array.isArray(mediaTypes) || !mediaTypes.length || mediaTypes.some(function (type) { return type !== 'image' && type !== 'video'; }))
+            if (!Array.isArray(mediaTypes) || !mediaTypes.length || Array.from(mediaTypes).some(function (type) { return type !== 'image' && type !== 'video'; }))
                 throw invalid('mediaTypes must select images, videos, or both.');
             wire.mediaTypes = Array.from(new Set(mediaTypes));
         }
@@ -670,7 +694,10 @@ function createChooser(exec) {
         }
         if (multiple)
             wire.maxFiles = positiveLimit(options.maxFiles, 'maxFiles', true);
-        return { wire: wire, signal: signalOption(options.signal), decoding: mode === 'data' ? dataOptions(options) : undefined, format: options.format };
+        var decoding = mode === 'data' ? dataOptions(options) : undefined;
+        if (decoding)
+            textDecoder(decoding);
+        return { wire: wire, signal: signalOption(options.signal), decoding: decoding, format: options.format };
     }
     function callPicker(value, mode, multiple, args) {
         /* The executor intentionally reaches exec synchronously in the original gesture. */
@@ -718,6 +745,7 @@ function createChooser(exec) {
                 terminal = true;
                 var raw;
                 Promise.resolve().then(async function () {
+                    var _a;
                     if (response === 'RESULT_CANCELED') {
                         checkSignal(options.signal);
                         throw new CancellationError('picker');
@@ -731,7 +759,7 @@ function createChooser(exec) {
                     var ids = resultIds(raw);
                     try {
                         if (aborted)
-                            throw new CancellationError('signal', { cause: options.signal?.reason });
+                            throw new CancellationError('signal', { cause: (_a = options.signal) === null || _a === void 0 ? void 0 : _a.reason });
                         checkSignal(options.signal);
                         var selected = multiple ? raw : [raw];
                         if (!Array.isArray(selected) || !selected.length || (!multiple && Array.isArray(raw)))
@@ -782,9 +810,10 @@ function createChooser(exec) {
                         return cleanupOutcome(ids, { status: 'rejected', reason: error });
                     }
                 }).then(function (result) {
+                    var _a;
                     if (options.signal && options.signal.aborted) {
                         /* Cancellation can win while direct-data cleanup is awaiting native release. */
-                        cleanupOutcome(resultIds(raw), { status: 'rejected', reason: new CancellationError('signal', { cause: options.signal?.reason }) })
+                        cleanupOutcome(mode === 'data' ? [] : resultIds(raw), { status: 'rejected', reason: new CancellationError('signal', { cause: (_a = options.signal) === null || _a === void 0 ? void 0 : _a.reason }) })
                             .catch(finishRejected);
                         return;
                     }

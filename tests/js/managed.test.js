@@ -191,7 +191,7 @@ test('release stops unread streams without hanging and rejects future reads thro
 	await assert.rejects(restored.readRange({length: 1}), code('FILE_RELEASED'));
 	assert.throws(() => file.stream(), code('FILE_RELEASED'));
 	await f.chooser.releaseFile(file.id);
-	assert.deepEqual(f.releases, [key]);
+	assert.deepEqual(f.releases, [key, key]);
 });
 
 test('release waits for an already-started whole read, including its later chunks', async () => {
@@ -281,7 +281,36 @@ test('batch release validates every ID first, deduplicates attempts, and reports
 	await assert.rejects(f.chooser.releaseFiles([key, secondKey, key]), error => error.code === 'RELEASE_FAILED' && error.failures.length === 1 && error.failures[0].id === key && error.failures[0].error instanceof f.chooser.ChooserError);
 	assert.deepEqual(f.releases, [key, secondKey]);
 	await f.chooser.releaseFiles([key, secondKey]);
-	assert.deepEqual(f.releases, [key, secondKey, key]);
+	assert.deepEqual(f.releases, [key, secondKey, key, secondKey]);
+});
+
+test('batch release dispatches at most four bridge calls until earlier releases settle', async () => {
+	const held = [];
+	const chooser = loadChooser(ok => held.push(ok));
+	const ids = Array.from({length: 12}, (_, i) => '12345678-1234-4234-8234-123456789a' + i.toString(16).padStart(2, '0'));
+	const released = chooser.releaseFiles(ids);
+	for (let batch = 0; batch < 3; batch++) {
+		await tick();
+		assert.equal(held.length, 4);
+		held.splice(0).forEach(finish => finish());
+	}
+	await released;
+});
+
+test('aborting in a new page uses a distinct request ID from a restored Cordova picker', async () => {
+	const calls = [];
+	const exec = (ok, fail, service, action, args) => {
+		calls.push([action, action === 'pick' ? args[0].requestId : args[0]]);
+		if (action === 'cancelPick') ok();
+	};
+	const oldPage = loadChooser(exec);
+	const newPage = loadChooser(exec);
+	void oldPage.getFileMetadata();
+	const signal = new AbortController();
+	void newPage.getFileMetadata({signal: signal.signal});
+	signal.abort();
+	assert.notEqual(calls[0][1], calls[1][1]);
+	assert.deepEqual(calls[2], ['cancelPick', calls[1][1]]);
 });
 
 test('batch release rejects holes, inherited entries and invalid IDs before mutating any resource', async () => {
@@ -341,7 +370,7 @@ test('direct data stays busy through blocked reads and cleanup, and abort cancel
 	const chooser = loadChooser((ok, fail, service, action, args) => {
 		calls.push({action, args: plain(args)});
 		if (action === 'pick') ok({id: key, kind: 'source', name: 'file', mediaType: 'application/octet-stream', size: null});
-		else if (action === 'readFile') settleRead = () => fail({code: 'READ_FAILED', message: 'closed on abort'});
+		else if (action === 'readFile') settleRead = () => fail({code: 'CANCELLED', reason: 'signal', message: 'closed on abort'});
 		else if (action === 'releaseFile') finishRelease = ok;
 		else ok();
 	});

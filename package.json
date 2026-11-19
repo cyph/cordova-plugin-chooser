@@ -16,7 +16,12 @@
 		"docs/",
 		"LICENSE",
 		"NOTICE",
-		"capacitor/",
+		"capacitor/*.js",
+		"capacitor/*.mjs",
+		"capacitor/*.d.ts",
+		"capacitor/android/build.gradle",
+		"capacitor/android/src/main/",
+		"capacitor/ios/*.swift",
 		"Package.swift",
 		"CordovaPluginChooser.podspec"
 	],
@@ -49,16 +54,18 @@
 		]
 	},
 	"scripts": {
-		"build": "node scripts/build-runtime.mts",
+		"build:runtime": "node scripts/build-runtime.mts",
 		"check:runtime": "node scripts/build-runtime.mts --check",
 		"test": "node --test tests/js/*.test.js",
 		"test:types": "node scripts/check-types.mjs"
 	},
 	"devDependencies": {
 		"@capacitor/android": "8.5.3",
+		"@capacitor/app": "8.0.0",
 		"@capacitor/cli": "8.5.3",
 		"@capacitor/core": "8.5.3",
 		"@types/node": "26.6.5",
+		"acorn": "8.15.0",
 		"cordova": "^13.0.0",
 		"cordova-android14": "npm:cordova-android@14.x",
 		"cordova-android15": "npm:cordova-android@15.x",
@@ -77,8 +84,10 @@
 		},
 		"./capacitor": {
 			"types": "./capacitor/index.d.ts",
+			"import": "./capacitor/index.mjs",
 			"default": "./capacitor/index.js"
 		},
+		"./www/chooser": "./www/chooser.js",
 		"./*": "./*"
 	},
 	"capacitor": {

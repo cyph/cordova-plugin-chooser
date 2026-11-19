@@ -1,1 +1,6 @@
 chainman.lock text eol=lf
+www/*.js text eol=lf
+src/browser/*.js text eol=lf
+src/hooks/*.js text eol=lf
+capacitor/*.js text eol=lf
+capacitor/*.mjs text eol=lf

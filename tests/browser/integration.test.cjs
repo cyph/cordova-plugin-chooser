@@ -84,6 +84,28 @@ for (const [engine, bridge] of browserVariants) {
 				await page.waitForFunction(
 					() => !document.getElementById("pick").disabled,
 				);
+				if (bridge !== "index") {
+					assert.equal(
+						await page.evaluate(() => Capacitor.isPluginAvailable("Chooser")),
+						true,
+					);
+				}
+				if (engine === "chromium") {
+					const error = await page.evaluate(
+						() =>
+							new Promise((resolve) => {
+								// Playwright evaluation itself can grant a transient user gesture.
+								setTimeout(() => {
+									chooser.getFileMetadata().then(
+										() => resolve("picked"),
+										(error) => resolve(error.code),
+									);
+									setTimeout(() => resolve("pending"), 1000);
+								}, 5500);
+							}),
+					);
+					assert.equal(error, "PICKER_FAILED");
+				}
 				await page.evaluate(() => {
 					window.reads = 0;
 					window.live = new Set();

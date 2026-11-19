@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2019",
+    "newLine": "lf",
     "module": "Node16",
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
@@ -9,5 +10,5 @@
     "rootDir": "typescript",
     "noEmitOnError": true
   },
-  "include": ["typescript/**/*.ts"]
+  "include": ["typescript/**/*.ts", "typescript/**/*.mts"]
 }

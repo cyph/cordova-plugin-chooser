@@ -1,4 +1,4 @@
-// Generated from typescript/src/browser/chooser-web.ts. Run npm run build.
+// Generated from typescript/src/browser/chooser-web.ts. Run npm run build:runtime.
 "use strict";
 function dictionary(value) {
     return typeof value === 'object' && value !== null;
@@ -68,12 +68,17 @@ function createBrowserPicker() {
             options.mediaTypes.every(function (type) { return type === 'image' || type === 'video'; })));
     }
     function select(success, reject, value) {
+        var _a;
         if (!optionsValid(value)) {
             reject(failure('INVALID_ARGUMENT', 'Invalid picker options.'));
             return;
         }
         if (active) {
             reject(failure('BUSY', 'A file picker is already active.'));
+            return;
+        }
+        if (typeof navigator !== 'undefined' && ((_a = navigator.userActivation) === null || _a === void 0 ? void 0 : _a.isActive) === false) {
+            reject(failure('PICKER_FAILED', 'Open the browser picker directly from a user interaction.'));
             return;
         }
         var options = value;
@@ -96,10 +101,10 @@ function createBrowserPicker() {
             input.removeEventListener('cancel', onCancel);
             input.remove();
             if (error) {
-                Promise.allSettled(created.map(close)).then(function (releases) {
-                    var failures = releases.flatMap(function (release, index) {
-                        return release.status === 'rejected' ? [{ id: created[index], error: release.reason }] : [];
-                    });
+                Promise.all(created.map(function (id) {
+                    return close(id).then(() => [], error => [{ id, error }]);
+                })).then(function (releases) {
+                    var failures = releases.flat();
                     if (failures.length)
                         reject({ code: 'CLEANUP_FAILED', message: 'Selection cleanup failed.',
                             outcome: { status: 'rejected', reason: error }, failures: failures });
@@ -209,7 +214,7 @@ function createBrowserPicker() {
         },
         readFile: function (success, reject, args) {
             try {
-                const [id, offset, length] = args ?? [];
+                const [id, offset, length] = args !== null && args !== void 0 ? args : [];
                 validateId(id);
                 if (typeof offset !== 'number' || typeof length !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0 ||
                     length > chunkSize || length > Number.MAX_SAFE_INTEGER - offset)
@@ -222,6 +227,8 @@ function createBrowserPicker() {
                         throw { code: 'CANCELLED', reason: 'signal', message: 'Source read was cancelled.' };
                     if (record.source && offset !== record.offset)
                         throw failure('INVALID_ARGUMENT', 'Source reads must be sequential.');
+                    if (offset >= record.file.size)
+                        return { data: '', eof: true };
                     var bytes;
                     try {
                         bytes = new Uint8Array(await record.file.slice(offset, offset + length).arrayBuffer());

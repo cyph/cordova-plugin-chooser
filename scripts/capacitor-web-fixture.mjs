@@ -11,6 +11,7 @@ export function writeCapacitorFixture(
 		"@capacitor/core": join(capacitorCore, "dist/index.cjs.js"),
 		"../www/chooser-core": join(packed, "www/chooser-core.js"),
 		"../src/browser/chooser-web": join(packed, "src/browser/chooser-web.js"),
+		"./adapter": join(packed, "capacitor/adapter.js"),
 		"cordova-plugin-chooser/capacitor": join(packed, "capacitor/index.js"),
 	};
 	// Bundle the exact packed modules for a browser/WebView without a build

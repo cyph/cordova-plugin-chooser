@@ -13,7 +13,7 @@ function checkIosTarget(context: HookContext) {
 	const root = options.projectRoot;
 	if (!root) throw new Error('Chooser could not locate the Cordova project.');
 	const platforms = options.cordova && options.cordova.platforms || options.platforms;
-	if (Array.isArray(platforms) ? !platforms.includes('ios') : !fs.existsSync(path.join(root, 'platforms/ios'))) return;
+	if (platforms?.length ? !platforms.includes('ios') : !fs.existsSync(path.join(root, 'platforms/ios'))) return;
 	const {ConfigParser} = context.requireCordovaModule('cordova-common');
 	const config = new ConfigParser(path.join(root, 'config.xml'));
 	const target = config.getPreference('deployment-target', 'ios');

@@ -1,4 +1,4 @@
-// Generated from typescript/src/hooks/ios-target.ts. Run npm run build.
+// Generated from typescript/src/hooks/ios-target.ts. Run npm run build:runtime.
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
@@ -8,7 +8,7 @@ function checkIosTarget(context) {
     if (!root)
         throw new Error('Chooser could not locate the Cordova project.');
     const platforms = options.cordova && options.cordova.platforms || options.platforms;
-    if (Array.isArray(platforms) ? !platforms.includes('ios') : !fs.existsSync(path.join(root, 'platforms/ios')))
+    if ((platforms === null || platforms === void 0 ? void 0 : platforms.length) ? !platforms.includes('ios') : !fs.existsSync(path.join(root, 'platforms/ios')))
         return;
     const { ConfigParser } = context.requireCordovaModule('cordova-common');
     const config = new ConfigParser(path.join(root, 'config.xml'));

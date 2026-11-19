@@ -17,6 +17,22 @@ async function select(fixture, method, options, files) {
 	return pending;
 }
 
+test('a missing gesture and invalid options leave the browser picker available', async () => {
+	const userActivation = {isActive: false};
+	const f = browserFixture({userActivation});
+	await assert.rejects(f.chooser.getFileMetadata(), code('PICKER_FAILED'));
+	userActivation.isActive = true;
+	await assert.rejects(f.chooser.getFileMetadata({accept: Array(1)}), code('INVALID_ARGUMENT'));
+	await assert.rejects(f.chooser.getFileData({format: 'text', encoding: 'unknown-encoding', maxFileSize: 1}), code('INVALID_ARGUMENT'));
+	assert.equal(f.elements.length, 0);
+	const managed = await select(f, 'getFile', {maxFileSize: 3}, [file()]);
+	const saved = managed.toJSON();
+	assert.equal((await managed.stream({offset: Number.MAX_SAFE_INTEGER}).getReader().read()).done, true);
+	await managed.release();
+	await assert.rejects(f.chooser.restoreFile(saved), code('FILE_UNAVAILABLE'));
+	await assert.rejects(managed.bytes({maxBytes: 3}), code('FILE_RELEASED'));
+});
+
 test('direct combined data opens synchronously, reads once, and owns no Blob URL', async () => {
 	const f = browserFixture(), input = file();
 	const pending = f.chooser.getFileData({accept: 'image/*', maxFileSize: 3, format: 'bytesAndDataURI'});
@@ -49,7 +65,7 @@ test('browser Blob and ArrayBuffer formats preserve bytes and MIME through direc
 			const buffer = format === 'blob' ? await result.blob.arrayBuffer() : result.arrayBuffer;
 			assert.deepEqual(Array.from(new Uint8Array(buffer)), i ? [] : [0, 255, 128, 42]);
 			if (format === 'blob') assert.equal(result.blob.type, inputs[i].type);
-			assert.equal(inputs[i].reads.length, 1);
+			assert.equal(inputs[i].reads.length, i ? 0 : 1);
 		}
 		assert.equal(f.blobs.size, 0);
 		const handle = await select(f, 'getFile', {maxFileSize: 4, preferLocal: true}, [inputs[0]]);

@@ -1,4 +1,4 @@
-// Generated from typescript/www/chooser.ts. Run npm run build.
+// Generated from typescript/www/chooser.ts. Run npm run build:runtime.
 "use strict";
 const createChooser = require("./chooser-core");
 const chooser = createChooser(require('cordova/exec'));

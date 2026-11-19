@@ -17,7 +17,7 @@ function loadChooser(exec, timers = []) {
 	return context.module.exports(exec);
 }
 
-function browserFixture() {
+function browserFixture(navigator) {
 	const elements = [];
 	const readers = [];
 	const blobs = new Map();
@@ -56,7 +56,7 @@ function browserFixture() {
 		abort() { this.readyState = 2; this.onabort(); }
 	}
 	const context = {
-		module: {exports: {}}, Promise, Uint8Array, btoa, atob, document, FileReader: Reader,
+		module: {exports: {}}, Promise, Uint8Array, btoa, atob, document, navigator, FileReader: Reader,
 		window: {
 			crypto: {getRandomValues(bytes) { bytes.fill(0); bytes[15] = ++sequence; return bytes; }},
 			addEventListener: (name, callback) => windowListeners.set(name, callback)

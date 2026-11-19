@@ -1,6 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { mkdtempSync, writeFileSync, readFileSync, rmSync } = require("node:fs");
+const {
+	mkdirSync,
+	mkdtempSync,
+	writeFileSync,
+	readFileSync,
+	rmSync,
+} = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const hook = require("../../src/hooks/ios-target");
@@ -45,6 +51,17 @@ test("iOS deployment validation uses platform preference and never rewrites appl
 		hook({
 			opts: { projectRoot: directory, cordova: { platforms: ["android"] } },
 		});
+		const prepareAll = {
+			opts: { projectRoot: directory, cordova: { platforms: [] } },
+			requireCordovaModule: () => common,
+		};
+		writeFileSync(
+			config,
+			'<widget id="test.chooser" version="1.0.0" xmlns="http://www.w3.org/ns/widgets"><preference name="deployment-target" value="14.0" /></widget>',
+		);
+		hook(prepareAll);
+		mkdirSync(join(directory, "platforms/ios"), { recursive: true });
+		assert.throws(() => hook(prepareAll), /requires iOS 15/);
 	} finally {
 		rmSync(directory, { recursive: true, force: true });
 	}
