@@ -316,6 +316,10 @@ reason = "Library manifest declares the Capacitor 8 compatibility range. The gen
 pattern = "tests/ios/privacy-plugin/package.json"
 reason = "Dependency-free, private fixture installed from this checkout. Portable tests prohibit dependencies and install scripts; adding either requires dependency ownership."
 
+[[dependencies.exclusions]]
+pattern = "tests/capacitor-host/*/package.json"
+reason = "Compatibility fixtures use committed npm lockfiles with npm ci. Their exact host versions are set by the Capacitor verification matrix."
+
 [formatters.json]
 paths = [
   "package.json",

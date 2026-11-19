@@ -28,6 +28,7 @@ outputs = [
   ".github/workflows/dependency-preview.yml",
   "tests/capacitor/settings.gradle",
   "tests/capacitor/locks/app.lockfile",
+  "tests/capacitor/locks/cordova-plugin-chooser.lockfile",
   "tests/capacitor/locks/runtime.lockfile",
   "tests/capacitor/buildscript-gradle.lockfile",
   "tests/capacitor/settings-gradle.lockfile",
@@ -243,7 +244,7 @@ resolve = [
 ]
 # Framework sources are owned by the frozen npm graph; these adapters stay inside
 # the checkout and never write Gradle state into node_modules.
-local_projects = { "com.cyph.chooser.fixtures:app" = "tests/capacitor/app", "com.cyph.chooser.fixtures:runtime" = "tests/capacitor/runtime" }
+local_projects = { "com.cyph.chooser.fixtures:app" = "tests/capacitor/app", "com.cyph.chooser.fixtures:capacitor-android" = "tests/capacitor/runtime", "com.cyph.chooser.fixtures:cordova-plugin-chooser" = "capacitor/android" }
 
 [[updates.steps]]
 resolve = "nix"
